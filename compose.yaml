@@ -1,0 +1,15 @@
+services:
+  mw2-server:
+    build: .
+    environment:
+      MW2_LOG_LEVEL: debug
+      MW2_CAPTURE_DIR: /data/captures
+      MW2_CAPTURE_ENABLED: "false"
+    ports:
+      - "3074:3074/tcp"
+      - "3075:3075/tcp"
+      - "3076:3076/udp"
+      - "8080:8080/tcp"
+    volumes:
+      - ./captures:/data/captures
+    restart: unless-stopped
