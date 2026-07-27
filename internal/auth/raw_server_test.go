@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -57,8 +58,11 @@ func TestParseRetailAuthRequest(t *testing.T) {
 	if parsed.GameID != 0x14a0 {
 		t.Fatalf("game ID=%08x", parsed.GameID)
 	}
-	if parsed.PlatformKey != candidateSessionKey {
-		t.Fatalf("platform key=%x", parsed.PlatformKey)
+	if len(parsed.Ticket) != 284 {
+		t.Fatalf("ticket length=%d", len(parsed.Ticket))
+	}
+	if !bytes.Equal(parsed.Ticket[32:56], candidateSessionKey[:]) {
+		t.Fatalf("ticket bytes=%x", parsed.Ticket[32:56])
 	}
 }
 
@@ -97,14 +101,24 @@ func TestBuildLegacySuccessResponse(t *testing.T) {
 	if errorFlag, err := reader.readBits(1); err != nil || errorFlag != 0 {
 		t.Fatalf("error flag=%d err=%v", errorFlag, err)
 	}
-	for name, want := range map[string]uint32{"status": bdAuthNoError, "iv seed": ivSeed} {
+	for _, field := range []struct {
+		name string
+		want uint32
+	}{
+		{name: "status", want: bdAuthNoError},
+		{name: "iv seed", want: ivSeed},
+	} {
 		got, err := reader.readBits(32)
-		if err != nil || uint32(got) != want {
-			t.Fatalf("%s=%08x err=%v", name, got, err)
+		if err != nil || uint32(got) != field.want {
+			t.Fatalf("%s=%08x err=%v", field.name, got, err)
 		}
 	}
-	if _, err := reader.readBytes(legacyTicketLen * 2); err != nil {
+	gotEncryptedTicket, err := reader.readBytes(legacyTicketLen)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Equal(gotEncryptedTicket, details.EncryptedGameTicket[:]) {
+		t.Fatalf("wire encrypted ticket=%x", gotEncryptedTicket)
 	}
 	gotSessionKey, err := reader.readBytes(len(candidateSessionKey))
 	if err != nil {
@@ -112,6 +126,13 @@ func TestBuildLegacySuccessResponse(t *testing.T) {
 	}
 	if !bytes.Equal(gotSessionKey, candidateSessionKey[:]) {
 		t.Fatalf("wire session key=%x", gotSessionKey)
+	}
+	gotLSGTicket, err := reader.readBytes(legacyTicketLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotLSGTicket, details.LSGTicket[:]) {
+		t.Fatalf("wire LSG ticket=%x", gotLSGTicket)
 	}
 	if reader.remainingBits() != 7 {
 		t.Fatalf("remaining padding bits=%d", reader.remainingBits())
@@ -167,7 +188,188 @@ func makeRetailRequest(gameID uint32, platformKey [24]byte) []byte {
 	return request
 }
 
-func TestRawServerSendsLegacySuccess(t *testing.T) {
+func TestCapturedMW2SuccessResponse(t *testing.T) {
+	if len(capturedMW2SuccessResponse) != 295 {
+		t.Fatalf("response length=%d", len(capturedMW2SuccessResponse))
+	}
+	parsed, err := ParseLegacySuccessResponse(capturedMW2SuccessResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Status != bdAuthNoError {
+		t.Fatalf("status=%d", parsed.Status)
+	}
+	wantKey := []byte{0x3b, 0xb4, 0x3f, 0x03, 0xb3, 0x69, 0x6f, 0xb6, 0xf2, 0xb3, 0xfa, 0x1d, 0x21, 0xba, 0xd2, 0xb8, 0xac, 0xcd, 0x98, 0x7c, 0x94, 0x75, 0x9f, 0x27}
+	if !bytes.Equal(parsed.SessionKey[:], wantKey) {
+		t.Fatalf("session key=%x", parsed.SessionKey)
+	}
+	wantProofSuffix := []byte{0x7b, 0xf4, 0x7a, 0x9a, 0x67, 0x6f, 0x6c, 0xfb, 0x14, 0x57, 0x74, 0xc1, 0x2e, 0x5d, 0x31, 0x9c, 0xcf, 0x15, 0x36, 0x3f, 0x44, 0x00, 0xea, 0xcd}
+	if !bytes.Equal(parsed.PlatformProof[len(parsed.PlatformProof)-len(wantProofSuffix):], wantProofSuffix) {
+		t.Fatalf("platform proof suffix=%x", parsed.PlatformProof[len(parsed.PlatformProof)-len(wantProofSuffix):])
+	}
+}
+
+func TestRawServerHandlesTaskAfterConnectionID(t *testing.T) {
+	client, server := net.Pipe()
+	service := NewRawServer("", slog.New(slog.NewTextHandler(io.Discard, nil)), capture.New(false, "", RetailRequestSize), time.Second, time.Second)
+	var ticket [legacyTicketLen]byte
+	copy(ticket[:24], candidateSessionKey[:])
+	service.sessionStore().putWithPendingKey(ticket, [24]byte{}, candidateSessionKey)
+	done := make(chan struct{})
+	go func() {
+		service.handle(server)
+		close(done)
+	}()
+
+	if _, err := client.Write(buildLSGInitialRecord(mw2GameID, 0x9f08a100, ticket)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readLSGFrame(client, RetailRequestSize); err != nil {
+		t.Fatal(err)
+	}
+
+	connectionPayload := make([]byte, 9)
+	connectionPayload[0] = bdTypeU64
+	binary.LittleEndian.PutUint64(connectionPayload[1:], 0xb9398889437679d9)
+	connectionFrame, err := EncryptLSGRecord(lsgConnectionIDType, connectionPayload, 0x312d52ee, candidateSessionKey[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(connectionFrame); err != nil {
+		t.Fatal(err)
+	}
+
+	taskFrame, err := EncryptLSGRecord(lsgResultReplyType, []byte{bdServiceTitleUtilities, bdTypeU8, 6}, 0x312d52ef, candidateSessionKey[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(taskFrame); err != nil {
+		t.Fatal(err)
+	}
+	response, err := readLSGFrame(client, RetailRequestSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &lsgConnection{key: candidateSessionKey}
+	messageType, payload, err := session.decryptResponse(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messageType != lsgResultReplyType || payload[14] != bdTypeU8 || payload[15] != 6 {
+		t.Fatalf("unexpected task response type=%d payload=%x", messageType, payload)
+	}
+
+	_ = client.Close()
+	<-done
+}
+
+func TestRawServerSendsDynamicLSGHello(t *testing.T) {
+	for _, gameID := range []uint32{mw2GameID, 0} {
+		t.Run(fmt.Sprintf("game_%08x", gameID), func(t *testing.T) {
+			client, server := net.Pipe()
+			service := NewRawServer("", slog.New(slog.NewTextHandler(io.Discard, nil)), capture.New(false, "", RetailRequestSize), time.Second, time.Second)
+			var ticket [legacyTicketLen]byte
+			copy(ticket[:24], candidateSessionKey[:])
+			service.sessionStore().put(ticket, candidateSessionKey)
+			done := make(chan struct{})
+			go func() {
+				service.handle(server)
+				close(done)
+			}()
+
+			initial := buildLSGInitialRecord(gameID, 0x9f08a100, ticket)
+			if len(initial) != 152 || binary.LittleEndian.Uint32(initial[:4]) != 0xb4 {
+				t.Fatalf("unexpected initial LSG record length: %d", len(initial))
+			}
+			if _, err := client.Write(initial); err != nil {
+				t.Fatal(err)
+			}
+			response, err := readLSGFrame(client, RetailRequestSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(response) != 14 || response[4] != 0 {
+				t.Fatalf("unexpected LSG hello response: %x", response)
+			}
+			reader := newLSBBitReader(response[5:])
+			if dataType, err := reader.readBits(5); err != nil || dataType != 4 {
+				t.Fatalf("unexpected LSG connection-ID type: %d, %v", dataType, err)
+			}
+			if _, err := reader.readBytes(8); err != nil {
+				t.Fatal(err)
+			}
+			_ = client.Close()
+			<-done
+			if service.LSGConnections() != 1 || service.LSGFrames() != 1 {
+				t.Fatalf("lsg connections=%d frames=%d", service.LSGConnections(), service.LSGFrames())
+			}
+		})
+	}
+}
+
+func buildLSGInitialRecord(gameID, randomNumber uint32, ticket [legacyTicketLen]byte) []byte {
+	payload := newLSBBitWriter(1 + 5 + 32 + 5 + 32 + legacyTicketLen*8)
+	payload.writeBit(true)
+	writeTypedUint32(payload, gameID)
+	writeTypedUint32(payload, randomNumber)
+	payload.writeBytes(ticket[:])
+	inner := make([]byte, 2+len(payload.bytes()))
+	inner[1] = lsgInitialType
+	copy(inner[2:], payload.bytes())
+	record := make([]byte, 12+len(inner))
+	binary.LittleEndian.PutUint32(record[:4], uint32(len(record)+28))
+	record[4] = 0xff
+	binary.LittleEndian.PutUint32(record[8:12], uint32(len(inner)))
+	copy(record[12:], inner)
+	return record
+}
+
+func writeTypedUint32(writer *lsbBitWriter, value uint32) {
+	for bit := 0; bit < 5; bit++ {
+		writer.writeBit(8&(1<<bit) != 0)
+	}
+	writer.writeBytes(littleEndianUint32(value))
+}
+
+func TestRetailAuthRequestLSGSessionKey(t *testing.T) {
+	request := mustDecodeHex("2c010000001291d8302d1502a50000401c0100002101000000000114300000c0000800143137373235300000000000000000000000000000000001000400000100000700080000019fa494d1a0000700080000019fa4a28d400002000800000000000189a60004002054757374696e000000000000000000000000000000000000000000000000000800046272000000040004756e0000000800185550303030322d424c555333303337375f30300000000000000100040000000000080018636f3853766d5371467769354c6d7349525257746f6c794c00000000000000003002004c000800045250434e00080040303e021d00968b2fdb243bfd06cfd335c8090224f4ecdfed9c62db39cbef0df8ac021d00d0dbeaa6098e6bb1e8ded33c1636ee91220860707ef65b8b2b8d0c18")
+	request = append(request, 0)
+	parsed, err := ParseRetailAuthRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := parsePS3LSGSessionKey(parsed.Ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := bytes.Index(parsed.Ticket, []byte(ps3RPCNPlatformTicketMarker))
+	if marker < 0 {
+		t.Fatalf("RPCN marker not found in ticket")
+	}
+	var want [24]byte
+	copy(want[:], parsed.Ticket[marker-ps3RPCNKeyMarkerDelta:])
+	if !bytes.Equal(got[:], want[:]) {
+		t.Fatalf("RPCN LSG session key=%x want=%x", got, want)
+	}
+	if bytes.Equal(got[:], make([]byte, 24)) {
+		t.Fatalf("RPCN LSG session key must not be all zero")
+	}
+}
+
+func TestRetailAuthRequestLegacyLSGSessionKey(t *testing.T) {
+	ticket := make([]byte, ps3LSGSessionKeyOffset+24)
+	want := mustDecodeHex("4d57322d52504353332d53455353494f4e2d4b45592d3031")
+	copy(ticket[ps3LSGSessionKeyOffset:], want)
+	got, err := parsePS3LSGSessionKey(ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got[:], want) {
+		t.Fatalf("legacy LSG session key=%x", got)
+	}
+}
+
+func TestRawServerSendsDynamicSuccess(t *testing.T) {
 	client, server := net.Pipe()
 	service := &RawServer{log: slog.New(slog.NewTextHandler(io.Discard, nil)), readTimeout: time.Second, writeTimeout: time.Second, recorder: capture.New(false, "", RetailRequestSize)}
 	done := make(chan struct{})
@@ -184,9 +386,21 @@ func TestRawServerSendsLegacySuccess(t *testing.T) {
 	if _, err := io.ReadFull(client, response); err != nil {
 		t.Fatal(err)
 	}
-	wantPrefix := []byte{0x23, 0x01, 0x00, 0x00, 0x00, legacyReplyType}
-	if !bytes.Equal(response[:len(wantPrefix)], wantPrefix) {
-		t.Fatalf("unexpected response prefix %x", response[:len(wantPrefix)])
+	parsed, err := ParseLegacySuccessResponse(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Status != bdAuthNoError || parsed.SessionKey == ([24]byte{}) {
+		t.Fatalf("unexpected dynamic response status=%d key=%x", parsed.Status, parsed.SessionKey)
+	}
+	var ticketID [24]byte
+	copy(ticketID[:], parsed.PlatformProof[:len(ticketID)])
+	stored, ok := service.sessionStore().sessions[ticketID]
+	if !ok {
+		t.Fatal("dynamic LSG ticket was not retained")
+	}
+	if stored.key != ([24]byte{}) {
+		t.Fatalf("unexpected synthetic request LSG key=%x", stored.key)
 	}
 	_ = client.Close()
 	<-done

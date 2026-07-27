@@ -51,7 +51,7 @@ func main() {
 	}
 	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"http", func(ctx context.Context) error {
 		return health.Serve(ctx, cfg.HTTPAddr, func() map[string]uint64 {
-			return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets()}
+			return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets()}
 		})
 	}}}
 	errCh := make(chan error, len(runners))

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -19,10 +20,19 @@ import (
 )
 
 const (
-	LegacyRetailRequestSize  = 304
-	RetailRequestSize        = 320
-	minRetailRequestBodySize = 298
-	maxRetailRequestBodySize = RetailRequestSize - 4
+	LegacyRetailRequestSize     = 304
+	RetailRequestSize           = 320
+	minRetailRequestBodySize    = 298
+	maxRetailRequestBodySize    = RetailRequestSize - 4
+	mw2GameID                   = 0x14a0
+	ps3LSGSessionKeyOffset      = 151
+	// ps3RPCNKeyMarkerDelta is the distance, in bytes, from the start of the
+	// "RPCN" platform-ticket marker back to the 24-byte LSG session key. Verified
+	// against runtime tickets: the key validates the client's encrypted LSG
+	// records at marker_offset-60, and the layout is stable relative to the
+	// marker (the tail shifts as earlier variable-length fields change).
+	ps3RPCNKeyMarkerDelta = 60
+	ps3RPCNPlatformTicketMarker = "RPCN"
 )
 
 var ObservedRejection = []byte{0x07, 0x00, 0x00, 0x00, 0x00, 0x13, 0xc4, 0x05, 0x00, 0x00, 0x00}
@@ -33,21 +43,33 @@ type RequestSummary struct {
 }
 
 type RawServer struct {
-	addr         string
-	log          *slog.Logger
-	recorder     *capture.Recorder
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	connections  atomic.Uint64
-	requests     atomic.Uint64
+	addr           string
+	log            *slog.Logger
+	recorder       *capture.Recorder
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+	connections    atomic.Uint64
+	requests       atomic.Uint64
+	lsgConnections atomic.Uint64
+	lsgFrames      atomic.Uint64
+	lsgSessions    *lsgSessionStore
 }
 
 func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, readTimeout, writeTimeout time.Duration) *RawServer {
-	return &RawServer{addr: addr, log: log, recorder: recorder, readTimeout: readTimeout, writeTimeout: writeTimeout}
+	return &RawServer{
+		addr:         addr,
+		log:          log,
+		recorder:     recorder,
+		readTimeout:  readTimeout,
+		writeTimeout: writeTimeout,
+		lsgSessions:  newLSGSessionStore(),
+	}
 }
 
-func (s *RawServer) Connections() uint64 { return s.connections.Load() }
-func (s *RawServer) Requests() uint64    { return s.requests.Load() }
+func (s *RawServer) Connections() uint64    { return s.connections.Load() }
+func (s *RawServer) Requests() uint64       { return s.requests.Load() }
+func (s *RawServer) LSGConnections() uint64 { return s.lsgConnections.Load() }
+func (s *RawServer) LSGFrames() uint64      { return s.lsgFrames.Load() }
 
 func (s *RawServer) Serve(ctx context.Context) error {
 	listener, err := net.Listen("tcp", s.addr)
@@ -86,7 +108,18 @@ func (s *RawServer) handle(conn net.Conn) {
 	log.Info("client connected")
 
 	_ = conn.SetReadDeadline(time.Now().Add(s.readTimeout))
-	request, err := ReadRetailRequest(conn)
+	var prefix [4]byte
+	if _, err := io.ReadFull(conn, prefix[:]); err != nil {
+		if !isTimeout(err) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			log.Warn("connection prefix failed", "error", err)
+		}
+		return
+	}
+	if bodySize := binary.LittleEndian.Uint32(prefix[:]); bodySize < minRetailRequestBodySize && bodySize >= 12 {
+		s.handleLSG(conn, remote, prefix)
+		return
+	}
+	request, err := ReadRetailRequest(io.MultiReader(bytes.NewReader(prefix[:]), conn))
 	if err != nil {
 		if !isTimeout(err) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			log.Warn("authentication request failed", "error", err)
@@ -112,11 +145,23 @@ func (s *RawServer) handle(conn net.Conn) {
 		log.Warn("authentication request rejected", "error", err)
 		return
 	}
-	response, details, err := BuildLegacySuccessResponse(authRequest.PlatformKey[:], authRequest.GameID)
-	if err != nil {
-		log.Error("authentication success response construction failed", "error", err)
+	if authRequest.GameID != mw2GameID {
+		log.Warn("authentication request rejected", "game_id", fmt.Sprintf("0x%08x", authRequest.GameID))
 		return
 	}
+	platformKey := authRequest.Ticket[32:56]
+	lsgSessionKey, err := parsePS3LSGSessionKey(authRequest.Ticket)
+	if err != nil {
+		log.Warn("authentication request rejected", "ticket_bytes", len(authRequest.Ticket), "error", err)
+		return
+	}
+	logTicketKeyDiagnostic(log, authRequest.Ticket, lsgSessionKey)
+	response, details, err := BuildLegacySuccessResponse(platformKey, authRequest.GameID)
+	if err != nil {
+		log.Warn("authentication response generation failed", "error", err)
+		return
+	}
+	s.sessionStore().putWithPendingKey(details.LSGTicket, [24]byte{}, lsgSessionKey)
 	_ = conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 	if _, err := conn.Write(response); err != nil {
 		log.Warn("authentication response failed", "error", err)
@@ -125,14 +170,206 @@ func (s *RawServer) handle(conn net.Conn) {
 	if err := s.recorder.Record("auth", "out", remote, response); err != nil {
 		log.Warn("authentication capture failed", "error", err)
 	}
-	log.Info("candidate T5-style authentication success sent",
+	log.Info("MW2 authentication success generated",
 		"bytes", len(response),
 		"response_hex", hex.EncodeToString(response),
-		"iv_seed", fmt.Sprintf("0x%08x", details.IVSeed),
-		"iv_hex", hex.EncodeToString(details.IV[:]),
-		"encrypted_game_ticket_sha256", digestHex(details.EncryptedGameTicket[:]),
-		"lsg_ticket_sha256", digestHex(details.LSGTicket[:]),
+		"game_id", fmt.Sprintf("0x%08x", authRequest.GameID),
+		"session_key_hex", hex.EncodeToString(details.SessionKey[:]),
 	)
+}
+
+func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
+	log := s.log.With("listener", "lsg", "remote", remote)
+	s.lsgConnections.Add(1)
+	log.Info("retail LSG client connected")
+
+	initial, err := readLSGInitialRecord(conn, prefix, RetailRequestSize)
+	if err != nil {
+		log.Warn("retail LSG initial record incomplete", "error", err)
+		return
+	}
+	if err := s.recordLSGFrame(log, remote, initial); err != nil {
+		return
+	}
+	request, err := parseLSGInitialRecord(initial)
+	if err != nil {
+		log.Warn("retail LSG authentication rejected", "error", err)
+		return
+	}
+	if request.GameID != 0 && request.GameID != mw2GameID {
+		log.Warn("retail LSG authentication rejected", "game_id", fmt.Sprintf("0x%08x", request.GameID))
+		return
+	}
+	storedSession, ok := s.sessionStore().consume(request.Ticket[:])
+	if !ok {
+		log.Warn("retail LSG authentication rejected", "reason", "unknown or expired ticket")
+		return
+	}
+	session, err := newLSGConnectionWithPendingKey(storedSession.key, storedSession.pendingKey)
+	if err != nil {
+		log.Warn("retail LSG session setup failed", "error", err)
+		return
+	}
+	if !s.writeLSGResponse(conn, remote, session.helloResponse(), 1, log) {
+		return
+	}
+
+	for step := 2; ; step++ {
+		_ = conn.SetReadDeadline(time.Now().Add(s.readTimeout))
+		frame, err := readLSGFrame(conn, 16<<20)
+		if err != nil {
+			if !isTimeout(err) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				log.Warn("retail LSG request failed", "step", step, "error", err)
+			}
+			return
+		}
+		if err := s.recordLSGFrame(log, remote, frame); err != nil {
+			return
+		}
+		messageType, payload, err := session.decryptRequest(frame)
+		if err != nil {
+			log.Warn("retail LSG request rejected", "step", step, "error", err)
+			session.diagnoseRequest(log, step, frame)
+			return
+		}
+		logLSGRequest(log, step, messageType, payload)
+		responseType, responsePayload, handled, reply := handleLSGMessage(session, messageType, payload)
+		if !handled {
+			// Keep the connection open so the client continues to send the rest
+			// of its post-login sequence, letting us observe every unimplemented
+			// service/operation instead of tearing down at the first unknown one.
+			log.Warn("unimplemented retail LSG request", "step", step, "type", messageType, "payload_hex", hex.EncodeToString(payload))
+			continue
+		}
+		if !reply {
+			log.Info("retail LSG connection ID received", "step", step, "connection_id", fmt.Sprintf("0x%016x", session.connectionID))
+			continue
+		}
+		response, err := session.encryptResponse(responseType, responsePayload)
+		if err != nil {
+			log.Warn("retail LSG response encryption failed", "step", step, "error", err)
+			return
+		}
+		if !s.writeLSGResponse(conn, remote, response, step, log) {
+			return
+		}
+	}
+}
+
+func logLSGRequest(log *slog.Logger, step int, messageType byte, payload []byte) {
+	attrs := []any{
+		"step", step,
+		"type", messageType,
+		"payload_len", len(payload),
+		"payload_hex", hex.EncodeToString(payload),
+		"visible_strings", printableStrings(payload, 3),
+	}
+	if messageType == lsgResultReplyType && len(payload) >= 2 {
+		serviceID := payload[0]
+		operationID := payload[1]
+		if operationID == bdTypeU8 && len(payload) >= 3 {
+			operationID = payload[2]
+		}
+		attrs = append(attrs, "service_id", serviceID, "operation_id", operationID)
+	}
+	log.Info("retail LSG request decrypted", attrs...)
+}
+
+func handleLSGMessage(session *lsgConnection, messageType byte, payload []byte) (byte, []byte, bool, bool) {
+	switch messageType {
+	case lsgConnectionIDType:
+		// The client's connection-ID/registration message is not a single
+		// bd-typed u64; it is a fixed record that is mostly zero at this stage
+		// (the server assigns the connection ID in the hello-ack). Accept it in
+		// whatever shape it arrives, extract a tagged u64 if present, mark the
+		// session logged in, and send no reply.
+		if len(payload) >= 9 && payload[0] == bdTypeU64 {
+			session.connectionID = binary.LittleEndian.Uint64(payload[1:9])
+		}
+		session.loggedIn = true
+		return 0, nil, true, false
+	case lsgResultReplyType:
+		if !session.loggedIn {
+			return 0, nil, false, false
+		}
+		if len(payload) < 2 {
+			return 0, nil, false, false
+		}
+		responseType, responsePayload, handled := session.handleTask(payload[0], payload[1:])
+		return responseType, responsePayload, handled, handled
+	default:
+		return 0, nil, false, false
+	}
+}
+
+func (s *RawServer) writeLSGResponse(conn net.Conn, remote string, response []byte, step int, log *slog.Logger) bool {
+	_ = conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
+	if _, err := conn.Write(response); err != nil {
+		log.Warn("retail LSG response failed", "step", step, "error", err)
+		return false
+	}
+	if err := s.recorder.Record("lsg", "out", remote, response); err != nil {
+		log.Warn("retail LSG capture failed", "step", step, "error", err)
+	}
+	log.Info("dynamic retail LSG response sent", "step", step, "bytes", len(response))
+	return true
+}
+
+func (s *RawServer) sessionStore() *lsgSessionStore {
+	if s.lsgSessions == nil {
+		s.lsgSessions = newLSGSessionStore()
+	}
+	return s.lsgSessions
+}
+
+func (s *RawServer) recordLSGFrame(log *slog.Logger, remote string, frame []byte) error {
+	s.lsgFrames.Add(1)
+	if err := s.recorder.Record("lsg", "in", remote, frame); err != nil {
+		log.Warn("retail LSG capture failed", "error", err)
+		return err
+	}
+	summary := SummarizeRequest(frame)
+	log.Info("retail LSG record received", "bytes", len(frame), "sha256", summary.SHA256, "frame_hex", hex.EncodeToString(frame))
+	return nil
+}
+
+func readLSGInitialRecord(reader io.Reader, prefix [4]byte, maxPayloadSize uint32) ([]byte, error) {
+	var header [12]byte
+	copy(header[:4], prefix[:])
+	if _, err := io.ReadFull(reader, header[4:]); err != nil {
+		return nil, err
+	}
+	payloadSize := binary.LittleEndian.Uint32(header[8:12])
+	if payloadSize == 0 || payloadSize > maxPayloadSize {
+		return nil, fmt.Errorf("unexpected retail LSG initial payload size: %d", payloadSize)
+	}
+	record := make([]byte, 12+payloadSize)
+	copy(record, header[:])
+	if _, err := io.ReadFull(reader, record[12:]); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+func readLSGFrame(reader io.Reader, maxBodySize uint32) ([]byte, error) {
+	var prefix [4]byte
+	if _, err := io.ReadFull(reader, prefix[:]); err != nil {
+		return nil, err
+	}
+	return readLSGFrameWithPrefix(reader, prefix, maxBodySize)
+}
+
+func readLSGFrameWithPrefix(reader io.Reader, prefix [4]byte, maxBodySize uint32) ([]byte, error) {
+	bodySize := binary.LittleEndian.Uint32(prefix[:])
+	if bodySize == 0 || bodySize > maxBodySize {
+		return nil, fmt.Errorf("unexpected retail LSG body size: %d", bodySize)
+	}
+	frame := make([]byte, 4+bodySize)
+	copy(frame, prefix[:])
+	if _, err := io.ReadFull(reader, frame[4:]); err != nil {
+		return nil, err
+	}
+	return frame, nil
 }
 
 func ReadRetailRequest(reader io.Reader) ([]byte, error) {
@@ -153,8 +390,72 @@ func ReadRetailRequest(reader io.Reader) ([]byte, error) {
 }
 
 type RetailAuthRequest struct {
-	GameID      uint32
-	PlatformKey [24]byte
+	GameID uint32
+	Ticket []byte
+}
+
+func parsePS3LSGSessionKey(ticket []byte) ([24]byte, error) {
+	var key [24]byte
+	offset := ps3LSGSessionKeyOffset
+	if marker := bytes.Index(ticket, []byte(ps3RPCNPlatformTicketMarker)); marker >= 0 {
+		// RPCN tickets place the LSG session key at a fixed distance before the
+		// "RPCN" marker rather than at the retail absolute offset.
+		offset = marker - ps3RPCNKeyMarkerDelta
+	}
+	if offset < 0 || len(ticket) < offset+len(key) {
+		return key, fmt.Errorf("authorization ticket is too short for LSG session key at offset %d", offset)
+	}
+	copy(key[:], ticket[offset:offset+len(key)])
+	return key, nil
+}
+
+func isAllZero(data []byte) bool {
+	for _, value := range data {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// logTicketKeyDiagnostic records the raw authorization ticket, the extracted LSG
+// session key, and the file offsets of markers/non-zero windows. It helps locate
+// where the real 24-byte session key sits inside an RPCN ticket when the
+// configured offset yields zeros.
+func logTicketKeyDiagnostic(log *slog.Logger, ticket []byte, extractedKey [24]byte) {
+	rpcnOffset := -1
+	if idx := bytes.Index(ticket, []byte(ps3RPCNPlatformTicketMarker)); idx >= 0 {
+		rpcnOffset = idx
+	}
+	// Identify the byte ranges that are non-zero, to reveal where key-like data lives.
+	type span struct {
+		Start int `json:"start"`
+		End   int `json:"end"`
+	}
+	var nonZeroSpans []span
+	start := -1
+	for i := 0; i <= len(ticket); i++ {
+		if i < len(ticket) && ticket[i] != 0 {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			nonZeroSpans = append(nonZeroSpans, span{Start: start, End: i})
+			start = -1
+		}
+	}
+	log.Info("LSG ticket key diagnostic",
+		"ticket_len", len(ticket),
+		"ticket_hex", hex.EncodeToString(ticket),
+		"extracted_key_hex", hex.EncodeToString(extractedKey[:]),
+		"extracted_key_all_zero", isAllZero(extractedKey[:]),
+		"rpcn_marker_offset", rpcnOffset,
+		"rpcn_key_marker_delta", ps3RPCNKeyMarkerDelta,
+		"configured_retail_key_offset", ps3LSGSessionKeyOffset,
+		"non_zero_spans", fmt.Sprintf("%+v", nonZeroSpans),
+	)
 }
 
 func ParseRetailAuthRequest(request []byte) (RetailAuthRequest, error) {
@@ -183,14 +484,27 @@ func ParseRetailAuthRequest(request []byte) (RetailAuthRequest, error) {
 	if err != nil {
 		return RetailAuthRequest{}, fmt.Errorf("read authorization ticket: %w", err)
 	}
-	var parsed RetailAuthRequest
-	parsed.GameID = gameID
-	copy(parsed.PlatformKey[:], ticket[32:56])
-	return parsed, nil
+	return RetailAuthRequest{GameID: gameID, Ticket: ticket}, nil
 }
 
 func SummarizeRequest(request []byte) RequestSummary {
 	return RequestSummary{SHA256: digestHex(request), Strings: printableStrings(request, 4)}
+}
+
+func responseSessionKey(response []byte) []byte {
+	parsed, err := ParseLegacySuccessResponse(response)
+	if err != nil {
+		return nil
+	}
+	return append([]byte(nil), parsed.SessionKey[:]...)
+}
+
+func mustDecodeHex(value string) []byte {
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		panic(err)
+	}
+	return decoded
 }
 
 type lsbBitReader struct {

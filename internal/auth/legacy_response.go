@@ -38,6 +38,101 @@ type LegacyResponseDetails struct {
 	LSGTicket           [legacyTicketLen]byte
 }
 
+type ParsedLegacySuccessResponse struct {
+	Status              uint32
+	IVSeed              uint32
+	EncryptedGameTicket [legacyTicketLen]byte
+	SessionKey          [24]byte
+	PlatformProof       [legacyTicketLen]byte
+}
+
+func (response ParsedLegacySuccessResponse) DecryptGameTicket(platformKey []byte) ([legacyTicketLen]byte, error) {
+	var ticket [legacyTicketLen]byte
+	if len(platformKey) != 24 {
+		return ticket, fmt.Errorf("platform key length must be 24 bytes, got %d", len(platformKey))
+	}
+	block, err := des.NewTripleDESCipher(platformKey)
+	if err != nil {
+		return ticket, fmt.Errorf("create game ticket 3DES cipher: %w", err)
+	}
+	iv := tigerDigest(littleEndianUint32(response.IVSeed))[:des.BlockSize]
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(ticket[:], response.EncryptedGameTicket[:])
+	return ticket, nil
+}
+
+func ParseLegacyGameTicket(ticket []byte) ([24]byte, error) {
+	var sessionKey [24]byte
+	if len(ticket) != legacyTicketLen {
+		return sessionKey, fmt.Errorf("legacy game ticket length must be %d bytes, got %d", legacyTicketLen, len(ticket))
+	}
+	if binary.LittleEndian.Uint32(ticket[:4]) != legacyTicketMagic {
+		return sessionKey, fmt.Errorf("unexpected legacy game ticket magic: %08x", binary.LittleEndian.Uint32(ticket[:4]))
+	}
+	if ticket[4] != legacyTicketType {
+		return sessionKey, fmt.Errorf("unexpected legacy game ticket type: %02x", ticket[4])
+	}
+	copy(sessionKey[:], ticket[0x61:0x79])
+	return sessionKey, nil
+}
+
+func (response ParsedLegacySuccessResponse) LSGSessionKey(platformKey []byte) ([24]byte, error) {
+	ticket, err := response.DecryptGameTicket(platformKey)
+	if err != nil {
+		return [24]byte{}, err
+	}
+	return ParseLegacyGameTicket(ticket[:])
+}
+
+func ParseLegacySuccessResponse(response []byte) (ParsedLegacySuccessResponse, error) {
+	if len(response) < 6 {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("legacy response too short: %d", len(response))
+	}
+	bodyLength := binary.LittleEndian.Uint32(response[:4])
+	if int(bodyLength) != len(response)-4 {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("legacy response body length is %d, got %d bytes", bodyLength, len(response)-4)
+	}
+	if response[4] != 0 || response[5] != legacyReplyType {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("unexpected legacy response header: %02x%02x", response[4], response[5])
+	}
+
+	reader := newLSBBitReader(response[6:])
+	errorFlag, err := reader.readBits(1)
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read error flag: %w", err)
+	}
+	if errorFlag != 0 {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("legacy response contains error flag")
+	}
+	status, err := reader.readBits(32)
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read status: %w", err)
+	}
+	ivSeed, err := reader.readBits(32)
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read IV seed: %w", err)
+	}
+
+	var parsed ParsedLegacySuccessResponse
+	parsed.Status = uint32(status)
+	parsed.IVSeed = uint32(ivSeed)
+	encryptedTicket, err := reader.readBytes(len(parsed.EncryptedGameTicket))
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read encrypted game ticket: %w", err)
+	}
+	copy(parsed.EncryptedGameTicket[:], encryptedTicket)
+	clientSessionKey, err := reader.readBytes(len(parsed.SessionKey))
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read client session key: %w", err)
+	}
+	copy(parsed.SessionKey[:], clientSessionKey)
+	platformProof, err := reader.readBytes(len(parsed.PlatformProof))
+	if err != nil {
+		return ParsedLegacySuccessResponse{}, fmt.Errorf("read platform proof: %w", err)
+	}
+	copy(parsed.PlatformProof[:], platformProof)
+	return parsed, nil
+}
+
 func BuildLegacySuccessResponse(platformKey []byte, gameID uint32) ([]byte, LegacyResponseDetails, error) {
 	var sessionKey [24]byte
 	if _, err := rand.Read(sessionKey[:]); err != nil {
@@ -70,8 +165,8 @@ func buildLegacySuccessResponse(platformKey []byte, gameID uint32, sessionKey [2
 	payload.writeBytes(littleEndianUint32(bdAuthNoError))
 	payload.writeBytes(littleEndianUint32(ivSeed))
 	payload.writeBytes(encrypted[:])
-	payload.writeBytes(lsgTicket[:])
 	payload.writeBytes(sessionKey[:])
+	payload.writeBytes(lsgTicket[:])
 
 	bodyLength := 2 + len(payload.bytes())
 	response := make([]byte, 4+bodyLength)

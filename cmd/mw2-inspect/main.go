@@ -8,8 +8,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strings"
 
+	"github.com/josh/mw2-rpcs3/internal/auth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
 	"github.com/josh/mw2-rpcs3/internal/protocol"
 )
@@ -50,6 +53,7 @@ func inspectFrames(r io.Reader, max uint32) {
 func inspectJSONL(r io.Reader, max uint32) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 16<<20)
+	sessions := make(map[string]*inspectionSession)
 	for scanner.Scan() {
 		var record capture.Record
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
@@ -60,11 +64,105 @@ func inspectJSONL(r io.Reader, max uint32) {
 			fatal(err)
 		}
 		fmt.Printf("%s %s %s %s bytes=%d sha256=%s\n", record.Timestamp.Format("2006-01-02T15:04:05Z"), record.Listener, record.Direction, record.Remote, record.Length, record.SHA256)
+		if inspectDemonwareRecord(record, payload, sessions) {
+			continue
+		}
 		inspectFrames(bytes.NewReader(payload), max)
 	}
 	if err := scanner.Err(); err != nil {
 		fatal(err)
 	}
+}
+
+type inspectionSession struct {
+	authResponse auth.ParsedLegacySuccessResponse
+	platformKey [24]byte
+	hasAuth      bool
+	hasKey       bool
+}
+
+func inspectDemonwareRecord(record capture.Record, payload []byte, sessions map[string]*inspectionSession) bool {
+	session := sessions[remoteHost(record.Remote)]
+	if session == nil {
+		session = &inspectionSession{}
+		sessions[remoteHost(record.Remote)] = session
+	}
+
+	switch record.Listener {
+	case "auth":
+		if record.Direction == "out" {
+			parsed, err := auth.ParseLegacySuccessResponse(payload)
+			if err != nil {
+				fmt.Printf("  auth_response parse_error=%q\n", err)
+				return true
+			}
+			session.authResponse = parsed
+			session.hasAuth = true
+			fmt.Printf("  auth_response status=%d iv_seed=%08x client_session_key=%s", parsed.Status, parsed.IVSeed, hex.EncodeToString(parsed.SessionKey[:]))
+			if session.hasKey {
+				key, keyErr := parsed.LSGSessionKey(session.platformKey[:])
+				if keyErr != nil {
+					fmt.Printf(" lsg_key_error=%q\n", keyErr)
+					return true
+				}
+				fmt.Printf(" lsg_session_key=%s source=decrypted_game_ticket\n", hex.EncodeToString(key[:]))
+				return true
+			}
+			fmt.Println(" lsg_session_key=unavailable")
+			return true
+		}
+		request, err := auth.ParseRetailAuthRequest(payload)
+		if err != nil {
+			fmt.Printf("  auth_request parse_error=%q\n", err)
+			return true
+		}
+		if len(request.Ticket) >= 56 {
+			copy(session.platformKey[:], request.Ticket[32:56])
+			session.hasKey = true
+		}
+		fmt.Printf("  auth_request game_id=%08x ticket_bytes=%d platform_key_available=%t\n", request.GameID, len(request.Ticket), session.hasKey)
+		return true
+	case "lsg":
+		recordData, err := auth.ParseLSGRecord(payload)
+		if err != nil {
+			fmt.Printf("  lsg_record parse_error=%q\n", err)
+			return true
+		}
+		if !recordData.Encrypted {
+			messageType := byte(0)
+			if len(recordData.Payload) > 0 {
+				messageType = recordData.Payload[0]
+			}
+			fmt.Printf("  lsg_record encrypted=false message_type=%02x payload_bytes=%d\n", messageType, len(recordData.Payload))
+			return true
+		}
+		if !session.hasAuth || !session.hasKey {
+			fmt.Printf("  lsg_record encrypted=true iv_seed=%08x payload_bytes=%d session_key=unavailable\n", recordData.IVSeed, len(recordData.Payload))
+			return true
+		}
+		key, keyErr := session.authResponse.LSGSessionKey(session.platformKey[:])
+		if keyErr != nil {
+			fmt.Printf("  lsg_record encrypted=true iv_seed=%08x key_error=%q key_source=decrypted_game_ticket\n", recordData.IVSeed, keyErr)
+			return true
+		}
+		decrypted, err := auth.DecryptLSGRecord(payload, key[:])
+		if err != nil {
+			fmt.Printf("  lsg_record encrypted=true iv_seed=%08x decrypt_error=%q key_source=decrypted_game_ticket\n", recordData.IVSeed, err)
+			return true
+		}
+		fmt.Printf("  lsg_record encrypted=true iv_seed=%08x message_type=%02x hmac_valid=%t key_source=decrypted_game_ticket message_hex=%s\n", decrypted.IVSeed, decrypted.MessageType, decrypted.HMACValid, hex.EncodeToString(decrypted.Message))
+		return true
+	default:
+		return false
+	}
+}
+
+func remoteHost(remote string) string {
+	host, _, err := net.SplitHostPort(remote)
+	if err == nil {
+		return host
+	}
+	return strings.Trim(remote, "[]")
 }
 
 func fatal(err error) { fmt.Fprintln(os.Stderr, "error:", err); os.Exit(1) }
