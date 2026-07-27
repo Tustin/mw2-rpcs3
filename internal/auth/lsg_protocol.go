@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	lsgInitialType      = 7
-	lsgResultReplyType  = 1
-	lsgConnectionIDType = 0x12
-	lsgMaxSessions      = 64
+	lsgInitialServiceType   = 7
+	lsgTaskReplyType        = 1
+	lsgConnectionType       = 4
+	lsgServiceTaskReplyType = 5
+	lsgMaxSessions          = 64
 )
 
 type lsgStoredSession struct {
@@ -76,7 +77,6 @@ type lsgConnection struct {
 	key             [24]byte
 	pendingKey      [24]byte
 	connectionID    uint64
-	loggedIn        bool
 	requestIV       uint32
 	responseIV      uint32
 	lastServiceID   byte
@@ -106,7 +106,7 @@ func parseLSGInitialRecord(record []byte) (lsgInitialRequest, error) {
 	if int(innerLength) != len(record)-12 {
 		return lsgInitialRequest{}, fmt.Errorf("initial LSG inner length is %d, got %d", innerLength, len(record)-12)
 	}
-	if record[12] != 0 || record[13] != lsgInitialType {
+	if record[12] != 0 || record[13] != lsgInitialServiceType {
 		return lsgInitialRequest{}, fmt.Errorf("unexpected initial LSG type: %02x%02x", record[12], record[13])
 	}
 	reader := newLSBBitReader(record[14:])
@@ -157,7 +157,7 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 func (c *lsgConnection) helloResponse() []byte {
 	payload := newLSBBitWriter(5 + 64)
 	for bit := 0; bit < 5; bit++ {
-		payload.writeBit(4&(1<<bit) != 0)
+		payload.writeBit(lsgConnectionType&(1<<bit) != 0)
 	}
 	var encodedID [8]byte
 	binary.LittleEndian.PutUint64(encodedID[:], c.connectionID)
@@ -348,11 +348,11 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 
 	switch {
 	case serviceID == bdServiceTitleUtilities && operationID == 6:
-		return lsgResultReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeU32(uint32(time.Now().Unix()))
 		}), true
 	case serviceID == bdServiceDML && operationID == 2:
-		return lsgResultReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeString("US")
 			writer.writeString("United States")
 			writer.writeString("")
@@ -361,7 +361,7 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeF32(0)
 		}), true
 	case serviceID == bdServiceDML && operationID == 3:
-		return lsgResultReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeString("US")
 			writer.writeString("United States")
 			writer.writeString("")
@@ -377,10 +377,10 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 		response := make([]byte, 11)
 		response[8] = 1
 		binary.LittleEndian.PutUint16(response[9:], bdErrorServiceNotAvailable)
-		return 5, response, true
+		return lsgServiceTaskReplyType, response, true
 	case serviceID == bdServiceStorage:
-		return lsgResultReplyType, c.taskReply(operationID, bdErrorNoFile, nil), true
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNoFile, nil), true
 	default:
-		return lsgResultReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 	}
 }

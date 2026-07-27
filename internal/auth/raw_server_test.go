@@ -209,7 +209,7 @@ func TestCapturedMW2SuccessResponse(t *testing.T) {
 	}
 }
 
-func TestRawServerHandlesTaskAfterConnectionID(t *testing.T) {
+func TestRawServerHandlesServiceTaskAfterHello(t *testing.T) {
 	client, server := net.Pipe()
 	service := NewRawServer("", slog.New(slog.NewTextHandler(io.Discard, nil)), capture.New(false, "", RetailRequestSize), time.Second, time.Second)
 	var ticket [legacyTicketLen]byte
@@ -228,18 +228,7 @@ func TestRawServerHandlesTaskAfterConnectionID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	connectionPayload := make([]byte, 9)
-	connectionPayload[0] = bdTypeU64
-	binary.LittleEndian.PutUint64(connectionPayload[1:], 0xb9398889437679d9)
-	connectionFrame, err := EncryptLSGRecord(lsgConnectionIDType, connectionPayload, 0x312d52ee, candidateSessionKey[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.Write(connectionFrame); err != nil {
-		t.Fatal(err)
-	}
-
-	taskFrame, err := EncryptLSGRecord(lsgResultReplyType, []byte{bdServiceTitleUtilities, bdTypeU8, 6}, 0x312d52ef, candidateSessionKey[:])
+	taskFrame, err := EncryptLSGRecord(bdServiceTitleUtilities, []byte{bdTypeU8, 6}, 0x312d52ee, candidateSessionKey[:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +244,7 @@ func TestRawServerHandlesTaskAfterConnectionID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messageType != lsgResultReplyType || payload[14] != bdTypeU8 || payload[15] != 6 {
+	if messageType != lsgTaskReplyType || payload[14] != bdTypeU8 || payload[15] != 6 {
 		t.Fatalf("unexpected task response type=%d payload=%x", messageType, payload)
 	}
 
@@ -314,7 +303,7 @@ func buildLSGInitialRecord(gameID, randomNumber uint32, ticket [legacyTicketLen]
 	writeTypedUint32(payload, randomNumber)
 	payload.writeBytes(ticket[:])
 	inner := make([]byte, 2+len(payload.bytes()))
-	inner[1] = lsgInitialType
+	inner[1] = lsgInitialServiceType
 	copy(inner[2:], payload.bytes())
 	record := make([]byte, 12+len(inner))
 	binary.LittleEndian.PutUint32(record[:4], uint32(len(record)+28))

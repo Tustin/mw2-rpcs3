@@ -58,7 +58,7 @@ func TestLSGEncryptedResponseRoundTrip(t *testing.T) {
 	binary.LittleEndian.PutUint64(payload[1:9], 0x12345678)
 	payload[9] = bdTypeU32
 	binary.LittleEndian.PutUint32(payload[10:14], bdErrorNone)
-	response, err := session.encryptResponse(lsgResultReplyType, payload)
+	response, err := session.encryptResponse(lsgTaskReplyType, payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestLSGEncryptedResponseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messageType != lsgResultReplyType || !bytes.Equal(decrypted[:len(payload)], payload) {
+	if messageType != lsgTaskReplyType || !bytes.Equal(decrypted[:len(payload)], payload) {
 		t.Fatalf("type=%d payload=%x", messageType, decrypted)
 	}
 	for _, value := range decrypted[len(payload):] {
@@ -76,24 +76,13 @@ func TestLSGEncryptedResponseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestHandleLSGMessageConnectionAndResult(t *testing.T) {
+func TestHandleLSGMessageDispatchesServiceRequest(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectionID := uint64(0xb9398889437679d9)
-	connectionPayload := make([]byte, 9)
-	connectionPayload[0] = bdTypeU64
-	binary.LittleEndian.PutUint64(connectionPayload[1:], connectionID)
-	responseType, responsePayload, ok, reply := handleLSGMessage(session, lsgConnectionIDType, connectionPayload)
-	if !ok || reply || responseType != 0 || responsePayload != nil || !session.loggedIn {
-		t.Fatalf("connection-ID handling type=%d payload=%x ok=%v reply=%v", responseType, responsePayload, ok, reply)
-	}
-	if session.connectionID != connectionID {
-		t.Fatalf("connection ID=%016x", session.connectionID)
-	}
-	responseType, result, ok, reply := handleLSGMessage(session, lsgResultReplyType, []byte{bdServiceTitleUtilities, bdTypeU8, 6})
-	if !ok || !reply || responseType != lsgResultReplyType {
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceTitleUtilities, []byte{bdTypeU8, 6})
+	if !ok || !reply || responseType != lsgTaskReplyType {
 		t.Fatalf("result payload=%x", result)
 	}
 	if len(result) != 31 || result[0] != bdTypeU64 || result[9] != bdTypeU32 || result[14] != bdTypeU8 || result[16] != bdTypeU32 || result[21] != bdTypeU32 || result[26] != bdTypeU32 {
@@ -109,9 +98,8 @@ func TestHandleLSGDMLTaskReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.loggedIn = true
-	responseType, result, ok, reply := handleLSGMessage(session, lsgResultReplyType, []byte{bdServiceDML, bdTypeU8, 2})
-	if !ok || !reply || responseType != lsgResultReplyType {
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceDML, []byte{bdTypeU8, 2})
+	if !ok || !reply || responseType != lsgTaskReplyType {
 		t.Fatalf("DML task was not handled: %x", result)
 	}
 	if !bytes.Contains(result, []byte("US\x00")) || !bytes.Contains(result, []byte("United States\x00")) {
@@ -119,52 +107,16 @@ func TestHandleLSGDMLTaskReply(t *testing.T) {
 	}
 }
 
-func TestHandleLSGRejectsTaskBeforeLogin(t *testing.T) {
+func TestHandleLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok, _ := handleLSGMessage(session, lsgResultReplyType, []byte{bdServiceStorage, bdTypeU8, 3}); ok {
-		t.Fatal("pre-login task was accepted")
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceBandwidth, []byte{1})
+	if !ok || !reply || responseType != lsgServiceTaskReplyType {
+		t.Fatalf("bandwidth response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
 	}
-}
-
-func TestHandleLSGConnectionIDMarksLogin(t *testing.T) {
-	// The real client connection-ID/registration record is a fixed structure
-	// beginning with bdTypeBool (0x01), not a tagged u64. The handler must accept
-	// it, mark the session logged in, and send no reply.
-	realPayload := mustDecodeHex("01000100000000000000000000000000000000")
-	session, err := newLSGConnection(candidateSessionKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	responseType, responsePayload, ok, reply := handleLSGMessage(session, lsgConnectionIDType, realPayload)
-	if !ok {
-		t.Fatal("real connection-ID notification was rejected")
-	}
-	if reply {
-		t.Fatal("connection-ID notification must not produce a reply")
-	}
-	if responseType != 0 || responsePayload != nil {
-		t.Fatalf("unexpected response: type=%d payload=%x", responseType, responsePayload)
-	}
-	if !session.loggedIn {
-		t.Fatal("session was not marked logged in")
-	}
-}
-
-func TestHandleLSGConnectionIDExtractsTaggedU64(t *testing.T) {
-	session, err := newLSGConnection(candidateSessionKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload := make([]byte, 9)
-	payload[0] = bdTypeU64
-	binary.LittleEndian.PutUint64(payload[1:], 0xb9398889437679d9)
-	if _, _, ok, _ := handleLSGMessage(session, lsgConnectionIDType, payload); !ok {
-		t.Fatal("tagged connection-ID notification was rejected")
-	}
-	if session.connectionID != 0xb9398889437679d9 {
-		t.Fatalf("connection ID not extracted: 0x%016x", session.connectionID)
+	if len(result) != 11 || result[8] != 1 || binary.LittleEndian.Uint16(result[9:]) != bdErrorServiceNotAvailable {
+		t.Fatalf("malformed bandwidth reply=%x", result)
 	}
 }

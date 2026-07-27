@@ -20,18 +20,18 @@ import (
 )
 
 const (
-	LegacyRetailRequestSize     = 304
-	RetailRequestSize           = 320
-	minRetailRequestBodySize    = 298
-	maxRetailRequestBodySize    = RetailRequestSize - 4
-	mw2GameID                   = 0x14a0
-	ps3LSGSessionKeyOffset      = 151
+	LegacyRetailRequestSize  = 304
+	RetailRequestSize        = 320
+	minRetailRequestBodySize = 298
+	maxRetailRequestBodySize = RetailRequestSize - 4
+	mw2GameID                = 0x14a0
+	ps3LSGSessionKeyOffset   = 151
 	// ps3RPCNKeyMarkerDelta is the distance, in bytes, from the start of the
 	// "RPCN" platform-ticket marker back to the 24-byte LSG session key. Verified
 	// against runtime tickets: the key validates the client's encrypted LSG
 	// records at marker_offset-60, and the layout is stable relative to the
 	// marker (the tail shifts as earlier variable-length fields change).
-	ps3RPCNKeyMarkerDelta = 60
+	ps3RPCNKeyMarkerDelta       = 60
 	ps3RPCNPlatformTicketMarker = "RPCN"
 )
 
@@ -238,11 +238,10 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			// Keep the connection open so the client continues to send the rest
 			// of its post-login sequence, letting us observe every unimplemented
 			// service/operation instead of tearing down at the first unknown one.
-			log.Warn("unimplemented retail LSG request", "step", step, "type", messageType, "payload_hex", hex.EncodeToString(payload))
+			log.Warn("unimplemented retail LSG request", "step", step, "service_id", messageType, "payload_hex", hex.EncodeToString(payload))
 			continue
 		}
 		if !reply {
-			log.Info("retail LSG connection ID received", "step", step, "connection_id", fmt.Sprintf("0x%016x", session.connectionID))
 			continue
 		}
 		response, err := session.encryptResponse(responseType, responsePayload)
@@ -256,50 +255,27 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 	}
 }
 
-func logLSGRequest(log *slog.Logger, step int, messageType byte, payload []byte) {
+func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 	attrs := []any{
 		"step", step,
-		"type", messageType,
+		"service_id", serviceID,
 		"payload_len", len(payload),
 		"payload_hex", hex.EncodeToString(payload),
 		"visible_strings", printableStrings(payload, 3),
 	}
-	if messageType == lsgResultReplyType && len(payload) >= 2 {
-		serviceID := payload[0]
-		operationID := payload[1]
-		if operationID == bdTypeU8 && len(payload) >= 3 {
-			operationID = payload[2]
+	if len(payload) > 0 {
+		operationID := payload[0]
+		if operationID == bdTypeU8 && len(payload) >= 2 {
+			operationID = payload[1]
 		}
-		attrs = append(attrs, "service_id", serviceID, "operation_id", operationID)
+		attrs = append(attrs, "operation_id", operationID)
 	}
-	log.Info("retail LSG request decrypted", attrs...)
+	log.Info("retail LSG service request decrypted", attrs...)
 }
 
-func handleLSGMessage(session *lsgConnection, messageType byte, payload []byte) (byte, []byte, bool, bool) {
-	switch messageType {
-	case lsgConnectionIDType:
-		// The client's connection-ID/registration message is not a single
-		// bd-typed u64; it is a fixed record that is mostly zero at this stage
-		// (the server assigns the connection ID in the hello-ack). Accept it in
-		// whatever shape it arrives, extract a tagged u64 if present, mark the
-		// session logged in, and send no reply.
-		if len(payload) >= 9 && payload[0] == bdTypeU64 {
-			session.connectionID = binary.LittleEndian.Uint64(payload[1:9])
-		}
-		session.loggedIn = true
-		return 0, nil, true, false
-	case lsgResultReplyType:
-		if !session.loggedIn {
-			return 0, nil, false, false
-		}
-		if len(payload) < 2 {
-			return 0, nil, false, false
-		}
-		responseType, responsePayload, handled := session.handleTask(payload[0], payload[1:])
-		return responseType, responsePayload, handled, handled
-	default:
-		return 0, nil, false, false
-	}
+func handleLSGMessage(session *lsgConnection, serviceID byte, payload []byte) (byte, []byte, bool, bool) {
+	responseType, responsePayload, handled := session.handleTask(serviceID, payload)
+	return responseType, responsePayload, handled, handled
 }
 
 func (s *RawServer) writeLSGResponse(conn net.Conn, remote string, response []byte, step int, log *slog.Logger) bool {

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCapturedRPCNConnectionIDUsesTicketKey(t *testing.T) {
+func TestCapturedRPCNBandwidthRequestUsesTicketKey(t *testing.T) {
 	frame, err := hex.DecodeString("1d000000010000000080453a1275ace758169f6f37012af5d080453a1275ace758")
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestCapturedRPCNConnectionIDUsesTicketKey(t *testing.T) {
 	if !decrypted.HMACValid {
 		t.Fatalf("invalid captured HMAC: got=%08x expected=%08x plaintext=%x", decrypted.HMAC, decrypted.ExpectedHMAC, decrypted.Plaintext)
 	}
-	if decrypted.MessageType != lsgConnectionIDType {
-		t.Fatalf("message type=%02x", decrypted.MessageType)
+	if decrypted.MessageType != bdServiceBandwidth {
+		t.Fatalf("service ID=%02x", decrypted.MessageType)
 	}
 }
