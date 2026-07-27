@@ -63,21 +63,51 @@ Received unknown message type: %u.
 Failed to read message type from message.
 ```
 
-So the message-type byte selects among service-task-reply, push-message, and
-(by symmetry) the request/task and connection-registration types. Exact numeric
-values are defined in the MW2 ELF (the Ghosts PDB does not expose this enum by
-value); the debug strings live at these VMAs for locating the dispatch switch:
+The MW2 receive dispatcher at ELF VMA `0x3f81d0` gives the concrete incoming
+reply values. The record reader stores the encrypt flag at object offset
+`+0x24`; the dispatcher only accepts values 1 and 2, then branches on the
+flag's boolean value:
+
+| encrypt flag | incoming message type | dispatcher label |
+|-------------:|----------------------:|------------------|
+| 1 | 1 | `BD_LSG_SERVICE_TASK_REPLY` |
+| 0 | 2 | `BD_LOBBY_SERVICE_TASK_REPLY` |
+| 0 | 3 | `BD_LOBBY_SERVICE_PUSH_MESSAGE` |
+
+Types other than 1–3 take the `Received unknown message type: %u` path. This
+settles the server's result-reply constant: `BD_LSG_SERVICE_TASK_REPLY = 1`.
+The observed client request values 4, 10, and 18 are separate outgoing/request
+message types and are therefore not expected in this incoming-reply switch.
+
+The useful debug-string VMAs remain:
 
 ```
-BD_LSG_SERVICE_TASK_REPLY      0x5b18e2
-BD_LOBBY_SERVICE_TASK_REPLY    0x5b191a
-BD_LOBBY_SERVICE_PUSH_MESSAGE  0x5b196a
+BD_LSG_SERVICE_TASK_REPLY       0x5b18e2
+BD_LOBBY_SERVICE_TASK_REPLY     0x5b191a
+BD_LOBBY_SERVICE_PUSH_MESSAGE   0x5b196a
 "Received unknown message type" 0x5b19f0
 "Failed to read message type"   0x5b2598
 ```
 
 (File offset = VMA − 0x10000. Disassemble with
 `llvm-objdump-18 -d --triple=powerpc64-unknown-linux default_mp.elf`.)
+
+### Reply-body parsing recovered from the dispatcher
+
+For encrypted type 1, the dispatcher decrypts the body, then reads:
+
+```
+u32 transaction_or_task_id
+u8  payload_type_marker       // expected value 1
+u32 result_header_or_length
+... serialized task result bytes
+```
+
+The exact semantics of the two `u32` fields still need naming from the send
+side, but the layout confirms that the reply's correlation identifier is
+inside the encrypted payload rather than in the outer lobby record. The
+unencrypted type-2/type-3 path reads a `u32` first and then a one-byte payload
+marker before exposing the remaining bytes to the task or push dispatcher.
 
 ## Runtime observations (emulator, session 29730)
 
@@ -101,13 +131,13 @@ fill the 3DES block):
 
 ## Open questions (next RE targets)
 
-1. Numeric values of the lobby message-type enum (which type = service task
-   request, task reply, push, connection registration). Recover from the
-   dispatch switch around the debug-string VMAs above.
-2. The `sendTask` / `getMessageToDispatch` framing: how the service id, task id,
-   and transaction id are laid out inside `m_payload` (the `07c2…`/`c7c1…`
-   header).
-3. What reply message the client waits for to stop retransmitting each request.
+1. Numeric names for the outgoing/request types 4, 10, and 18. The incoming
+   reply values are now known: encrypted LSG task reply = 1, unencrypted lobby
+   task reply = 2, and lobby push = 3.
+2. The `sendTask` framing: how service id, operation id, transaction id, and the
+   serialization-context bits produce the observed `07c2…`/`c7c1…` headers.
+3. Match the reply payload's first `u32` to the request-side transaction/task
+   identifier and determine which reply stops retransmission for each request.
 
 ## Cross-references
 
