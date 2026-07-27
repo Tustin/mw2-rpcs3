@@ -29,9 +29,29 @@
 - Tests updated: replaced `TestHandleLSGRejectsMalformedConnectionID` (which encoded the disproven strict-u64 assumption) with `TestHandleLSGConnectionIDMarksLogin` (real `0x01`-prefixed payload) and `TestHandleLSGConnectionIDExtractsTaggedU64`.
 - Still open: outer `type 4` payload (`07c1 00 | 38010000 | 28000000 | <8-byte id> | e0020000(736)`) is not a clean bd-typed stream and has no handler yet; it is likely a lobby-connection/login record. With the loop now kept alive, the next run should reveal what the client sends after these records.
 
-### Next step
+### Post-login records are a reliable-transport layer, not standalone tasks (2026-07-27)
 
-- Run a fresh session and read the now-uninterrupted post-login sequence: look for the first `service_id=10` (storage) `retail LSG request decrypted` line and its `visible_strings` (expected `playlists.info`). Use that to drive the playlist/MOTD storage responses described in `docs/demonware-storage-playlists.md`. Separately, determine whether `type 4` needs an explicit reply by observing whether the client blocks waiting for one.
+- With the connection kept alive, session `29730` proceeded through steps 2-9. The records after the connection-ID message are **DemonWare reliable-connection frames**, not one-off service requests. Confirmed by ELF paths `bdConnection/bdWindow/bdReliableSendWindow.cpp` and `bdUnreliableSendWindow.cpp`, plus `getMessageToDispatch`.
+- Evidence is retransmission: after stripping the trailing counter-byte padding (the last plaintext byte equals the outer IV/sequence and repeats to fill the block), the same cores recur:
+  - `type 10 core 07c2004000000000860c0000` at steps 3, 4, 8
+  - `type 10 core c7c10050fadae35e3ed104b808000000c0900100` at steps 5, 7
+  - `type 4 core 07c10038010000002800000040e96b8f7bf94413e002` at step 6
+  - `type 18 core 010000000000724c3800000000000dcd40` at step 9
+- The outer frame IV/sequence increments 1..7 while payloads repeat, i.e. the client is **retransmitting unacknowledged reliable messages**. The server never sends reliable ACKs (it only answered the hello), so the client loops. The `07 c2 00` / `c7 c1 00` payload prefix is the reliable-window header (flags/sequence/ack), not bd-typed data — which is why a bd bit-decode yields `flag=0` then an invalid tag.
+- Implication: `type 4/10/18` should not be answered as individual application tasks. The server must parse the reliable-window header, acknowledge received sequences, and only then interpret the inner service payload (storage/DML/etc.).
+
+### Correction: the LSG lobby is TCP bdLobbyConnection, not the SCTP bdConnection (2026-07-27)
+
+- Earlier note guessed the post-login records were SCTP `bdConnection` chunks. That was wrong. The iw6 PDB shows two distinct transports:
+  - `bdConnection` (SCTP-style, UDP): chunked `bdPacket` with `bdChunkTypes` `BD_CT_DATA/INIT/SACK/COOKIE_ECHO/...` (max enum value 14) and init/cookie/SAck handlers. This is used elsewhere (e.g. matchmaking/NAT), not the LSG lobby TCP stream.
+  - `bdLobbyConnection` (the LSG stream on TCP 3074): a length-prefixed message framing with a receive state machine `m_recvState` = `BD_READ_INIT/SIZE/ENCRYPT/MESSAGE/COMPLETE` and methods `sendTask`, `send`, `sendRaw`, `getMessageToDispatch`, `recvMessageSize`, `recvEncryptType`, `recvMessageData`. Our LSG record framing already matches this layer.
+- The observed outer types 4/10/18 are therefore **`bdMessage` types on the lobby stream**, not SCTP chunk types (the numbers do not fit `bdChunkTypes` anyway: our type 18 > 14). `bdMessage` = `m_type` (u8) + `m_payload` (byte buffer), with an optional unencrypted payload. Lobby message handling logs `Received message of type: BD_LOBBY_SERVICE_TASK_REPLY` / `BD_LOBBY_SERVICE_PUSH_MESSAGE` and `Received unknown message type: %u`.
+- Retransmission is still real (same cores recur at steps 3/4/8 and 5/7 with an incrementing outer IV), but it is the **lobby/remote-task reliability** (`bdRemoteTaskManager`, `bdLobbyConnection::sendReliable`-style), not SCTP SAck. The client resends a lobby message until it observes the expected reply/ack message on the stream.
+- The `07 c2 00` / `c7 c1 00` body prefix is thus the start of a lobby service/task header inside `m_payload`, not a chunk header. The prior clean brute-forced message (`type=0x04 07c10038…`) reinforces that these are application-level task frames.
+
+### Next step (revised)
+
+- Decode the lobby `bdMessage` type enum values (which numeric type = TASK / TASK_REPLY / PUSH / connection-registration) and the `sendTask`/`getMessageToDispatch` framing from the ELF `bdLobbyConnection.cpp` / `bdLobbyService.cpp`, so we know: (1) which incoming type is a service task vs. a control/keepalive, and (2) what reply message the client waits for to stop retransmitting. Then route `m_type`+payload to the existing task handlers and emit the expected reply. Document findings in `docs/demonware-reliable-transport.md` (rename to lobby-message framing).
 
 ## Useful info
 
