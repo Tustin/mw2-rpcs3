@@ -1,6 +1,7 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-28 after proving the complete playlist-fetch handoff,
+_Last updated: 2026-07-28 after diagnosing the live playlist stall, correcting
+the mandatory typed-task reply marker, proving the complete playlist-fetch handoff,
 implementing the statically recovered retail matchmaking lifecycle, recovering
 the UDP public-address/NAT-classification exchanges, directly validating the
 legacy introducer relay, and recovering the post-find peer
@@ -16,10 +17,19 @@ restart or LSG reconnect.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
+- every typed task reply begins with a raw one-bit type-checking marker;
 - operation `8` is an outer result count followed by a typed file size and
   `bdFileInfo` for each result;
 - operation `5` has no outer result count on the wire. It begins with a typed
   destination-buffer size, followed by `bdFileInfo` and the typed blob.
+
+The latest sensitive server trace proved why the live client never sent
+operation `5`: the server's operation-8 body began directly with typed `u64`.
+MW2 constructs the incoming `bdBitBuffer` at `0x003d2be8` and consumes the
+first bit as its type-checking flag through `0x003d2810`. Because the typed
+`u64` tag's low bit is zero, the client disabled type checks and decoded every
+field one bit out of alignment. All bit-packed task replies now emit the
+required leading `1` marker.
 
 The Go serializers and focused tests have been updated to those layouts. Direct
 tracing of the retail playlist parser and Public Playlists feeder confirms that
@@ -28,8 +38,9 @@ the `mp_afghan,dm,100` entry is accepted, and party bounds `1/1` permit a solo
 player. The operation-8 completion loop is also now proven: it selects exact
 filename `playlists.info`, copies only its `u64` ID, starts operation `5`, and
 passes the downloaded buffer (up to `0x20000` bytes) directly to the playlist
-parser. Neutral metadata fields are not a fetch gate. These corrections still
-require a new live RPCS3 run; no preserved run ever sent storage operation `5`.
+parser. Neutral metadata fields are not a fetch gate. The marker correction
+still requires a new live RPCS3 run; no preserved run ever sent storage
+operation `5`.
 
 The service-5 audit recovered operations `1` create, `2` update, `3` delete,
 `4` find by ID, and `5` find sessions. The server now implements the
@@ -62,7 +73,7 @@ anti-abuse policy remain unresolved.
 | Dynamic authentication | Working in prior live runs | A fresh session key, game ticket, and LSG ticket are generated per connection. |
 | RPCN key extraction | Working in prior live runs | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset. |
 | Encrypted retail LSG | Working in prior live runs | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing. |
-| Storage operation `8` | Corrected statically and covered by tests; live recheck pending | Returns one result: outer count `1`, actual file byte size, then `bdFileInfo`. |
+| Storage operation `8` | Root cause corrected statically and covered by tests; live recheck pending | Returns leading type-checking bit `1`, then one result: outer count `1`, actual file byte size, and `bdFileInfo`. The latest trace's markerless replies explain the repeated op8/no-op5 loop. |
 | Storage operation `7` | Implemented; corrected live recheck pending | Returns a successful empty outer result count. |
 | Storage operation `5` | Corrected statically and covered by tests; not observed live | Returns actual buffer size, `bdFileInfo`, then the raw typed blob for the advertised ID. |
 | Bundled `playlists.info` | Retail-parser valid; 95% confidence | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection. |
@@ -128,10 +139,16 @@ not byte-aligned. The common successful reply prefix is:
 
 ```text
 raw u8   message type = 1
+raw bit  type-checking-present = 1
 typed u64 transaction ID
 typed u32 error code = 0
 typed u8  operation ID
 ```
+
+The message dispatcher constructs a type-checked `bdBitBuffer` at `0x003d2be8`
+and consumes that first bit through `0x003d2810`. It is not optional padding.
+Omitting it consumes the first typed tag's low bit and misaligns the complete
+reply.
 
 Operation `8` then contains:
 

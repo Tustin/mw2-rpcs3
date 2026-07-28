@@ -456,27 +456,33 @@ func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload
 		"payload_len", len(payload),
 		"payload_sha256", digestHex(payload),
 	}
-	if summary, err := parseMW2StorageReplySummary(payload); session.lastServiceID == bdServiceStorage && err == nil {
-		attrs = append(attrs,
-			"transaction_id", summary.transactionID,
-			"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
-			"operation_id", summary.operationID,
-			"result_count", summary.resultCount,
-			"file_size", summary.fileSize,
-		)
-		if summary.errorCode == bdErrorNone &&
-			(summary.operationID == bdStorageListFiles || summary.operationID == bdStorageGetFile) {
+	if session.lastServiceID == bdServiceStorage {
+		attrs = append(attrs, "type_checked", len(payload) > 0 && payload[0]&1 == 1)
+		summary, err := parseMW2StorageReplySummary(payload)
+		if err != nil {
+			attrs = append(attrs, "reply_parse_error", err.Error())
+		} else {
 			attrs = append(attrs,
-				"file_name", mw2PlaylistFilename,
-				"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
-				"metadata_u32_1", 0,
-				"metadata_u32_2", 0,
-				"metadata_flag_1", false,
-				"metadata_flag_2", false,
-				"metadata_u64", 0,
-				"playlist_bytes", session.playlistBytes,
-				"playlist_sha256", session.playlistSHA256,
+				"transaction_id", summary.transactionID,
+				"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
+				"operation_id", summary.operationID,
+				"result_count", summary.resultCount,
+				"file_size", summary.fileSize,
 			)
+			if summary.errorCode == bdErrorNone &&
+				(summary.operationID == bdStorageListFiles || summary.operationID == bdStorageGetFile) {
+				attrs = append(attrs,
+					"file_name", mw2PlaylistFilename,
+					"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
+					"metadata_u32_1", 0,
+					"metadata_u32_2", 0,
+					"metadata_flag_1", false,
+					"metadata_flag_2", false,
+					"metadata_u64", 0,
+					"playlist_bytes", session.playlistBytes,
+					"playlist_sha256", session.playlistSHA256,
+				)
+			}
 		}
 	}
 	log.Info("retail LSG response prepared", attrs...)

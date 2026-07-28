@@ -19,7 +19,13 @@ type bdBitWriter struct {
 }
 
 func newBDBitWriter() *bdBitWriter {
-	return &bdBitWriter{bits: newLSBBitWriter(0)}
+	writer := &bdBitWriter{bits: newLSBBitWriter(0)}
+	// bdLobbyConnection constructs received task buffers as type-checked and
+	// consumes this flag before bdRemoteTaskManager reads the first typed
+	// value. Without it, the first bit of the U64 tag is consumed as the flag
+	// and every reply field is decoded one bit out of alignment.
+	writer.bits.writeBit(true)
+	return writer
 }
 
 func (w *bdBitWriter) writeType(value byte) {
@@ -77,6 +83,18 @@ type bdBitReader struct {
 
 func newBDBitReader(data []byte) *bdBitReader {
 	return &bdBitReader{bits: newLSBBitReader(data)}
+}
+
+func newBDTaskReplyReader(data []byte) (*bdBitReader, error) {
+	reader := newBDBitReader(data)
+	typeChecked, err := reader.bits.readBits(1)
+	if err != nil {
+		return nil, fmt.Errorf("read task reply type-checking marker: %w", err)
+	}
+	if typeChecked != 1 {
+		return nil, fmt.Errorf("task reply is missing type-checking marker")
+	}
+	return reader, nil
 }
 
 func (r *bdBitReader) readType(expected byte) error {
@@ -253,7 +271,10 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 }
 
 func parseMW2StorageReplySummary(payload []byte) (mw2StorageReplySummary, error) {
-	reader := newBDBitReader(payload)
+	reader, err := newBDTaskReplyReader(payload)
+	if err != nil {
+		return mw2StorageReplySummary{}, err
+	}
 	transactionID, err := reader.readU64()
 	if err != nil {
 		return mw2StorageReplySummary{}, fmt.Errorf("read storage reply transaction: %w", err)

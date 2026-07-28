@@ -9,6 +9,8 @@ live RPCS3 capture.
 
 Confirmed statically and covered by repository tests:
 
+- every received typed task payload starts with a one-bit type-checking marker
+  which the client consumes before any five-bit type tag;
 - storage is retail service `10`;
 - operation `8` lists publisher files;
 - operation `5` retrieves the selected file ID;
@@ -27,7 +29,8 @@ Confirmed statically and covered by repository tests:
 
 Still pending live verification:
 
-- the corrected operation-8 reply with the actual loaded byte size;
+- the corrected operation-8 reply with its leading type-checking marker and
+  actual loaded byte size;
 - an observed operation-5 request;
 - successful download and client parsing of the bundled bytes.
 
@@ -85,13 +88,21 @@ The common successful logical-reply prefix is:
 
 ```text
 raw u8   message type = 1
+raw bit  type-checking-present = 1
 typed u64 transaction ID
 typed u32 error code = 0
 typed u8  operation ID
 ```
 
 The raw message-type byte is added once. Do not prepend storage service `10` to
-a server task reply.
+a server task reply. The marker is the first bit of the task payload, not a
+second message byte.
+
+This marker is mandatory. Incoming lobby messages construct a type-checked
+`bdBitBuffer` at `0x003d2be8`; `0x003d2810` consumes the first payload bit into
+the buffer's type-checking flag. If it is omitted, the low zero bit of the
+first `u64` tag (`10`) is consumed instead. The generic task parser then skips
+type tags and reads every field one bit out of alignment.
 
 ## Operation 8: list publisher files
 
@@ -113,6 +124,7 @@ The corrected successful reply is:
 
 ```text
 raw u8   message type = 1
+raw bit  type-checking-present = 1
 typed u64 transaction ID
 typed u32 error code = 0
 typed u8  operation = 8
@@ -155,6 +167,7 @@ The corrected successful reply is:
 
 ```text
 raw u8   message type = 1
+raw bit  type-checking-present = 1
 typed u64 transaction ID
 typed u32 error code = 0
 typed u8  operation = 5

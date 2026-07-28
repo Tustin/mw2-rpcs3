@@ -27,11 +27,13 @@ The implementation now covers:
     and the production TCP authentication path.
 
 The screenshot remaining on “Fetching Playlists” is not evidence that the
-playlist text is malformed. The current Linux deployment correctly advertises
-the canonical LF fixture as 193 bytes; a Windows checkout can be 205 bytes due
-to CRLF expansion. No live run has reached operation `5`. The server must
-advertise the exact bytes it loads, and direct client control flow proves the
-remaining handoff.
+playlist text is malformed. The 2026-07-28 live trace exposed the exact earlier
+failure: task replies omitted the leading one-bit type-checking marker, so MW2
+decoded every field one bit out of alignment and never reached the valid
+filename/file ID. The current Linux deployment correctly advertises the
+canonical LF fixture as 193 bytes; a Windows checkout can be 205 bytes due to
+CRLF expansion. No live run has yet reached operation `5`; the marker fix is
+covered by the full automated suite and awaits that decisive live retest.
 
 ## Playlist resolution
 
@@ -39,6 +41,7 @@ remaining handoff.
 
 ```text
 raw U8     reply message type = 1
+raw bit    type-checking-present = 1
 typed U64  transaction
 typed U32  error = 0
 typed U8   operation = 8
@@ -52,6 +55,7 @@ repeat result count:
 
 ```text
 raw U8     reply message type = 1
+raw bit    type-checking-present = 1
 typed U64  transaction
 typed U32  error = 0
 typed U8   operation = 5
@@ -77,7 +81,9 @@ typed U64    value 3
 typed String NUL-terminated filename
 ```
 
-The decisive fetch trace is
+The task buffer constructor at `0x003d2be8` consumes the marker through
+`0x003d2810` before the generic reply parser reads any typed field. The
+decisive fetch trace is
 `0x00322aa8..0x00322bfc -> 0x00322848 -> 0x003edf18`:
 
 - filename getter `0x003ec8c0` returns `bdFileInfo + 0x28`;

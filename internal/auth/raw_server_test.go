@@ -475,3 +475,26 @@ func TestSensitiveLoggingIsExplicitAndIncludesRawEvidence(t *testing.T) {
 		t.Fatalf("sensitive evidence missing from explicit diagnostic log: %s", text)
 	}
 }
+
+func TestStorageResponseLogReportsTypeCheckingMarker(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	connection := &lsgConnection{
+		lastServiceID: bdServiceStorage,
+		playlistBytes: 3,
+	}
+
+	logLSGResponsePayload(log, 4, lsgTaskReplyType, connection.storageListReply([]byte("ABC")), connection)
+
+	text := output.String()
+	for _, expected := range []string{
+		"type_checked=true",
+		"operation_id=8",
+		"result_count=1",
+		"file_size=3",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("response log is missing %q: %s", expected, text)
+		}
+	}
+}

@@ -136,7 +136,7 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 		bdServiceStorage,
 		buildMW2StorageListRequestWith(0, 100, ""),
 	)
-	list := newBDBitReader(listReply)
+	list := mustBDTaskReplyReader(t, listReply)
 	if transaction, err := list.readU64(); err != nil || transaction != 0 {
 		t.Fatalf("op8 transaction=%d err=%v", transaction, err)
 	}
@@ -158,7 +158,7 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	}
 
 	getReply := client.exchange(t, bdServiceStorage, buildMW2StorageGetRequest(fileID))
-	get := newBDBitReader(getReply)
+	get := mustBDTaskReplyReader(t, getReply)
 	if transaction, err := get.readU64(); err != nil || transaction != 1 {
 		t.Fatalf("op5 transaction=%d err=%v", transaction, err)
 	}
@@ -236,7 +236,7 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 func readFullFlowCreateReply(t *testing.T, payload []byte, transaction uint64) ([]byte, []byte) {
 	t.Helper()
 
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	if value, err := reader.readU64(); err != nil || value != transaction {
 		t.Fatalf("create transaction=%d want=%d err=%v", value, transaction, err)
 	}
@@ -267,7 +267,7 @@ func readFullFlowFindReply(
 ) []mw2MatchmakingInfo {
 	t.Helper()
 
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	if value, err := reader.readU64(); err != nil || value != transaction {
 		t.Fatalf("find transaction=%d want=%d err=%v", value, transaction, err)
 	}
@@ -329,7 +329,7 @@ func assertFullFlowMutationReply(
 ) {
 	t.Helper()
 
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	if value, err := reader.readU64(); err != nil || value != transaction {
 		t.Fatalf("mutation transaction=%d want=%d err=%v", value, transaction, err)
 	}

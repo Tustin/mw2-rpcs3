@@ -279,7 +279,7 @@ func TestHandleRecoveredMW2FindSessionsReturnsEmptySuccess(t *testing.T) {
 	if !handled || responseType != lsgTaskReplyType || !connection.lastTaskSupported {
 		t.Fatalf("type=%d handled=%v supported=%v payload=%x", responseType, handled, connection.lastTaskSupported, payload)
 	}
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	if transaction, err := reader.readU64(); err != nil || transaction != 0 {
 		t.Fatalf("transaction=%d err=%v", transaction, err)
 	}
@@ -297,7 +297,7 @@ func TestHandleRecoveredMW2FindSessionsReturnsEmptySuccess(t *testing.T) {
 func TestMW2FindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	// The result consumer at 0x003e1840 expects transaction, error, echoed
 	// operation 5, and one result count. 0x004ef168 accepts count zero.
-	want, err := hex.DecodeString("0a0000000000000000010000008c020400000000")
+	want, err := hex.DecodeString("1500000000000000000200000018050800000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestMW2FindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	// Independent golden from the result consumer at 0x00325c38:
 	// base info followed by all nine title-specific I32 values.
-	want, err := hex.DecodeString("0a0000000000000000010000008c02140000003051060000004080c0004181c1014282c2024383c3034484c4044585c505c64408000000010203040506070813410000004044484c5054585c6064686c7074787c1c090000801300000070000000000e000000c009000000380200000067000000e0100000009c0200008063000000700e0000000e020000c04900000000")
+	want, err := hex.DecodeString("1500000000000000000200000018052800000060a20c00000080008101820283038404850586068707880889098a0a8b0b8c8910000000020406080a0c0e10268200000080889098a0a8b0b8c0c8d0d8e0e8f0f8381200000027000000e0000000001c00000080130000007004000000ce000000c0210000003805000000c7000000e01c0000001c040000809300000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,8 +334,8 @@ func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 
 func TestMW2MutationRepliesMatchRecoveredGoldenBits(t *testing.T) {
 	goldens := map[byte]string{
-		bdMatchmakingUpdateSession: "0a0000000000000000010000000c01",
-		bdMatchmakingDeleteSession: "0a0000000000000000010000008c01",
+		bdMatchmakingUpdateSession: "150000000000000000020000001802",
+		bdMatchmakingDeleteSession: "150000000000000000020000001803",
 	}
 	for operationID, encoded := range goldens {
 		want, err := hex.DecodeString(encoded)
@@ -357,14 +357,14 @@ func TestMW2CreateReplyHasOneGeneratedIdentity(t *testing.T) {
 	reply := (&lsgConnection{}).matchmakingCreateReply(session)
 	// Independent bit-level golden for transaction 0, success, op 1, count 1,
 	// Blob[8] session ID, and Blob[16] security key.
-	want, err := hex.DecodeString("0a0000000000000000010000008c001400000030110200004080c0004181c101c24410000000100f0e0d0c0b0a090807060504030201")
+	want, err := hex.DecodeString("1500000000000000000200000018012800000060220400008000810182028303848920000000201e1c1a18161412100e0c0a0806040200")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(reply, want) {
 		t.Fatalf("create reply=%x want=%x", reply, want)
 	}
-	reader := newBDBitReader(reply)
+	reader := mustBDTaskReplyReader(t, reply)
 	if transactionID, err := reader.readU64(); err != nil || transactionID != 0 {
 		t.Fatalf("transaction=%d err=%v", transactionID, err)
 	}
@@ -392,7 +392,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	if !handled || !creator.lastTaskSupported {
 		t.Fatalf("create handled=%v supported=%v reply=%x", handled, creator.lastTaskSupported, createReply)
 	}
-	createResult := newBDBitReader(createReply)
+	createResult := mustBDTaskReplyReader(t, createReply)
 	if _, err := createResult.readU64(); err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	if !handled || !updater.lastTaskSupported {
 		t.Fatalf("update handled=%v supported=%v reply=%x", handled, updater.lastTaskSupported, updateReply)
 	}
-	updateGolden, _ := hex.DecodeString("0a0000000000000000010000000c01")
+	updateGolden, _ := hex.DecodeString("150000000000000000020000001802")
 	if !bytes.Equal(updateReply, updateGolden) {
 		t.Fatalf("update reply=%x want=%x", updateReply, updateGolden)
 	}
@@ -457,7 +457,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	if !handled || !searcher.lastTaskSupported {
 		t.Fatalf("find handled=%v supported=%v reply=%x", handled, searcher.lastTaskSupported, findReply)
 	}
-	findResult := newBDBitReader(findReply)
+	findResult := mustBDTaskReplyReader(t, findReply)
 	if _, err := findResult.readU64(); err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	if !handled || !deleter.lastTaskSupported {
 		t.Fatalf("delete handled=%v supported=%v reply=%x", handled, deleter.lastTaskSupported, deleteReply)
 	}
-	deleteGolden, _ := hex.DecodeString("0a0000000000000000010000008c01")
+	deleteGolden, _ := hex.DecodeString("150000000000000000020000001803")
 	if !bytes.Equal(deleteReply, deleteGolden) {
 		t.Fatalf("delete reply=%x want=%x", deleteReply, deleteGolden)
 	}
@@ -523,7 +523,7 @@ func TestMW2FindSessionsFiltersOnlyByRequiredFreeSlots(t *testing.T) {
 		if !handled || !connection.lastTaskSupported {
 			t.Fatalf("search was not handled: %+v reply=%x", search, reply)
 		}
-		reader := newBDBitReader(reply)
+		reader := mustBDTaskReplyReader(t, reply)
 		if _, err := reader.readU64(); err != nil {
 			t.Fatal(err)
 		}
@@ -580,7 +580,7 @@ func TestMW2MissingMutationKeepsUnsupportedError(t *testing.T) {
 		if !handled || connection.lastTaskSupported {
 			t.Fatalf("handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
 		}
-		result := newBDBitReader(reply)
+		result := mustBDTaskReplyReader(t, reply)
 		if _, err := result.readU64(); err != nil {
 			t.Fatal(err)
 		}
@@ -618,7 +618,7 @@ func TestMW2FindSessionsRejectsNonRetailQuery(t *testing.T) {
 			if !handled || connection.lastTaskSupported {
 				t.Fatalf("handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
 			}
-			result := newBDBitReader(reply)
+			result := mustBDTaskReplyReader(t, reply)
 			if _, err := result.readU64(); err != nil {
 				t.Fatal(err)
 			}

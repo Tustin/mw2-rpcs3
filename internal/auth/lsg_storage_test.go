@@ -54,6 +54,15 @@ func readBDTestString(reader *bdBitReader) (string, error) {
 	}
 }
 
+func mustBDTaskReplyReader(t *testing.T, payload []byte) *bdBitReader {
+	t.Helper()
+	reader, err := newBDTaskReplyReader(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reader
+}
+
 func assertMW2FileInfo(t *testing.T, reader *bdBitReader) {
 	t.Helper()
 	if fileID, err := reader.readU64(); err != nil || fileID != mw2PlaylistFileID {
@@ -250,7 +259,7 @@ func TestMW2StorageListReplyAdvertisesPlaylist(t *testing.T) {
 	playlist := []byte("version 504\n")
 	connection := &lsgConnection{nextTransaction: 1}
 	payload := connection.storageListReply(playlist)
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	transaction, err := reader.readU64()
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +294,7 @@ func TestMW2StorageGetReplyContainsPlaylistBlob(t *testing.T) {
 	playlist := []byte("version 504\n\ngametype dm\nname english \"Free-for-All\"\nscript dm\n")
 	connection := &lsgConnection{nextTransaction: 7}
 	payload := connection.storageGetReply(playlist)
-	reader := newBDBitReader(payload)
+	reader := mustBDTaskReplyReader(t, payload)
 	if transaction, err := reader.readU64(); err != nil || transaction != 7 {
 		t.Fatalf("transaction=%d err=%v", transaction, err)
 	}
@@ -317,8 +326,9 @@ func TestMW2StorageGetReplyContainsPlaylistBlob(t *testing.T) {
 
 func TestMW2StorageRepliesMatchRecoveredGoldenLayouts(t *testing.T) {
 	// These literals were independently encoded from the retail consumers:
-	// op 8 at 0x003eb4a8, op 5 at 0x003ea690, and FileInfo at 0x003eca78.
-	listWant, err := hex.DecodeString("0a0000000000000000010000000c0414000000800600000014e29d5915d18c480402000000400000000041a00000000000000000201c5b581e5bda1cdd9c4b9a9bd91b00")
+	// the type-checking marker at 0x003d2be8/0x003d2810, op 8 at
+	// 0x003eb4a8, op 5 at 0x003ea690, and FileInfo at 0x003eca78.
+	listWant, err := hex.DecodeString("15000000000000000002000000180828000000000d00000028c43bb32aa2199108040000008000000000824001000000000000004038b6b03cb6b439ba39973437b33700")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,13 +337,34 @@ func TestMW2StorageRepliesMatchRecoveredGoldenLayouts(t *testing.T) {
 		t.Fatalf("op8 reply=%x want=%x", listGot, listWant)
 	}
 
-	getWant, err := hex.DecodeString("0a0000000000000000010000008c0234000000a010efccaa886644221000000000020000000802050000000000000000e1d8c2f2d8d2e6e8e65cd2dcccde00261a00000008121a02")
+	getWant, err := hex.DecodeString("150000000000000000020000001805680000004021de995511cd884420000000000400000010040a0000000000000000c2b185e5b1a5cdd1cdb9a4b999bd014c3400000010243404")
 	if err != nil {
 		t.Fatal(err)
 	}
 	getGot := (&lsgConnection{}).storageGetReply([]byte("ABC"))
 	if !bytes.Equal(getGot, getWant) {
 		t.Fatalf("op5 reply=%x want=%x", getGot, getWant)
+	}
+}
+
+func TestMW2TaskRepliesRequireTypeCheckingMarker(t *testing.T) {
+	reply := (&lsgConnection{}).storageListReply([]byte("ABC"))
+	if reply[0]&1 != 1 {
+		t.Fatalf("reply is missing leading type-checking marker: %x", reply)
+	}
+	if _, err := newBDTaskReplyReader(reply); err != nil {
+		t.Fatalf("marked reply was rejected: %v", err)
+	}
+
+	// This is the pre-fix op 8 payload observed in the live server trace. The
+	// client consumes its low zero bit as the type-checking flag, then decodes
+	// the remaining fields one bit out of alignment.
+	markerless, err := hex.DecodeString("0a0000000000000000010000000c0414000000800600000014e29d5915d18c480402000000400000000041a00000000000000000201c5b581e5bda1cdd9c4b9a9bd91b00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newBDTaskReplyReader(markerless); err == nil {
+		t.Fatal("accepted markerless task reply")
 	}
 }
 
@@ -369,7 +400,7 @@ func TestMW2StorageListThenGetActualPlaylist(t *testing.T) {
 	if !handled || responseType != lsgTaskReplyType || !connection.lastTaskSupported {
 		t.Fatalf("op5 type=%d handled=%v supported=%v payload=%x", responseType, handled, connection.lastTaskSupported, getReply)
 	}
-	reader := newBDBitReader(getReply)
+	reader := mustBDTaskReplyReader(t, getReply)
 	if transaction, readErr := reader.readU64(); readErr != nil || transaction != 1 {
 		t.Fatalf("op5 transaction=%d err=%v", transaction, readErr)
 	}
