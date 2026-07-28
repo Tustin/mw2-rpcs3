@@ -82,6 +82,9 @@ type lsgConnection struct {
 	lastServiceID       byte
 	lastOperationID     byte
 	lastTaskSupported   bool
+	playlistListReplies int
+	playlistSHA256      string
+	playlistBytes       int
 	matchmakingSessions *mw2MatchmakingStore
 }
 

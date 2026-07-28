@@ -22,12 +22,12 @@ Confirmed statically and covered by repository tests:
   `5`;
 - the downloaded byte count must be at most `0x20000`, after which the game
   passes the raw buffer to the playlist-text parser;
-- the bundled `playlists.info` is a retail-parser-valid 205-byte version-504
+- the bundled `playlists.info` is a retail-parser-valid version-504
   playlist whose only row is visible and solo-selectable.
 
 Still pending live verification:
 
-- the corrected operation-8 reply with the actual 205-byte size;
+- the corrected operation-8 reply with the actual loaded byte size;
 - an observed operation-5 request;
 - successful download and client parsing of the bundled bytes.
 
@@ -133,7 +133,8 @@ Static evidence:
 - after `bdFileInfo` deserialization, `0x003eb4a8` calls setter `0x003ec8d8`;
 - that setter stores the value at object offset `0xa8`, the file-size field.
 
-For the bundled file, the response is one result and its file size is `205`.
+For the bundled file, the response is one result and its file size is the exact
+number of bytes loaded at runtime.
 
 ## Operation 5: get publisher file
 
@@ -268,7 +269,7 @@ The repository fixture contains:
 The structural validator reports:
 
 ```text
-PASS: version=504, gametypes=1, playlists=1, entries=1, bytes=205
+PASS: version=504, gametypes=1, playlists=1, entries=1, bytes=<loaded length>
 ```
 
 The retail parser and feeder establish more than structural validity:
@@ -321,17 +322,18 @@ path.
 
 ## Live evidence versus pending work
 
-The prior RPCS3 run sent repeated operation-8 requests and remained connected,
-but its replies encoded `1, 1` after the operation. Static analysis now proves
-those values meant result count `1` and the incorrect file size `1`. That run
-does not verify the corrected 205-byte metadata or operation-5 result.
+An older RPCS3 run received replies that encoded `1, 1` after the operation;
+static analysis proves those values meant result count `1` and the incorrect
+file size `1`. The latest Linux run correctly returned one 193-byte canonical
+LF fixture but still did not issue operation `5`. Sensitive structured logging
+is now required to isolate client deserialization from task-routing failure.
 
 The next live checkpoint is:
 
-1. send operation `8` with count `1` and file size `205`;
+1. send operation `8` with count `1` and the actual loaded file size;
 2. confirm the remote task completes;
 3. capture operation `5` using the advertised ID;
-4. send buffer size `205`, matching metadata, and a 205-byte blob;
+4. send the actual buffer size, matching metadata, and the same raw-byte blob;
 5. confirm the client parses version 504 and advances.
 
 ## Related retail services

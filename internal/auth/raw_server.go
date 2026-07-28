@@ -49,6 +49,7 @@ type RawServer struct {
 	readTimeout         time.Duration
 	writeTimeout        time.Duration
 	lsgIdleTimeout      time.Duration
+	logSensitive        bool
 	connections         atomic.Uint64
 	requests            atomic.Uint64
 	lsgConnections      atomic.Uint64
@@ -81,6 +82,12 @@ func (s *RawServer) Connections() uint64    { return s.connections.Load() }
 func (s *RawServer) Requests() uint64       { return s.requests.Load() }
 func (s *RawServer) LSGConnections() uint64 { return s.lsgConnections.Load() }
 func (s *RawServer) LSGFrames() uint64      { return s.lsgFrames.Load() }
+
+// SetSensitiveLogging enables credential-bearing protocol diagnostics for an
+// isolated development environment. It must be called before Serve.
+func (s *RawServer) SetSensitiveLogging(enabled bool) {
+	s.logSensitive = enabled
+}
 
 func (s *RawServer) Serve(ctx context.Context) error {
 	listener, err := net.Listen("tcp", s.addr)
@@ -167,12 +174,25 @@ func (s *RawServer) handle(conn net.Conn) {
 		return
 	}
 	logTicketKeyDiagnostic(log, authRequest.Ticket, lsgSessionKey)
+	s.logSensitiveEvent(log, "sensitive retail authentication request",
+		"request_hex", hex.EncodeToString(request),
+		"authorization_ticket_hex", hex.EncodeToString(authRequest.Ticket),
+		"platform_key_hex", hex.EncodeToString(platformKey),
+		"client_lsg_key_hex", hex.EncodeToString(lsgSessionKey[:]),
+	)
 	response, details, err := BuildLegacySuccessResponse(platformKey, authRequest.GameID)
 	if err != nil {
 		log.Warn("authentication response generation failed", "error", err)
 		return
 	}
 	s.sessionStore().putWithPendingKey(details.LSGTicket, [24]byte{}, lsgSessionKey)
+	s.logSensitiveEvent(log, "sensitive retail authentication response",
+		"response_hex", hex.EncodeToString(response),
+		"server_session_key_hex", hex.EncodeToString(details.SessionKey[:]),
+		"game_ticket_hex", hex.EncodeToString(details.GameTicket[:]),
+		"encrypted_game_ticket_hex", hex.EncodeToString(details.EncryptedGameTicket[:]),
+		"lsg_ticket_hex", hex.EncodeToString(details.LSGTicket[:]),
+	)
 	_ = conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 	if _, err := conn.Write(response); err != nil {
 		log.Warn("authentication response failed", "error", err)
@@ -215,6 +235,12 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		log.Warn("retail LSG authentication rejected", "reason", "unknown or expired ticket")
 		return
 	}
+	s.logSensitiveEvent(log, "sensitive retail LSG authentication",
+		"initial_record_hex", hex.EncodeToString(initial),
+		"lsg_ticket_hex", hex.EncodeToString(request.Ticket[:]),
+		"active_key_hex", hex.EncodeToString(storedSession.key[:]),
+		"pending_key_hex", hex.EncodeToString(storedSession.pendingKey[:]),
+	)
 	session, err := s.newLSGConnection(storedSession.key, storedSession.pendingKey)
 	if err != nil {
 		log.Warn("retail LSG session setup failed", "error", err)
@@ -225,7 +251,13 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			log.Info("reclaimed matchmaking sessions for closed LSG connection", "sessions", removed)
 		}
 	}()
-	if !s.writeLSGResponse(conn, remote, session.helloResponse(), 1, log) {
+	hello := session.helloResponse()
+	s.logSensitiveEvent(log, "sensitive retail LSG hello response",
+		"step", 1,
+		"connection_id", fmt.Sprintf("0x%016x", session.connectionID),
+		"response_hex", hex.EncodeToString(hello),
+	)
+	if !s.writeLSGResponse(conn, remote, hello, 1, log) {
 		return
 	}
 
@@ -254,6 +286,12 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			session.diagnoseRequest(log, step, frame)
 			return
 		}
+		s.logSensitiveEvent(log, "sensitive retail LSG request decrypted",
+			"step", step,
+			"message_type", messageType,
+			"request_iv", session.requestIV,
+			"payload_hex", hex.EncodeToString(payload),
+		)
 		logLSGRequest(log, step, messageType, payload)
 		responseType, responsePayload, handled, reply := handleLSGMessage(session, messageType, payload)
 		if !handled {
@@ -282,13 +320,43 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		if !reply {
 			continue
 		}
-		logLSGResponsePayload(log, step, responseType, responsePayload, session.lastServiceID == bdServiceStorage)
+		if session.lastServiceID == bdServiceStorage {
+			switch session.lastOperationID {
+			case bdStorageListFiles:
+				session.playlistListReplies++
+				if session.playlistListReplies >= 2 {
+					log.Warn("playlist listing has not progressed to a file fetch",
+						"step", step,
+						"list_replies_without_get", session.playlistListReplies,
+						"expected_next_operation_id", bdStorageGetFile,
+						"file_name", mw2PlaylistFilename,
+						"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
+						"playlist_bytes", session.playlistBytes,
+						"playlist_sha256", session.playlistSHA256,
+					)
+				}
+			case bdStorageGetFile:
+				session.playlistListReplies = 0
+			}
+		}
+		logLSGResponsePayload(log, step, responseType, responsePayload, session)
+		s.logSensitiveEvent(log, "sensitive retail LSG response plaintext",
+			"step", step,
+			"message_type", responseType,
+			"payload_hex", hex.EncodeToString(responsePayload),
+		)
 		response, err := session.encryptResponse(responseType, responsePayload)
 		if err != nil {
 			log.Warn("retail LSG response encryption failed", "step", step, "error", err)
 			return
 		}
 		logLSGEncryptedResponse(log, step, responseType, response)
+		s.logSensitiveEvent(log, "sensitive retail LSG response encrypted",
+			"step", step,
+			"message_type", responseType,
+			"response_iv", session.responseIV-1,
+			"frame_hex", hex.EncodeToString(response),
+		)
 		if !s.writeLSGResponse(conn, remote, response, step, log) {
 			return
 		}
@@ -381,14 +449,14 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 	log.Info("retail LSG service request decrypted", attrs...)
 }
 
-func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, storageReply bool) {
+func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, session *lsgConnection) {
 	attrs := []any{
 		"step", step,
 		"message_type", messageType,
 		"payload_len", len(payload),
 		"payload_sha256", digestHex(payload),
 	}
-	if summary, err := parseMW2StorageReplySummary(payload); storageReply && err == nil {
+	if summary, err := parseMW2StorageReplySummary(payload); session.lastServiceID == bdServiceStorage && err == nil {
 		attrs = append(attrs,
 			"transaction_id", summary.transactionID,
 			"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
@@ -396,6 +464,20 @@ func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload
 			"result_count", summary.resultCount,
 			"file_size", summary.fileSize,
 		)
+		if summary.errorCode == bdErrorNone &&
+			(summary.operationID == bdStorageListFiles || summary.operationID == bdStorageGetFile) {
+			attrs = append(attrs,
+				"file_name", mw2PlaylistFilename,
+				"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
+				"metadata_u32_1", 0,
+				"metadata_u32_2", 0,
+				"metadata_flag_1", false,
+				"metadata_flag_2", false,
+				"metadata_u64", 0,
+				"playlist_bytes", session.playlistBytes,
+				"playlist_sha256", session.playlistSHA256,
+			)
+		}
 	}
 	log.Info("retail LSG response prepared", attrs...)
 }
@@ -460,7 +542,17 @@ func (s *RawServer) recordLSGFrame(log *slog.Logger, remote string, frame []byte
 	}
 	summary := SummarizeRequest(frame)
 	log.Info("retail LSG record received", "bytes", len(frame), "sha256", summary.SHA256)
+	s.logSensitiveEvent(log, "sensitive retail LSG record received",
+		"frame_hex", hex.EncodeToString(frame),
+	)
 	return nil
+}
+
+func (s *RawServer) logSensitiveEvent(log *slog.Logger, message string, attrs ...any) {
+	if !s.logSensitive {
+		return
+	}
+	log.Warn(message, append([]any{"sensitive", true}, attrs...)...)
 }
 
 func readLSGInitialRecord(reader io.Reader, prefix [4]byte, maxPayloadSize uint32) ([]byte, error) {

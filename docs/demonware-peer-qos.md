@@ -296,7 +296,7 @@ serializer/parser proof but not a live packet from that capture.
 ## Safe next work
 
 1. Run two complete MW2 RPCS3 clients against this server.
-2. Confirm both receive the 205-byte playlist and that one host session is
+2. Confirm both receive the exact advertised playlist bytes and that one host session is
    returned unchanged to the seeker.
 3. Capture the seeker-to-host type-`0x28` request and type-`0x29` response.
 4. For same-LAN/direct tests, verify type-`0x0d` to type-`0x0c`.

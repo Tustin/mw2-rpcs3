@@ -27,9 +27,10 @@ The implementation now covers:
     and the production TCP authentication path.
 
 The screenshot remaining on “Fetching Playlists” is not evidence that the
-205-byte playlist text is malformed. The previous live server reply advertised
-file size `1`, and no preserved run reached operation `5`. The corrected server
-now advertises the actual size, and direct client control flow proves the
+playlist text is malformed. The current Linux deployment correctly advertises
+the canonical LF fixture as 193 bytes; a Windows checkout can be 205 bytes due
+to CRLF expansion. No live run has reached operation `5`. The server must
+advertise the exact bytes it loads, and direct client control flow proves the
 remaining handoff.
 
 ## Playlist resolution

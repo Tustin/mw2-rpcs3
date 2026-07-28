@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -433,7 +434,7 @@ func TestRetailDiagnosticLogsDoNotExposeRawSecrets(t *testing.T) {
 
 	logTicketKeyDiagnostic(log, ticket, key)
 	logLSGRequest(log, 2, 0xfe, secret)
-	logLSGResponsePayload(log, 2, 1, secret, false)
+	logLSGResponsePayload(log, 2, 1, secret, &lsgConnection{})
 	logLSGEncryptedResponse(log, 2, 1, secret)
 	frame, err := EncryptLSGRecord(0xfe, secret, 7, key[:])
 	if err != nil {
@@ -455,5 +456,22 @@ func TestRetailDiagnosticLogsDoNotExposeRawSecrets(t *testing.T) {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("diagnostic log contains forbidden value %q: %s", forbidden, text)
 		}
+	}
+}
+
+func TestSensitiveLoggingIsExplicitAndIncludesRawEvidence(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	service := &RawServer{logSensitive: true}
+	secret := []byte("credential-bearing-test-data")
+
+	service.logSensitiveEvent(log, "sensitive test event",
+		"payload_hex", hex.EncodeToString(secret),
+	)
+
+	text := output.String()
+	if !strings.Contains(text, "sensitive=true") ||
+		!strings.Contains(text, hex.EncodeToString(secret)) {
+		t.Fatalf("sensitive evidence missing from explicit diagnostic log: %s", text)
 	}
 }

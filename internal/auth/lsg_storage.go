@@ -408,6 +408,8 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
 		}
+		c.playlistBytes = len(data)
+		c.playlistSHA256 = digestHex(data)
 		reply = c.storageListReply(data)
 	case bdStorageGetFile:
 		c.lastTaskSupported = true
@@ -420,6 +422,8 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
 		}
+		c.playlistBytes = len(data)
+		c.playlistSHA256 = digestHex(data)
 		reply = c.storageGetReply(data)
 	default:
 		reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)

@@ -8,6 +8,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_NAT_ALT_ADDR", "")
 	t.Setenv("MW2_NAT_ADVERTISED_IP", "")
 	t.Setenv("MW2_NAT_RELAY_ENABLED", "")
+	t.Setenv("MW2_LOG_SENSITIVE", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
 	cfg, err := Load()
 	if err != nil {
@@ -19,8 +20,27 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.NATAlternateAddr != ":3075" ||
 		cfg.NATAdvertisedIP != "" ||
 		cfg.NATRelayEnabled ||
+		cfg.LogSensitive ||
 		cfg.MaxFrameBytes != 1<<20 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadSensitiveLoggingOverride(t *testing.T) {
+	t.Setenv("MW2_LOG_SENSITIVE", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LogSensitive {
+		t.Fatal("LogSensitive = false, want explicit true")
+	}
+}
+
+func TestLoadRejectsInvalidSensitiveLoggingFlag(t *testing.T) {
+	t.Setenv("MW2_LOG_SENSITIVE", "all")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid MW2_LOG_SENSITIVE")
 	}
 }
 

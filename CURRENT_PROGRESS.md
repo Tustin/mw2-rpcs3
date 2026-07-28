@@ -208,7 +208,7 @@ version=504
 gametypes=1
 playlists=1
 entries=1
-bytes=205
+bytes=<actual loaded byte length>
 ```
 
 Retail parser control flow further establishes:
@@ -369,7 +369,7 @@ Repository verification:
 - a production-path harness starts the real auth TCP server, authenticates two
   retail requests, validates both dynamic ticket schemas, consumes the issued
   one-use LSG tickets, rejects replay, and runs storage through matchmaking;
-- the playlist validator accepts the bundled 205-byte fixture and retail
+- the playlist validator accepts the bundled fixture bytes and retail
   feeder/parser analysis confirms its runtime semantics;
 - UDP golden and localhost integration tests verify both discovery serializers
   and that commands `3`/`2` actually originate from the alternate source port;
@@ -380,12 +380,13 @@ Repository verification:
 
 Pending live verification:
 
-1. Run RPCS3 against an operation-8 reply containing file size `205`.
+1. Run RPCS3 against an operation-8 reply containing the actual loaded file
+   size and SHA-256.
 2. Confirm the remote task completes and observe the statically proven exact
    `playlists.info` selection.
 3. Capture operation `5` with the advertised file ID.
-4. Confirm the operation-5 reply downloads 205 bytes and the client parses
-   version 504.
+4. Confirm the operation-5 reply downloads the advertised bytes and the client
+   parses version 504.
 5. Confirm the exact service-5 operation-5 request and zero/nonempty responses
    live.
 6. Run two distinct clients through create -> find -> update -> delete and
