@@ -64,8 +64,12 @@ func mustBDTaskReplyReader(t *testing.T, payload []byte) *bdBitReader {
 }
 
 func assertMW2FileInfo(t *testing.T, reader *bdBitReader) {
+	assertMW2FileInfoValue(t, reader, mw2PlaylistFileID, mw2PlaylistFilename)
+}
+
+func assertMW2FileInfoValue(t *testing.T, reader *bdBitReader, expectedID uint64, expectedName string) {
 	t.Helper()
-	if fileID, err := reader.readU64(); err != nil || fileID != mw2PlaylistFileID {
+	if fileID, err := reader.readU64(); err != nil || fileID != expectedID {
 		t.Fatalf("file=%x err=%v", fileID, err)
 	}
 	if value, err := reader.readU32(); err != nil || value != 0 {
@@ -85,7 +89,7 @@ func assertMW2FileInfo(t *testing.T, reader *bdBitReader) {
 	if value, err := reader.readU64(); err != nil || value != 0 {
 		t.Fatalf("value 3=%x err=%v", value, err)
 	}
-	if filename, err := readBDTestString(reader); err != nil || filename != mw2PlaylistFilename {
+	if filename, err := readBDTestString(reader); err != nil || filename != expectedName {
 		t.Fatalf("filename=%q err=%v", filename, err)
 	}
 }
@@ -160,7 +164,7 @@ func TestMW2StorageListHonorsFilterAndPagination(t *testing.T) {
 	requests := [][]byte{
 		buildMW2StorageListRequestWith(0, 100, "other.info"),
 		buildMW2StorageListRequestWith(0, 0, ""),
-		buildMW2StorageListRequestWith(1, 100, ""),
+		buildMW2StorageListRequestWith(2, 100, ""),
 	}
 	for index, request := range requests {
 		_, reply, handled := connection.handleStorageTask(request)
@@ -186,6 +190,75 @@ func TestMW2StorageListHonorsFilterAndPagination(t *testing.T) {
 	}
 	if summary.resultCount != 1 {
 		t.Fatalf("exact filename summary=%+v", summary)
+	}
+
+	_, reply, handled = connection.handleStorageTask(buildMW2StorageListRequestWith(0, 100, mw2MOTDFilename))
+	if !handled {
+		t.Fatal("exact MOTD filename request was not handled")
+	}
+	summary, err = parseMW2StorageReplySummary(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.resultCount != 1 || summary.fileSize != uint32(len(mw2DefaultMOTD)) {
+		t.Fatalf("exact MOTD filename summary=%+v", summary)
+	}
+}
+
+func TestMW2PublisherDirectoryAdvertisesMOTDBeforePlaylist(t *testing.T) {
+	playlist := []byte("version 504\n")
+	files := []mw2PublisherFile{
+		{id: mw2MOTDFileID, name: mw2MOTDFilename, data: []byte(mw2DefaultMOTD)},
+		{id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: playlist},
+	}
+	payload := (&lsgConnection{}).storagePublisherListReply(files)
+	reader := mustBDTaskReplyReader(t, payload)
+	if transaction, err := reader.readU64(); err != nil || transaction != 0 {
+		t.Fatalf("transaction=%d err=%v", transaction, err)
+	}
+	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := reader.readU8(); err != nil || operation != bdStorageListFiles {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if count, err := reader.readU32(); err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	if size, err := reader.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
+		t.Fatalf("MOTD size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, reader, mw2MOTDFileID, mw2MOTDFilename)
+	if size, err := reader.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("playlist size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, reader, mw2PlaylistFileID, mw2PlaylistFilename)
+}
+
+func TestMW2StorageGetReplyContainsMOTDBlob(t *testing.T) {
+	motd := []byte("Server test message")
+	file := mw2PublisherFile{id: mw2MOTDFileID, name: mw2MOTDFilename, data: motd}
+	payload := (&lsgConnection{}).storagePublisherGetReply(file)
+	reader := mustBDTaskReplyReader(t, payload)
+	if _, err := reader.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := reader.readU8(); err != nil || operation != bdStorageGetFile {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if size, err := reader.readU32(); err != nil || size != uint32(len(motd)) {
+		t.Fatalf("size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, reader, mw2MOTDFileID, mw2MOTDFilename)
+	blob, err := reader.readBlob(mw2MOTDMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(blob, motd) {
+		t.Fatalf("blob=%q", blob)
 	}
 }
 
@@ -392,7 +465,7 @@ func TestMW2StorageListThenGetActualPlaylist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if listSummary.transactionID != 0 || listSummary.operationID != bdStorageListFiles || listSummary.resultCount != 1 || listSummary.fileSize != uint32(len(playlist)) {
+	if listSummary.transactionID != 0 || listSummary.operationID != bdStorageListFiles || listSummary.resultCount != 2 || listSummary.fileSize != uint32(len(mw2DefaultMOTD)) {
 		t.Fatalf("op8 summary=%+v playlist_bytes=%d", listSummary, len(playlist))
 	}
 

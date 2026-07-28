@@ -85,6 +85,10 @@ type lsgConnection struct {
 	playlistListReplies int
 	playlistSHA256      string
 	playlistBytes       int
+	lastStorageFiles    []string
+	lastStorageFileIDs  []string
+	lastStorageGetFile  string
+	lastStorageGetID    string
 	matchmakingSessions *mw2MatchmakingStore
 }
 

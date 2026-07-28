@@ -479,19 +479,22 @@ func TestSensitiveLoggingIsExplicitAndIncludesRawEvidence(t *testing.T) {
 func TestStorageResponseLogReportsTypeCheckingMarker(t *testing.T) {
 	var output bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&output, nil))
-	connection := &lsgConnection{
-		lastServiceID: bdServiceStorage,
-		playlistBytes: 3,
+	connection := &lsgConnection{}
+	_, payload, handled := connection.handleStorageTask(buildMW2StorageListRequestWith(0, 100, ""))
+	if !handled {
+		t.Fatal("storage list request was not handled")
 	}
 
-	logLSGResponsePayload(log, 4, lsgTaskReplyType, connection.storageListReply([]byte("ABC")), connection)
+	logLSGResponsePayload(log, 4, lsgTaskReplyType, payload, connection)
 
 	text := output.String()
 	for _, expected := range []string{
 		"type_checked=true",
 		"operation_id=8",
-		"result_count=1",
-		"file_size=3",
+		"result_count=2",
+		fmt.Sprintf("file_size=%d", len(mw2DefaultMOTD)),
+		"advertised_files=\"[messageoftheday.info playlists.info]\"",
+		"advertised_file_ids=\"[0x1122334455667789 0x1122334455667788]\"",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("response log is missing %q: %s", expected, text)

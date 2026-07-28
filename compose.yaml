@@ -4,6 +4,7 @@ services:
     environment:
       MW2_LOG_LEVEL: debug
       MW2_LOG_SENSITIVE: ${MW2_LOG_SENSITIVE:-false}
+      MW2_MOTD: ${MW2_MOTD:-}
       MW2_CAPTURE_DIR: /data/captures
       MW2_CAPTURE_ENABLED: "false"
       MW2_NAT_ADVERTISED_IP: ${MW2_NAT_ADVERTISED_IP:?set MW2_NAT_ADVERTISED_IP to the client-reachable host IPv4}

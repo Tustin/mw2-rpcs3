@@ -9,6 +9,9 @@ live RPCS3 capture.
 
 Confirmed statically and covered by repository tests:
 
+- MW2 initializes `messageoftheday.info` publisher-download states before the
+  `playlists.info` state, so both files must be present in the publisher
+  directory;
 - every received typed task payload starts with a one-bit type-checking marker
   which the client consumes before any five-bit type tag;
 - storage is retail service `10`;
@@ -29,9 +32,9 @@ Confirmed statically and covered by repository tests:
 
 Still pending live verification:
 
-- the corrected operation-8 reply with its leading type-checking marker and
-  actual loaded byte size;
-- an observed operation-5 request;
+- the corrected operation-8 reply with both required publisher files;
+- an observed operation-5 request for `messageoftheday.info`;
+- an observed operation-5 request for `playlists.info`;
 - successful download and client parsing of the bundled bytes.
 
 Do not treat the current static proof and unit tests as full live completion.
@@ -41,6 +44,11 @@ Do not treat the current static proof and unit tests as full live completion.
 The recovered MW2 call chain is:
 
 ```text
+storage operation 8
+    -> find messageoftheday.info
+    -> storage operation 5 with its opaque ID
+    -> consume at most 0x100 bytes as MOTD text
+
 storage operation 8
     -> receive publisher-file metadata
     -> find exact filename "playlists.info"
@@ -62,6 +70,12 @@ No timestamp, owner, privacy flag, or other neutral metadata field is read in
 this transition. There is also no local cache/version comparison in this
 two-stage path. Exact filename equality plus a successful operation-8 result
 is the gate to operation `5`.
+
+The same state machine is used for `messageoftheday.info`. Initializers
+`0x0030a748` and `0x0030a788` create MOTD states; `0x0030a7c8` creates the
+playlist state. The MOTD consumer at `0x0030b1f0` provides a `0x100`-byte
+buffer, trims CR/LF, and consumes the downloaded bytes as text. Consequently,
+the publisher listing must not contain only `playlists.info`.
 
 The payload is not JSON, a database, or a compressed container. The download
 contains raw playlist text bytes; the bundled fixture is ASCII.
@@ -145,8 +159,10 @@ Static evidence:
 - after `bdFileInfo` deserialization, `0x003eb4a8` calls setter `0x003ec8d8`;
 - that setter stores the value at object offset `0xa8`, the file-size field.
 
-For the bundled file, the response is one result and its file size is the exact
-number of bytes loaded at runtime.
+The unfiltered publisher directory contains `messageoftheday.info` followed by
+`playlists.info`. Each result carries its own exact runtime byte size. Exact
+filename filters and offset/maximum pagination select a subset of this
+directory.
 
 ## Operation 5: get publisher file
 

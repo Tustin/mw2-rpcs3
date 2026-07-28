@@ -9,10 +9,20 @@ const (
 	mw2PlaylistFileID       = uint64(0x1122334455667788)
 	mw2PlaylistFilename     = "playlists.info"
 	mw2PlaylistMaxSize      = 0x20000
+	mw2MOTDFileID           = uint64(0x1122334455667789)
+	mw2MOTDFilename         = "messageoftheday.info"
+	mw2MOTDMaxSize          = 0x100
+	mw2DefaultMOTD          = "Welcome to Modern Warfare 2 multiplayer"
 	bdStorageListOwnerFiles = byte(7)
 	bdStorageListFiles      = byte(8)
 	bdStorageGetFile        = byte(5)
 )
+
+type mw2PublisherFile struct {
+	id   uint64
+	name string
+	data []byte
+}
 
 type bdBitWriter struct {
 	bits *lsbBitWriter
@@ -322,14 +332,14 @@ func (c *lsgConnection) nextTransactionID() uint64 {
 	return value
 }
 
-func writeMW2FileInfo(writer *bdBitWriter) {
-	writer.writeU64(mw2PlaylistFileID)
+func writeMW2FileInfo(writer *bdBitWriter, file mw2PublisherFile) {
+	writer.writeU64(file.id)
 	writer.writeU32(0)
 	writer.writeU32(0)
 	writer.writeBool(false)
 	writer.writeBool(false)
 	writer.writeU64(0)
-	writer.writeString(mw2PlaylistFilename)
+	writer.writeString(file.name)
 }
 
 func (c *lsgConnection) storageErrorReply(operationID byte, errorCode uint32) []byte {
@@ -340,15 +350,23 @@ func (c *lsgConnection) storageErrorReply(operationID byte, errorCode uint32) []
 	return writer.bytes()
 }
 
-func (c *lsgConnection) storageListReply(data []byte) []byte {
+func (c *lsgConnection) storagePublisherListReply(files []mw2PublisherFile) []byte {
 	writer := newBDBitWriter()
 	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageListFiles)
-	writer.writeU32(1)
-	writer.writeU32(uint32(len(data)))
-	writeMW2FileInfo(writer)
+	writer.writeU32(uint32(len(files)))
+	for _, file := range files {
+		writer.writeU32(uint32(len(file.data)))
+		writeMW2FileInfo(writer, file)
+	}
 	return writer.bytes()
+}
+
+func (c *lsgConnection) storageListReply(data []byte) []byte {
+	return c.storagePublisherListReply([]mw2PublisherFile{{
+		id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: data,
+	}})
 }
 
 func (c *lsgConnection) storageEmptyListReply() []byte {
@@ -369,15 +387,21 @@ func (c *lsgConnection) storageOwnerListReply() []byte {
 	return writer.bytes()
 }
 
-func (c *lsgConnection) storageGetReply(data []byte) []byte {
+func (c *lsgConnection) storagePublisherGetReply(file mw2PublisherFile) []byte {
 	writer := newBDBitWriter()
 	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageGetFile)
-	writer.writeU32(uint32(len(data)))
-	writeMW2FileInfo(writer)
-	writer.writeBlob(data)
+	writer.writeU32(uint32(len(file.data)))
+	writeMW2FileInfo(writer, file)
+	writer.writeBlob(file.data)
 	return writer.bytes()
+}
+
+func (c *lsgConnection) storageGetReply(data []byte) []byte {
+	return c.storagePublisherGetReply(mw2PublisherFile{
+		id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: data,
+	})
 }
 
 func loadMW2Playlist() ([]byte, error) {
@@ -403,9 +427,57 @@ func loadMW2Playlist() ([]byte, error) {
 	return nil, fmt.Errorf("read %s: %w", mw2PlaylistFilename, lastErr)
 }
 
+func loadMW2PublisherFiles() ([]mw2PublisherFile, error) {
+	playlist, err := loadMW2Playlist()
+	if err != nil {
+		return nil, err
+	}
+	motd := []byte(os.Getenv("MW2_MOTD"))
+	if len(motd) == 0 {
+		motd = []byte(mw2DefaultMOTD)
+	}
+	if len(motd) > mw2MOTDMaxSize {
+		return nil, fmt.Errorf("MW2_MOTD is %d bytes, maximum is %d", len(motd), mw2MOTDMaxSize)
+	}
+	return []mw2PublisherFile{
+		{id: mw2MOTDFileID, name: mw2MOTDFilename, data: motd},
+		{id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: playlist},
+	}, nil
+}
+
+func selectMW2PublisherFiles(files []mw2PublisherFile, request mw2StorageRequest) []mw2PublisherFile {
+	selected := make([]mw2PublisherFile, 0, len(files))
+	for _, file := range files {
+		if request.filter == "" || request.filter == file.name {
+			selected = append(selected, file)
+		}
+	}
+	if request.maximum == 0 || request.offset >= uint32(len(selected)) {
+		return nil
+	}
+	selected = selected[request.offset:]
+	if len(selected) > int(request.maximum) {
+		selected = selected[:request.maximum]
+	}
+	return selected
+}
+
+func findMW2PublisherFile(files []mw2PublisherFile, fileID uint64) (mw2PublisherFile, bool) {
+	for _, file := range files {
+		if file.id == fileID {
+			return file, true
+		}
+	}
+	return mw2PublisherFile{}, false
+}
+
 func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 	c.lastServiceID = bdServiceStorage
 	c.lastOperationID = 0
+	c.lastStorageFiles = nil
+	c.lastStorageFileIDs = nil
+	c.lastStorageGetFile = ""
+	c.lastStorageGetID = ""
 	request, err := parseMW2StorageRequest(payload)
 	if err != nil {
 		return lsgTaskReplyType, c.storageErrorReply(0, bdErrorServiceNotAvailable), true
@@ -419,33 +491,39 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		reply = c.storageOwnerListReply()
 	case bdStorageListFiles:
 		c.lastTaskSupported = true
-		if request.maximum == 0 || request.offset > 0 ||
-			(request.filter != "" && request.filter != mw2PlaylistFilename) {
-			reply = c.storageEmptyListReply()
-			break
-		}
-		data, loadErr := loadMW2Playlist()
+		files, loadErr := loadMW2PublisherFiles()
 		if loadErr != nil {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
 		}
-		c.playlistBytes = len(data)
-		c.playlistSHA256 = digestHex(data)
-		reply = c.storageListReply(data)
+		playlist := files[1]
+		c.playlistBytes = len(playlist.data)
+		c.playlistSHA256 = digestHex(playlist.data)
+		selected := selectMW2PublisherFiles(files, request)
+		for _, file := range selected {
+			c.lastStorageFiles = append(c.lastStorageFiles, file.name)
+			c.lastStorageFileIDs = append(c.lastStorageFileIDs, fmt.Sprintf("0x%016x", file.id))
+		}
+		reply = c.storagePublisherListReply(selected)
 	case bdStorageGetFile:
 		c.lastTaskSupported = true
-		if request.fileID != mw2PlaylistFileID {
-			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
-			break
-		}
-		data, loadErr := loadMW2Playlist()
+		files, loadErr := loadMW2PublisherFiles()
 		if loadErr != nil {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
 		}
-		c.playlistBytes = len(data)
-		c.playlistSHA256 = digestHex(data)
-		reply = c.storageGetReply(data)
+		file, found := findMW2PublisherFile(files, request.fileID)
+		if !found {
+			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
+			break
+		}
+		c.lastStorageGetFile = file.name
+		c.lastStorageGetID = fmt.Sprintf("0x%016x", file.id)
+		if file.id == mw2PlaylistFileID {
+			c.playlistBytes = len(file.data)
+			c.playlistSHA256 = digestHex(file.data)
+		}
+		reply = c.storagePublisherGetReply(file)
 	default:
 		reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
 	}

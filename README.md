@@ -176,9 +176,11 @@ MW2_LOG_LEVEL=debug MW2_LOG_SENSITIVE=true go run ./cmd/mw2-server
 
 This logs authentication tickets, platform/LSG/session keys, raw records,
 decrypted LSG request payloads, plaintext replies, and encrypted frames. It
-also emits structured playlist filename, file ID, metadata, byte length, and
-SHA-256 fields plus a warning when repeated operation-8 replies are not
-followed by operation 5. Treat the complete log as credential-bearing.
+also emits the complete advertised publisher-file set, selected operation-5
+filename, playlist metadata, byte length, and SHA-256 fields plus a warning
+when repeated operation-8 replies are not followed by operation 5. Set
+`MW2_MOTD` to override the built-in message-of-the-day text. Treat the complete
+log as credential-bearing.
 
 Inspect a raw stream encoded with this project's experimental frame envelope:
 

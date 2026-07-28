@@ -472,8 +472,10 @@ func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload
 			if summary.errorCode == bdErrorNone &&
 				(summary.operationID == bdStorageListFiles || summary.operationID == bdStorageGetFile) {
 				attrs = append(attrs,
-					"file_name", mw2PlaylistFilename,
-					"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
+					"advertised_files", session.lastStorageFiles,
+					"advertised_file_ids", session.lastStorageFileIDs,
+					"requested_file", session.lastStorageGetFile,
+					"requested_file_id", session.lastStorageGetID,
 					"metadata_u32_1", 0,
 					"metadata_u32_2", 0,
 					"metadata_flag_1", false,

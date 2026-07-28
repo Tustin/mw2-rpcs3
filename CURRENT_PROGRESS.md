@@ -1,7 +1,8 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-28 after diagnosing the live playlist stall, correcting
-the mandatory typed-task reply marker, proving the complete playlist-fetch handoff,
+_Last updated: 2026-07-28 after diagnosing the live publisher-directory stall,
+correcting the mandatory typed-task reply marker, adding the required
+message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
 implementing the statically recovered retail matchmaking lifecycle, recovering
 the UDP public-address/NAT-classification exchanges, directly validating the
 legacy introducer relay, and recovering the post-find peer
@@ -22,14 +23,16 @@ Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
   `bdFileInfo` for each result;
 - operation `5` has no outer result count on the wire. It begins with a typed
   destination-buffer size, followed by `bdFileInfo` and the typed blob.
+- `messageoftheday.info` is fetched through the same list/get state machine
+  before `playlists.info`; both must be present in the publisher directory.
 
-The latest sensitive server trace proved why the live client never sent
-operation `5`: the server's operation-8 body began directly with typed `u64`.
-MW2 constructs the incoming `bdBitBuffer` at `0x003d2be8` and consumes the
-first bit as its type-checking flag through `0x003d2810`. Because the typed
-`u64` tag's low bit is zero, the client disabled type checks and decoded every
-field one bit out of alignment. All bit-packed task replies now emit the
-required leading `1` marker.
+The newest sensitive trace confirms that the leading type-checking marker fix
+is deployed: every operation-8 reply logs `type_checked=true`. It also exposes
+the next blocker unambiguously: the client requests operation `8` six times,
+never requests operation `5`, and every reply advertises only
+`playlists.info`. Static analysis then found two `messageoftheday.info` state
+initializers (`0x0030a748`, `0x0030a788`) before the playlist initializer
+(`0x0030a7c8`). The server now lists and serves both publisher files.
 
 The Go serializers and focused tests have been updated to those layouts. Direct
 tracing of the retail playlist parser and Public Playlists feeder confirms that
@@ -38,9 +41,10 @@ the `mp_afghan,dm,100` entry is accepted, and party bounds `1/1` permit a solo
 player. The operation-8 completion loop is also now proven: it selects exact
 filename `playlists.info`, copies only its `u64` ID, starts operation `5`, and
 passes the downloaded buffer (up to `0x20000` bytes) directly to the playlist
-parser. Neutral metadata fields are not a fetch gate. The marker correction
-still requires a new live RPCS3 run; no preserved run ever sent storage
-operation `5`.
+parser. The same filename/opaque-ID handoff serves a bounded plain-text MOTD
+first. Neutral metadata fields are not a fetch gate. The expanded publisher
+directory still requires a new live RPCS3 run; no preserved emulator run ever
+sent storage operation `5`.
 
 The service-5 audit recovered operations `1` create, `2` update, `3` delete,
 `4` find by ID, and `5` find sessions. The server now implements the
@@ -73,9 +77,10 @@ anti-abuse policy remain unresolved.
 | Dynamic authentication | Working in prior live runs | A fresh session key, game ticket, and LSG ticket are generated per connection. |
 | RPCN key extraction | Working in prior live runs | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset. |
 | Encrypted retail LSG | Working in prior live runs | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing. |
-| Storage operation `8` | Root cause corrected statically and covered by tests; live recheck pending | Returns leading type-checking bit `1`, then one result: outer count `1`, actual file byte size, and `bdFileInfo`. The latest trace's markerless replies explain the repeated op8/no-op5 loop. |
+| Storage operation `8` | Root cause corrected statically and covered by tests; live recheck pending | Returns leading type-checking bit `1`, then both required publisher results: `messageoftheday.info` and `playlists.info`, each with actual byte size and `bdFileInfo`. |
 | Storage operation `7` | Implemented; corrected live recheck pending | Returns a successful empty outer result count. |
-| Storage operation `5` | Corrected statically and covered by tests; not observed live | Returns actual buffer size, `bdFileInfo`, then the raw typed blob for the advertised ID. |
+| Storage operation `5` | Corrected statically and covered by tests; not observed live | Resolves either advertised opaque ID and returns actual buffer size, matching `bdFileInfo`, then the raw typed blob. |
+| MOTD prerequisite | Implemented from static proof; live recheck pending | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text. |
 | Bundled `playlists.info` | Retail-parser valid; 95% confidence | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection. |
 | Docker playlist packaging | Fixed in the working tree | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`. |
 | Stats | Placeholder only | The observed retail request is service `4`, operation `4`; the server currently returns an empty success. |
@@ -89,7 +94,7 @@ anti-abuse policy remain unresolved.
 | Playlist parsing / lobby population | Not live-verified | No corrected operation-5 download and client parse have been captured yet. |
 | Runtime discovery telemetry | Corrected in the working tree | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply. |
 
-Operation-8 request handling also honors the one-file directory's exact
+Operation-8 request handling also honors the two-file directory's exact
 filename filter and pagination boundaries. Operation-5 requests must include
 the recovered zero five-bit terminator.
 
