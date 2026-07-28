@@ -17,6 +17,9 @@ func TestCapturedRPCNBandwidthRequestReachesRawTaskHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	session.bandwidthIPv4 = [4]byte{192, 0, 2, 25}
+	session.bandwidthPort = 3074
+	session.bandwidthConfigured = true
 
 	serviceID, payload, err := session.decryptRequest(frame)
 	if err != nil {
@@ -40,7 +43,12 @@ func TestCapturedRPCNBandwidthRequestReachesRawTaskHandler(t *testing.T) {
 	if !session.lastTaskSupported || session.lastServiceID != bdServiceBandwidth || session.lastOperationID != 1 {
 		t.Fatalf("supported=%v service=%d operation=%d", session.lastTaskSupported, session.lastServiceID, session.lastOperationID)
 	}
-	if len(response) != 11 || response[8] != 1 || binary.LittleEndian.Uint16(response[9:]) != bdErrorServiceNotAvailable {
+	if len(response) != 51 || response[8] != 0 ||
+		binary.LittleEndian.Uint32(response[9:13]) != 512 ||
+		binary.LittleEndian.Uint32(response[13:17]) != 5 ||
+		binary.LittleEndian.Uint16(response[37:39]) != 3074 ||
+		!bytes.Equal(response[39:43], []byte{192, 0, 2, 25}) ||
+		!bytes.Equal(response[43:51], []byte{0, 1, 2, 3, 4, 5, 6, 7}) {
 		t.Fatalf("malformed bandwidth reply=%x", response)
 	}
 }

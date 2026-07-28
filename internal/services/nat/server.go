@@ -33,6 +33,9 @@ const (
 	natTraversalDestIPOffset   = 0x17
 	natTraversalDestPortOffset = 0x1b
 
+	bandwidthUploadPacketSize = 512
+	bandwidthUploadPackets    = 5
+
 	defaultAlternateAddr = ":3075"
 )
 
@@ -142,6 +145,18 @@ func (s *Server) servePacketConns(ctx context.Context, primary, alternate net.Pa
 		s.packets.Add(1)
 		_ = s.recorder.Record("nat", "in", remote.String(), buffer[:n])
 
+		if sequence, upload := bandwidthUploadSequence(buffer[:n]); upload {
+			s.log.Info("bandwidth upload packet received",
+				"remote", remote,
+				"sequence", sequence,
+				"bytes", n,
+			)
+			// Upload-only tests are measured by receipt. The client sends its
+			// measurements through the subsequent service-18 finalize request,
+			// so this UDP phase intentionally has no response.
+			continue
+		}
+
 		if response, reply := ipDiscoveryReply(buffer[:n], remote); reply {
 			s.writeReply(primary, remote, response[:])
 			continue
@@ -164,6 +179,22 @@ func (s *Server) servePacketConns(ctx context.Context, primary, alternate net.Pa
 		}
 		s.writeReply(writer, remote, response[:])
 	}
+}
+
+func bandwidthUploadSequence(packet []byte) (uint32, bool) {
+	if len(packet) != bandwidthUploadPacketSize {
+		return 0, false
+	}
+	sequence := binary.LittleEndian.Uint32(packet[:4])
+	if sequence >= bandwidthUploadPackets {
+		return 0, false
+	}
+	for index, expected := range [...]byte{0, 1, 2, 3, 4, 5, 6, 7} {
+		if packet[4+index] != expected {
+			return 0, false
+		}
+	}
+	return sequence, true
 }
 
 func (s *Server) writeReply(conn net.PacketConn, remote net.Addr, response []byte) {

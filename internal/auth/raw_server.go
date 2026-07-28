@@ -57,6 +57,9 @@ type RawServer struct {
 	lsgSessions         *lsgSessionStore
 	matchmakingOnce     sync.Once
 	matchmakingSessions *mw2MatchmakingStore
+	bandwidthIPv4       [4]byte
+	bandwidthPort       uint16
+	bandwidthConfigured bool
 }
 
 const minimumAuthenticatedLSGIdleTimeout = 5 * time.Minute
@@ -87,6 +90,22 @@ func (s *RawServer) LSGFrames() uint64      { return s.lsgFrames.Load() }
 // isolated development environment. It must be called before Serve.
 func (s *RawServer) SetSensitiveLogging(enabled bool) {
 	s.logSensitive = enabled
+}
+
+// SetBandwidthEndpoint configures the client-reachable endpoint used by the
+// Demonware bandwidth-test prerequisite. It normally matches the primary NAT
+// listener. When ip is nil, an accepted TCP connection's concrete local IPv4
+// is used for native (non-container) runs.
+func (s *RawServer) SetBandwidthEndpoint(ip net.IP, port uint16) {
+	ipv4 := ip.To4()
+	if ipv4 == nil || port == 0 {
+		s.bandwidthConfigured = false
+		s.bandwidthPort = port
+		return
+	}
+	copy(s.bandwidthIPv4[:], ipv4)
+	s.bandwidthPort = port
+	s.bandwidthConfigured = true
 }
 
 func (s *RawServer) Serve(ctx context.Context) error {
@@ -245,6 +264,17 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 	if err != nil {
 		log.Warn("retail LSG session setup failed", "error", err)
 		return
+	}
+	session.bandwidthIPv4 = s.bandwidthIPv4
+	session.bandwidthPort = s.bandwidthPort
+	session.bandwidthConfigured = s.bandwidthConfigured
+	if !session.bandwidthConfigured {
+		if local, ok := conn.LocalAddr().(*net.TCPAddr); ok && local != nil {
+			if ipv4 := local.IP.To4(); ipv4 != nil && !ipv4.IsUnspecified() && session.bandwidthPort != 0 {
+				copy(session.bandwidthIPv4[:], ipv4)
+				session.bandwidthConfigured = true
+			}
+		}
 	}
 	defer func() {
 		if removed := session.matchmakingSessions.deleteOwner(session.connectionID); removed > 0 {
@@ -486,6 +516,18 @@ func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload
 				)
 			}
 		}
+	} else if session.lastServiceID == bdServiceBandwidth {
+		attrs = append(attrs,
+			"operation_id", session.lastOperationID,
+			"bandwidth_phase", session.lastBandwidthPhase,
+			"endpoint", fmt.Sprintf("%d.%d.%d.%d:%d",
+				session.bandwidthIPv4[0],
+				session.bandwidthIPv4[1],
+				session.bandwidthIPv4[2],
+				session.bandwidthIPv4[3],
+				session.bandwidthPort,
+			),
+		)
 	}
 	log.Info("retail LSG response prepared", attrs...)
 }

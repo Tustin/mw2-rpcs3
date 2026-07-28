@@ -147,6 +147,9 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	session.bandwidthIPv4 = [4]byte{192, 0, 2, 25}
+	session.bandwidthPort = 3074
+	session.bandwidthConfigured = true
 	// Exact decrypted core from the prior live RPCS3 run. Unlike normal tasks,
 	// bandwidth uses an untyped raw operation byte.
 	payload := mustDecodeHex("010000000000724c3800000000000dcd40")
@@ -157,8 +160,45 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	if !session.lastTaskSupported || session.lastServiceID != bdServiceBandwidth || session.lastOperationID != 1 {
 		t.Fatalf("supported=%v service=%d operation=%d", session.lastTaskSupported, session.lastServiceID, session.lastOperationID)
 	}
-	if len(result) != 11 || result[8] != 1 || binary.LittleEndian.Uint16(result[9:]) != bdErrorServiceNotAvailable {
-		t.Fatalf("malformed bandwidth reply=%x", result)
+	want := mustDecodeHex(
+		"0000000000000000" +
+			"00" +
+			"00020000" +
+			"05000000" +
+			"f4010000" +
+			"d0070000" +
+			"10270000" +
+			"88130000" +
+			"f4010000" +
+			"020c" +
+			"c0000219" +
+			"0001020304050607",
+	)
+	if !bytes.Equal(result, want) {
+		t.Fatalf("malformed bandwidth request reply=%x want=%x", result, want)
+	}
+	frame, err := session.encryptResponse(responseType, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(frame) != 65 {
+		t.Fatalf("bandwidth request wire length=%d want=65", len(frame))
+	}
+
+	finalizePayload := append([]byte{1}, make([]byte, 20)...)
+	responseType, result, ok, reply = handleLSGMessage(session, bdServiceBandwidth, finalizePayload)
+	if !ok || !reply || responseType != lsgServiceTaskReplyType {
+		t.Fatalf("bandwidth finalize response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if session.lastBandwidthPhase != "finalize" || len(result) != 29 || result[8] != 0 {
+		t.Fatalf("malformed bandwidth finalize reply phase=%q payload=%x", session.lastBandwidthPhase, result)
+	}
+	frame, err = session.encryptResponse(responseType, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(frame) != 49 {
+		t.Fatalf("bandwidth finalize wire length=%d want=49", len(frame))
 	}
 }
 

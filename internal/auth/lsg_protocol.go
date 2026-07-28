@@ -89,6 +89,10 @@ type lsgConnection struct {
 	lastStorageFileIDs  []string
 	lastStorageGetFile  string
 	lastStorageGetID    string
+	bandwidthIPv4       [4]byte
+	bandwidthPort       uint16
+	bandwidthConfigured bool
+	lastBandwidthPhase  string
 	matchmakingSessions *mw2MatchmakingStore
 }
 
@@ -452,14 +456,76 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 
 func (c *lsgConnection) handleBandwidthTask(payload []byte) (byte, []byte, bool) {
 	// Retail bandwidth probes are service tasks, not regular type-checked bd
-	// tasks. The captured request starts with raw operation 1.
+	// tasks. Both phases start with raw operation 1. The initial request has a
+	// 17-byte core (19 bytes after 3DES padding); the finalize request has a
+	// 21-byte core (27 bytes after padding).
 	operationID := payload[0]
 	c.lastServiceID = bdServiceBandwidth
 	c.lastOperationID = operationID
-	c.lastTaskSupported = operationID == 1
+	c.lastTaskSupported = false
+	c.lastBandwidthPhase = "rejected"
+	if operationID != 1 || !c.bandwidthConfigured {
+		return lsgServiceTaskReplyType, bandwidthRejection(), true
+	}
 
+	c.lastTaskSupported = true
+	if len(payload) >= 21 {
+		c.lastBandwidthPhase = "finalize"
+		return lsgServiceTaskReplyType, bandwidthFinalizeSuccess(), true
+	}
+	if len(payload) >= 17 {
+		c.lastBandwidthPhase = "request"
+		return lsgServiceTaskReplyType, c.bandwidthRequestSuccess(), true
+	}
+
+	c.lastTaskSupported = false
+	return lsgServiceTaskReplyType, bandwidthRejection(), true
+}
+
+func bandwidthRejection() []byte {
+	// LSG service-task replies begin with an untyped u64 transaction ID.
 	response := make([]byte, 11)
-	response[8] = operationID
+	response[8] = 1
 	binary.LittleEndian.PutUint16(response[9:], bdErrorServiceNotAvailable)
-	return lsgServiceTaskReplyType, response, true
+	return response
+}
+
+func (c *lsgConnection) bandwidthRequestSuccess() []byte {
+	// Ghost's symbol-preserved bdBandwidthTestClient::handleRequestReply proves
+	// the success body after the u64 transaction ID:
+	//
+	//   bool rejected=false
+	//   u32 packetSize, numPackets, senderInitialWait, sendDuration
+	//   u32 receiverInitialWait, receiveDuration, lingerDuration
+	//   u16 port
+	//   IPv4[4]
+	//   byte token[8]
+	//
+	// The MW2 PS3 retail capture independently fixes the title-specific values:
+	// five 512-byte UDP packets, first at about 500 ms, spaced over 2 seconds,
+	// sent to the advertised IPv4 on UDP 3074 with token 00..07.
+	response := make([]byte, 51)
+	offset := 8 // untyped u64 transaction ID remains zero
+	response[offset] = 0
+	offset++
+	for _, value := range [...]uint32{512, 5, 500, 2000, 10000, 5000, 500} {
+		binary.LittleEndian.PutUint32(response[offset:], value)
+		offset += 4
+	}
+	binary.LittleEndian.PutUint16(response[offset:], c.bandwidthPort)
+	offset += 2
+	copy(response[offset:], c.bandwidthIPv4[:])
+	offset += len(c.bandwidthIPv4)
+	copy(response[offset:], []byte{0, 1, 2, 3, 4, 5, 6, 7})
+	return response
+}
+
+func bandwidthFinalizeSuccess() []byte {
+	// handleFinalizeReply consumes rejected=false followed by five raw u32
+	// result fields. Zero is a valid neutral result and completes the client
+	// state machine. Including the transaction prefix makes this 29 bytes,
+	// producing the exact 49-byte encrypted record seen in the retail PCAP.
+	response := make([]byte, 29)
+	response[8] = 0
+	return response
 }

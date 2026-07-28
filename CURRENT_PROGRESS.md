@@ -84,7 +84,7 @@ anti-abuse policy remain unresolved.
 | Bundled `playlists.info` | Retail-parser valid; 95% confidence | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection. |
 | Docker playlist packaging | Fixed in the working tree | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`. |
 | Stats | Placeholder only | The observed retail request is service `4`, operation `4`; the server currently returns an empty success. |
-| Bandwidth | Captured request routing fixed | Service `18` uses a raw leading op `1`; the observed payload now reaches the special service-task reply path. |
+| Bandwidth | Two-phase bootstrap implemented from PDB + retail PCAP proof; live recheck pending | Service `18/1` returns the exact 51-byte request result (65-byte wire frame), accepts five 512-byte UDP uploads on the primary NAT socket, then returns the 29-byte finalize result (49-byte wire frame). |
 | Retail matchmaking op `5` | Implemented from static proof; live confirmation pending | Validates the exact type-2/max-50 query and all seven recovered field meanings. Only the proven required-free-slot condition is applied; unknown retail comparisons are not guessed. |
 | Retail matchmaking lifecycle | Implemented and covered by synthetic and real-auth two-client server harnesses; live RPCS3 confirmation pending | Two independent retail auth connections receive distinct dynamic tickets/keys, consume their issued one-use LSG tickets, complete storage `8`/`5`, and exercise create/find/update/delete with the exact candidate tuple. Ticket replay is rejected. |
 | UDP public-address/NAT discovery | Implemented from ELF/PCAP proof and covered by golden/integration tests | Exact v2 `0x1e` requests receive a nine-byte `0x1f` reply. Exact v2 `0x14` commands `0`, `3`, and `2` receive a 15-byte `0x15` reply from the required source socket; malformed/unsupported packets are ignored. |
@@ -115,6 +115,10 @@ the recovered zero five-bit terminator.
   service ID. Observed `0x12` is bandwidth service `18`, whose payload begins
   with an untyped raw operation byte.
 - Reply message type `1` is the normal retail task-reply path.
+- Bandwidth service `18` is the special reply-type-`5` path. The first
+  success body is transaction `u64`, success byte, seven `u32` parameters,
+  `u16` UDP port, IPv4, and an eight-byte token. Its finalize success body is
+  transaction `u64`, success byte, and five `u32` result fields.
 
 ### UDP public-address and NAT discovery
 
