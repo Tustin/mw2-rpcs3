@@ -235,10 +235,20 @@ func newLSBBitWriter(capacityBits int) *lsbBitWriter {
 }
 
 func (w *lsbBitWriter) writeBit(value bool) {
+	byteIndex := w.bitPos / 8
+	if byteIndex >= len(w.data) {
+		w.data = append(w.data, 0)
+	}
 	if value {
-		w.data[w.bitPos/8] |= 1 << (w.bitPos % 8)
+		w.data[byteIndex] |= 1 << (w.bitPos % 8)
 	}
 	w.bitPos++
+}
+
+func (w *lsbBitWriter) writeBits(value uint64, count int) {
+	for bit := 0; bit < count; bit++ {
+		w.writeBit(value&(1<<bit) != 0)
+	}
 }
 
 func (w *lsbBitWriter) writeBytes(data []byte) {

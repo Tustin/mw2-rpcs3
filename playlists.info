@@ -1,0 +1,13 @@
+version 504
+
+gametype dm
+name english "Free-for-All"
+script dm
+
+playlist 0
+name english "Free-for-All"
+description english "Every man for himself."
+ranked
+maxparty 1
+minparty 1
+mp_afghan,dm,100

@@ -83,6 +83,35 @@ func EncryptLSGRecord(messageType byte, payload []byte, ivSeed uint32, sessionKe
 	return frame, nil
 }
 
+func EncryptLSGServerRecord(messageType byte, payload []byte, ivSeed uint32, sessionKey []byte) ([]byte, error) {
+	if len(sessionKey) != 24 {
+		return nil, fmt.Errorf("LSG session key length must be 24 bytes, got %d", len(sessionKey))
+	}
+	block, err := des.NewTripleDESCipher(sessionKey)
+	if err != nil {
+		return nil, fmt.Errorf("create LSG 3DES cipher: %w", err)
+	}
+
+	plainLength := 5 + len(payload)
+	paddedLength := (plainLength + des.BlockSize - 1) / des.BlockSize * des.BlockSize
+	plaintext := make([]byte, paddedLength)
+	binary.LittleEndian.PutUint32(plaintext[:4], 0xdeadbeef)
+	plaintext[4] = messageType
+	copy(plaintext[5:], payload)
+
+	seedBytes := littleEndianUint32(ivSeed)
+	iv := tigerDigest(seedBytes)[:des.BlockSize]
+	ciphertext := make([]byte, len(plaintext))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, plaintext)
+
+	frame := make([]byte, lsgEncryptedHeaderLen+len(ciphertext))
+	binary.LittleEndian.PutUint32(frame[:4], uint32(len(frame)-4))
+	frame[4] = 1
+	copy(frame[5:9], seedBytes)
+	copy(frame[9:], ciphertext)
+	return frame, nil
+}
+
 func DecryptLSGRecord(frame []byte, sessionKey []byte) (DecryptedLSGRecord, error) {
 	if len(sessionKey) != 24 {
 		return DecryptedLSGRecord{}, fmt.Errorf("LSG session key length must be 24 bytes, got %d", len(sessionKey))

@@ -79,6 +79,7 @@ type lsgConnection struct {
 	connectionID    uint64
 	requestIV       uint32
 	responseIV      uint32
+	nextTransaction uint64
 	lastServiceID   byte
 	lastOperationID byte
 }
@@ -151,6 +152,7 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 	}
 	connection.connectionID = binary.LittleEndian.Uint64(random[:8])
 	connection.responseIV = binary.LittleEndian.Uint32(random[8:])
+	connection.nextTransaction = 1
 	return connection, nil
 }
 
@@ -233,7 +235,7 @@ func (c *lsgConnection) diagnoseRequest(log *slog.Logger, step int, frame []byte
 }
 
 func (c *lsgConnection) encryptResponse(messageType byte, payload []byte) ([]byte, error) {
-	response, err := EncryptLSGRecord(messageType, payload, c.responseIV, c.key[:])
+	response, err := EncryptLSGServerRecord(messageType, payload, c.responseIV, c.key[:])
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,7 @@ func (c *lsgConnection) decryptResponse(frame []byte) (byte, []byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	if !decrypted.Encrypted || !decrypted.HMACValid {
+	if !decrypted.Encrypted || (!decrypted.HMACValid && decrypted.HMAC != 0xdeadbeef) {
 		return 0, nil, fmt.Errorf("invalid encrypted LSG response")
 	}
 	return decrypted.MessageType, append([]byte(nil), decrypted.Plaintext[5:]...), nil
@@ -260,6 +262,7 @@ const (
 	bdTypeU64    = 0x0a
 	bdTypeF32    = 0x0d
 	bdTypeString = 0x10
+	bdTypeBlob   = 0x13
 
 	bdServiceStorage        = 10
 	bdServiceTitleUtilities = 12
@@ -339,6 +342,9 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 	if len(payload) == 0 {
 		return 0, nil, false
 	}
+	if serviceID == bdServiceStorage {
+		return c.handleStorageTask(payload)
+	}
 	operationID := payload[0]
 	if operationID == bdTypeU8 && len(payload) >= 2 {
 		operationID = payload[1]
@@ -378,8 +384,6 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 		response[8] = 1
 		binary.LittleEndian.PutUint16(response[9:], bdErrorServiceNotAvailable)
 		return lsgServiceTaskReplyType, response, true
-	case serviceID == bdServiceStorage:
-		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNoFile, nil), true
 	default:
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 	}
