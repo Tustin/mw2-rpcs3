@@ -107,6 +107,29 @@ func TestHandleLSGDMLTaskReply(t *testing.T) {
 	}
 }
 
+func TestHandleLSGStatsMultipleRanksReturnsEmptySuccess(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceStats, []byte{bdTypeU8, 7})
+	if !ok || !reply || responseType != lsgTaskReplyType {
+		t.Fatalf("stats response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if len(result) != 26 {
+		t.Fatalf("stats reply length=%d payload=%x", len(result), result)
+	}
+	if transaction := binary.LittleEndian.Uint64(result[1:9]); transaction != 0 {
+		t.Fatalf("stats transaction=%d", transaction)
+	}
+	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorNone {
+		t.Fatalf("stats error=%d", errorCode)
+	}
+	if result[14] != bdTypeU8 || result[15] != 7 || result[16] != bdTypeU32 || binary.LittleEndian.Uint32(result[17:21]) != 0 || result[21] != bdTypeU32 || binary.LittleEndian.Uint32(result[22:26]) != 0 {
+		t.Fatalf("malformed stats reply=%x", result)
+	}
+}
+
 func TestHandleLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {

@@ -13,3 +13,5 @@ The captures/ folder contains useful debugging and reverse engineering items:
 - RPCS3 log can be found at /mnt/e/rpcs3/log/RPCS3.log. I have enabled network debugging traces in RPCS3 so it will log all PS3 network calls.
 
 - iw6_ds_ps3.exe/pdb is a Call of Duty Ghosts PS3 server executable with debug symbols available. It might be useful as it's also an Infinity Ward title, albeit it a couple years newer than Modern Warfare 2. It might be useful for cross referencing strings to the default_mp.elf.
+
+You also have access to IDA Pro MCP server which has default_mp.elf loaded for debugging purposes.

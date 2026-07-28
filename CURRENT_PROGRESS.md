@@ -1,197 +1,197 @@
 # Current status of MW2 Demonware server emulation
 
-- Matchmaking transport authentication succeeds, allowing the game to display "Connecting to Matchmaking Server Complete." This does not mean the full online bootstrap, playlist fetch, profile/rank update, or lobby-service login has completed.
-- The authentication response is generated per connection with a random 24-byte session key and LSG ticket; it no longer replays the captured retail response.
-- The LSG connection validates and consumes the ticket issued by authentication, accepts the zero game-ID sentinel emitted by RPCN/PS3 clients, establishes a fresh IV, and encrypts/decrypts framed messages with 3DES-CBC plus SHA-1 HMAC validation.
-- The first encrypted client message uses outer LSG message type `0x12`. Executable analysis identifies it as the lobby-service connection-ID notification; the server now records its little-endian 64-bit connection ID, sends no reply, and continues to the login/task exchange.
-- Minimal dynamic handlers exist for login and generic result messages. The next runtime capture should reveal the first unsupported post-login service and operation IDs needed for playlist and profile tasks.
-- Captured retail packets remain test fixtures and protocol-analysis inputs only; production server behavior has no captured-response dependency.
-- We can enter the lobby. Previous observed UI state: https://stuff.tustin.dev/60cd167b-872d-4d1a-8c98-5077f003e243
+_Last updated: 2026-07-27 after the 20:44–20:45 RPCS3 run._
 
-### RPCN LSG session-key offset fixed (2026-07-27)
+## Executive summary
 
-- Root cause of the `invalid LSG request HMAC` failures: the RPCN LSG session key was read at the wrong ticket offset (absolute 91), which landed in zero padding, so `parsePS3LSGSessionKey` returned an all-zero key and every encrypted task record failed HMAC.
-- Confirmed by brute-forcing every 24-byte window of a live RPCN ticket against a failing frame: only `RPCN marker - 60` validated, yielding a clean bd message (`type=0x04`, HMAC match). Two runtime tickets both resolve to the identical `5f3030…080018<handle>` structure at that delta even though absolute offsets differ by a byte.
-- Fix: `parsePS3LSGSessionKey` now extracts the RPCN key at `bytes.Index(ticket, "RPCN") - ps3RPCNKeyMarkerDelta` (`ps3RPCNKeyMarkerDelta = 60`) instead of the absolute offset. Retail path (offset 151) unchanged. `TestRetailAuthRequestLSGSessionKey` updated to assert the marker-relative, non-zero key.
-- Diagnostics added (kept for now): auth-time `LSG ticket key diagnostic` (ticket hex, extracted key, marker offset, non-zero spans) and, on decrypt failure, `LSG HMAC diagnostic` (decrypted plaintext + candidate HMAC scopes against active/pending keys). Also `retail LSG request decrypted` logs service/operation IDs and visible strings per request.
-- Result: real post-login task records now decrypt and validate. Example first task: outer LSG `type=4`, payload `07c10038010000002800000040e96b8f7bf94413e0020000000000`.
+The project now gets MW2 on RPCS3 through dynamic Demonware authentication, the encrypted Lobby Service Gateway (LSG) handshake, and a sustained post-login service-task session. The game displays **“Connecting to Matchmaking Server Complete.”** and continues sending storage, bandwidth, and stats requests without crashing or reconnecting.
 
-### Current blocker: unhandled post-login LSG message types
+The most recent fix corrected the successful storage task-result header. MW2 expects both `numResults` and `totalNumResults` before the first storage result. With both counts present, RPCS3 accepted repeated publisher-file list replies and advanced into stats traffic. The earlier storage deserialization crash is therefore fixed.
 
-- `type 18` (0x12): 19-byte payload beginning `01 00 …`. Existing `handleLSGMessage` connection-ID branch expects `payload[0]==0x0a` (bdTypeU64) but the real first byte is `0x01` (bdTypeBool); it is rejected as "unimplemented". The `0x12` parser needs correcting to the real payload shape.
-- `type 4`: 27-byte structured payload `07c1 00 | 38010000 (312) | 28000000 (40) | <8-byte id> | e0020000 (736)`. `736 = BD_AUTH...` range / `700`-series lobby status; likely a lobby login/connection message. No handler yet.
-- Note: a recurring canned frame (sha256 `ed627dc7…`) reappears across unrelated accounts and validates under no key — this is an RPCN/RPCS3 stale-record replay on reconnect, not a key problem, and can be ignored.
+The client has not yet sent storage operation `5` (`getFile`) for `playlists.info`. The current blocker is no longer authentication, encryption, or basic `bdFileInfo` deserialization; it is determining why the client lists the publisher file successfully but does not select/download it.
 
-### Connection-ID (0x12) parse fixed + connection kept alive (2026-07-27)
+## Current end-to-end state
 
-- The `0x12` connection-ID/registration record is not a single bd-typed u64. Runtime payloads are fixed structures beginning with `0x01` (bdTypeBool), e.g. `01000100000000000000000000000000000000`. The handler now accepts the record in whatever shape it arrives, still extracts a tagged u64 when present, marks the session logged in, and sends no reply.
-- The LSG dispatch loop no longer tears down the connection on an unimplemented message type; it logs and continues. This lets a single session surface its entire post-login sequence (all service/operation IDs and any storage filenames) instead of stopping at the first unknown record.
-- Tests updated: replaced `TestHandleLSGRejectsMalformedConnectionID` (which encoded the disproven strict-u64 assumption) with `TestHandleLSGConnectionIDMarksLogin` (real `0x01`-prefixed payload) and `TestHandleLSGConnectionIDExtractsTaggedU64`.
-- Still open: outer `type 4` payload (`07c1 00 | 38010000 | 28000000 | <8-byte id> | e0020000(736)`) is not a clean bd-typed stream and has no handler yet; it is likely a lobby-connection/login record. With the loop now kept alive, the next run should reveal what the client sends after these records.
+| Phase | Status | Evidence / notes |
+|---|---|---|
+| Listener startup | Working | Auth, LSG/lobby, NAT, and HTTP listeners start. |
+| Auth request parsing | Working | Retail/RPCN NP-ticket requests are recognized and decoded. |
+| Dynamic auth response | Working | A fresh 24-byte session key, game ticket, and LSG ticket are generated per connection; the captured retail response is not replayed. |
+| RPCN key extraction | Working | The LSG key is located relative to the `RPCN` marker (`marker offset - 60`), avoiding a brittle absolute offset. |
+| LSG hello | Working | The client echoes the issued ticket, the server consumes the ticket→key mapping, accepts RPCN’s zero game-ID sentinel where applicable, and returns the hello acknowledgement. |
+| Encrypted LSG records | Working | Client requests decrypt and validate; server replies encrypt with 3DES-CBC and the expected record framing. |
+| Connection-ID notification | Working | Outer message type `0x12` is treated as the lobby connection-ID notification and does not receive an incorrect task reply. |
+| Service task dispatch | Working | Service and operation IDs are parsed from the client’s bit-packed request format. |
+| Title utilities / DML | Minimally implemented | Time and geographic stubs exist. |
+| Bandwidth service | Minimally implemented | Operation `1` receives the service-task reply shape expected by the client. |
+| Storage list operation `8` | Accepted by RPCS3 | Returns one `playlists.info` metadata result with both result counts. No deserialization crash in the latest run. |
+| Storage owner-list operation `7` | Accepted by RPCS3 | Returns a successful empty result (`0, 0`). |
+| Storage get operation `5` | Implemented server-side, not observed client-side | Can return metadata plus the raw playlist blob when requested with the advertised file ID. RPCS3 has not requested it yet. |
+| Stats operation `7` | Minimally implemented | Returns an empty success; the latest run reached repeated stats requests after storage. |
+| Playlist parsing / lobby population | Not reached | No operation `5` download yet, so the game has not consumed the local playlist. |
+| Profile, rank, create-a-class, matchmaking/lobby population | Not implemented | These are later bootstrap stages after playlist selection/download. |
 
-### Post-login records are a reliable-transport layer, not standalone tasks (2026-07-27)
+## Protocol findings established so far
 
-- With the connection kept alive, session `29730` proceeded through steps 2-9. The records after the connection-ID message are **DemonWare reliable-connection frames**, not one-off service requests. Confirmed by ELF paths `bdConnection/bdWindow/bdReliableSendWindow.cpp` and `bdUnreliableSendWindow.cpp`, plus `getMessageToDispatch`.
-- Evidence is retransmission: after stripping the trailing counter-byte padding (the last plaintext byte equals the outer IV/sequence and repeats to fill the block), the same cores recur:
-  - `type 10 core 07c2004000000000860c0000` at steps 3, 4, 8
-  - `type 10 core c7c10050fadae35e3ed104b808000000c0900100` at steps 5, 7
-  - `type 4 core 07c10038010000002800000040e96b8f7bf94413e002` at step 6
-  - `type 18 core 010000000000724c3800000000000dcd40` at step 9
-- The outer frame IV/sequence increments 1..7 while payloads repeat, i.e. the client is **retransmitting unacknowledged reliable messages**. The server never sends reliable ACKs (it only answered the hello), so the client loops. The `07 c2 00` / `c7 c1 00` payload prefix is the reliable-window header (flags/sequence/ack), not bd-typed data — which is why a bd bit-decode yields `flag=0` then an invalid tag.
-- Implication: `type 4/10/18` should not be answered as individual application tasks. The server must parse the reliable-window header, acknowledge received sequences, and only then interpret the inner service payload (storage/DML/etc.).
+### Authentication
 
-### Correction: the LSG lobby is TCP bdLobbyConnection, not the SCTP bdConnection (2026-07-27)
+- Auth and LSG are separate TCP connections on port `3074`.
+- The auth request contains the MW2 game ID (`0x14a0`) and an NP/RPCN authorization ticket.
+- The response is generated dynamically and contains an encrypted game ticket, client/session data, and an LSG ticket.
+- The server stores a one-use mapping from the issued LSG ticket to the 24-byte 3DES session key.
+- Retail and RPCN ticket layouts differ. Runtime RPCN tickets showed that the useful key position is stable relative to the `RPCN` marker rather than to the beginning of the whole variable-length ticket.
+- The retail packet capture remains useful for framing and flow, but its encrypted LSG payload cannot be decrypted without the original platform key.
 
-- Earlier note guessed the post-login records were SCTP `bdConnection` chunks. That was wrong. The iw6 PDB shows two distinct transports:
-  - `bdConnection` (SCTP-style, UDP): chunked `bdPacket` with `bdChunkTypes` `BD_CT_DATA/INIT/SACK/COOKIE_ECHO/...` (max enum value 14) and init/cookie/SAck handlers. This is used elsewhere (e.g. matchmaking/NAT), not the LSG lobby TCP stream.
-  - `bdLobbyConnection` (the LSG stream on TCP 3074): a length-prefixed message framing with a receive state machine `m_recvState` = `BD_READ_INIT/SIZE/ENCRYPT/MESSAGE/COMPLETE` and methods `sendTask`, `send`, `sendRaw`, `getMessageToDispatch`, `recvMessageSize`, `recvEncryptType`, `recvMessageData`. Our LSG record framing already matches this layer.
-- The observed outer types 4/10/18 are therefore **`bdMessage` types on the lobby stream**, not SCTP chunk types (the numbers do not fit `bdChunkTypes` anyway: our type 18 > 14). `bdMessage` = `m_type` (u8) + `m_payload` (byte buffer), with an optional unencrypted payload. Lobby message handling logs `Received message of type: BD_LOBBY_SERVICE_TASK_REPLY` / `BD_LOBBY_SERVICE_PUSH_MESSAGE` and `Received unknown message type: %u`.
-- Retransmission is still real (same cores recur at steps 3/4/8 and 5/7 with an incrementing outer IV), but it is the **lobby/remote-task reliability** (`bdRemoteTaskManager`, `bdLobbyConnection::sendReliable`-style), not SCTP SAck. The client resends a lobby message until it observes the expected reply/ack message on the stream.
-- The `07 c2 00` / `c7 c1 00` body prefix is thus the start of a lobby service/task header inside `m_payload`, not a chunk header. The prior clean brute-forced message (`type=0x04 07c10038…`) reinforces that these are application-level task frames.
+### LSG transport
 
-### ELF dispatcher findings (2026-07-27)
+- The persistent lobby channel is `bdLobbyConnection` over TCP, not the UDP/SCTP-like `bdConnection` transport.
+- Encrypted records use:
+  - a little-endian length prefix;
+  - envelope flag `0x01`;
+  - a 32-bit IV seed;
+  - IV derived from the seed with Tiger;
+  - 3DES-CBC using the auth-issued 24-byte key;
+  - plaintext shaped as `u32 HMAC/prefix + u8 messageType + payload + zero padding`.
+- Client request HMAC validation now succeeds with the dynamically derived RPCN key.
+- Server responses currently use the `0xdeadbeef` prefix accepted by this client path; local round-trip diagnostics intentionally report that this is not a computed request HMAC while still confirming the message type and payload.
+- The server maintains one monotonically increasing task transaction sequence across normal and storage replies.
 
-- The incoming `bdLobbyConnection` dispatcher is at ELF VMA `0x3f81d0`.
-- Its concrete reply enum values are:
-  - encrypted type `1` = `BD_LSG_SERVICE_TASK_REPLY`
-  - unencrypted type `2` = `BD_LOBBY_SERVICE_TASK_REPLY`
-  - unencrypted type `3` = `BD_LOBBY_SERVICE_PUSH_MESSAGE`
-- This confirms the server's existing `lsgResultReplyType = 1` response type. The observed client values 4/10/18 are outgoing/request-side message types and do not belong to the incoming reply switch.
-- The encrypted type-1 body begins with a `u32` correlation/task field, a one-byte marker expected to be 1, then another `u32` header/length field before serialized result bytes. Detailed evidence and remaining uncertainty are in `docs/demonware-lobby-messages.md`.
+### Task/result encoding
 
-### Next step (revised)
+There are two relevant serializers:
 
-- Trace the request-side `sendTask` serializer to name the fields in `07c2…`/`c7c1…`, map outgoing types 4/10/18, and copy the request correlation identifier into a type-1 task reply. Then route confirmed service/operation payloads to the existing handlers and test whether the matching reply stops client retransmission.
+- Normal service replies use byte-aligned typed fields (`bdByteWriter`).
+- MW2 storage requests and replies use the LSB-first bit-packed typed serializer (`bdBitReader` / `bdBitWriter`).
 
-## Useful info
+A successful task result includes:
 
-The `captures/` folder contains:
+1. transaction ID (`u64`),
+2. error code (`u32`),
+3. operation ID (`u8`),
+4. `numResults` (`u32`),
+5. `totalNumResults` (`u32`),
+6. zero or more result objects.
 
-- `mw2 ps3 from start.pcapng`: a packet capture from a PS3 starting offline at the XMB, launching MW2 multiplayer, selecting Play Online, signing into PSN, authenticating with Demonware, and downloading lobby data.
-- `default_mp.elf`: the decrypted PS3 MW2 multiplayer executable.
+The latest runtime test resolves the earlier ambiguity about the storage counts: **MW2 requires both count fields for these successful storage replies.** A one-count operation-8 response was 64 bytes and led to the client-side deserialization failure/retry behavior. The corrected two-count response is 68 bytes and is accepted.
 
-The captured exchange and executable remain useful for deriving the exact lobby RPC schemas and service identifiers. The session encryption itself is now implemented dynamically, so further reverse engineering should focus on decrypted request payload semantics rather than replaying or recovering a single captured session key.
+### Storage metadata and playlist serving
 
-Current server status log:
+The advertised publisher file currently uses:
 
-```json
-{"time":"2026-07-27T18:55:54.50403754-05:00","level":"INFO","msg":"listener starting","name":"auth"}
-{"time":"2026-07-27T18:55:54.504121276-05:00","level":"INFO","msg":"listener starting","name":"nat"}
-{"time":"2026-07-27T18:55:54.504236122-05:00","level":"INFO","msg":"listener starting","name":"http"}
-{"time":"2026-07-27T18:55:54.504240021-05:00","level":"INFO","msg":"listener starting","name":"lobby"}
-{"time":"2026-07-27T18:56:15.795933129-05:00","level":"INFO","msg":"client connected","listener":"auth","remote":"172.25.32.1:2969"}
-{"time":"2026-07-27T18:56:15.81070878-05:00","level":"INFO","msg":"retail authentication request received","listener":"auth","remote":"172.25.32.1:2969","bytes":303,"sha256":"2ed7b665746e8fc33187559154921ce8f9f442784073bba0ecad52814a1a6d16","visible_strings":["188878","Tustin","UP0002-BLUS30377_00","r6INV8YLwUtYDbYw7eYu1KTj","RPCN"]}
-{"time":"2026-07-27T18:56:15.810939384-05:00","level":"INFO","msg":"LSG ticket key diagnostic","listener":"auth","remote":"172.25.32.1:2969","ticket_len":283,"ticket_hex":"2101000000000113300000c00008001431383838373800000000000000000000000000000001000400000100000700080000019fa60110ca000700080000019fa60ecc6a0002000800000000000189a60004002054757374696e0000000000000000000000000000000000000000000000000000000800046272000000040004756e0000000800185550303030322d424c555333303337375f303000000000000001000400000000000800187236494e5638594c775574594462597737655975314b546a00000000000000003002004b000800045250434e0008003f303d021c01542cda611e8fcc26835be870450705f0be423fd6c494c3ca510dad021d0087bfedfcc2b8d0e256b9d6e7986de312c21aba6b46de7d8190f658ff","extracted_key_hex":"5f303000000000000001000400000000000800187236494e","extracted_key_all_zero":false,"rpcn_marker_offset":212,"rpcn_key_marker_delta":60,"configured_retail_key_offset":151,"non_zero_spans":"[{Start:0 End:2} {Start:6 End:9} {Start:11 End:12} {Start:13 End:14} {Start:15 End:22} {Start:37 End:38} {Start:39 End:40} {Start:42 End:43} {Start:45 End:46} {Start:47 End:48} {Start:50 End:56} {Start:57 End:58} {Start:59 End:60} {Start:62 End:68} {Start:69 End:70} {Start:71 End:72} {Start:77 End:80} {Start:81 End:82} {Start:83 End:90} {Start:117 End:118} {Start:119 End:122} {Start:125 End:126} {Start:127 End:130} {Start:133 End:134} {Start:135 End:155} {Start:161 End:162} {Start:163 End:164} {Start:169 End:170} {Start:171 End:196} {Start:204 End:206} {Start:207 End:208} {Start:209 End:210} {Start:211 End:216} {Start:217 End:218} {Start:219 End:254} {Start:255 End:283}]"}
-{"time":"2026-07-27T18:56:15.811133313-05:00","level":"INFO","msg":"MW2 authentication success generated","listener":"auth","remote":"172.25.32.1:2969","bytes":295,"response_hex":"230100000013780500000c236c313066f508d17016dc518c620b6b63f80e454706dac0be79022be35a46143f4d41cac1c4f512e143050526542690a0485893078e57a95395782bf8a26566242eecab6c870e4b6a61a0ab67c6316444a89a4000b4aad2e6289bbf17a8edbf49a40a617a51de27f7c7d55ce610a09203e1bc190110fbd5611ee7472d84423adbe56d88b55ea6c611f79b21e4b2ec8c45ae04d35ade1e9801b54b88b55ea6c611f79b21e4b2ec8c45ae04d35ade1e9801b54b000000000000000000000000a8eae6e8d2dc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","game_id":"0x000014a0","session_key_hex":"c45a2f53e388fbcd10725976c6225782692d6f0fcc80da25"}
-{"time":"2026-07-27T18:56:15.830760922-05:00","level":"INFO","msg":"client connected","listener":"auth","remote":"172.25.32.1:2970"}
-{"time":"2026-07-27T18:56:15.843195419-05:00","level":"INFO","msg":"retail LSG client connected","listener":"lsg","remote":"172.25.32.1:2970"}
-{"time":"2026-07-27T18:56:15.843448585-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2970","bytes":152,"sha256":"a28cb36f697929ed464f7ad1e600307966377e7845a05c135d504d6a4b757eb8","frame_hex":"b4000000ffff00008c000000000711000000000200000020d67a991a47dc6f8690cbb23316b9124c6b797b6006d42e010000000000000000000000a0aa9ba34b73030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}
-{"time":"2026-07-27T18:56:15.843551704-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2970","step":1,"bytes":14}
-{"time":"2026-07-27T18:56:15.942150353-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2970","bytes":33,"sha256":"8bb13c02a232a242d094f40eab3a77353abd3e913b9fa854c3a10cc6a1652452","frame_hex":"1d000000010000000080453a1275ace758169f6f37012af5d080453a1275ace758"}
-{"time":"2026-07-27T18:56:15.942309146-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2970","step":2,"service_id":18,"payload_len":19,"payload_hex":"01000100000000000000000000000000000000","visible_strings":null,"operation_id":1}
-{"time":"2026-07-27T18:56:15.942496535-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2970","step":2,"bytes":25}
-{"time":"2026-07-27T18:56:38.234575017-05:00","level":"INFO","msg":"client connected","listener":"auth","remote":"172.25.32.1:2991"}
-{"time":"2026-07-27T18:56:38.249806234-05:00","level":"INFO","msg":"retail authentication request received","listener":"auth","remote":"172.25.32.1:2991","bytes":303,"sha256":"361af00e1e2244e27f2c67ddb20cf57326d841efcc9892dcb5edb72234325238","visible_strings":["188893","Tustin","UP0002-BLUS30377_00","qocdWxDeKC9SfxnYXZwyreIA","RPCN","WY L("]}
-{"time":"2026-07-27T18:56:38.249930836-05:00","level":"INFO","msg":"LSG ticket key diagnostic","listener":"auth","remote":"172.25.32.1:2991","ticket_len":283,"ticket_hex":"2101000000000113300000c00008001431383838393300000000000000000000000000000001000400000100000700080000019fa6016863000700080000019fa60f24030002000800000000000189a60004002054757374696e0000000000000000000000000000000000000000000000000000000800046272000000040004756e0000000800185550303030322d424c555333303337375f30300000000000000100040000000000080018716f6364577844654b43395366786e59585a77797265494100000000000000003002004b000800045250434e0008003f303d021c4cc51d54dc27fa5cab6c443b94cd5b96d4563fe4091f0cf58718eb06021d00be86fe10bd82c95a74ba1889100fecd15f8890fe5759204c28996d4f","extracted_key_hex":"5f30300000000000000100040000000000080018716f6364","extracted_key_all_zero":false,"rpcn_marker_offset":212,"rpcn_key_marker_delta":60,"configured_retail_key_offset":151,"non_zero_spans":"[{Start:0 End:2} {Start:6 End:9} {Start:11 End:12} {Start:13 End:14} {Start:15 End:22} {Start:37 End:38} {Start:39 End:40} {Start:42 End:43} {Start:45 End:46} {Start:47 End:48} {Start:50 End:56} {Start:57 End:58} {Start:59 End:60} {Start:62 End:68} {Start:69 End:70} {Start:71 End:72} {Start:77 End:80} {Start:81 End:82} {Start:83 End:90} {Start:117 End:118} {Start:119 End:122} {Start:125 End:126} {Start:127 End:130} {Start:133 End:134} {Start:135 End:155} {Start:161 End:162} {Start:163 End:164} {Start:169 End:170} {Start:171 End:196} {Start:204 End:206} {Start:207 End:208} {Start:209 End:210} {Start:211 End:216} {Start:217 End:218} {Start:219 End:254} {Start:255 End:283}]"}
-{"time":"2026-07-27T18:56:38.250077004-05:00","level":"INFO","msg":"MW2 authentication success generated","listener":"auth","remote":"172.25.32.1:2991","bytes":295,"response_hex":"230100000013780500002276aedb4f3dbcb5bbee10f0e53032650077757bd383067c4fc7ede356f33efb155a363b31cc6c1ff0fbc6476b6e38d645e394ee145324d5a1e7597463406dbbcd9e5c60209333f8f6ba3f37a576cb0ecfaa4029b4bb001f40d616f8afe4518ec6da109bd50888c08e42e9c5c941c3e1b0abbdba8f2079f96db167d344558b0d5cefd87da5eb52cee2840127cd82a756c58998239f19a0c18809e332a5eb52cee2840127cd82a756c58998239f19a0c18809e332010000000000000000000000a8eae6e8d2dc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","game_id":"0x000014a0","session_key_hex":"d275296771c2809366c153abe244cc91cf0cd060c4847199"}
-{"time":"2026-07-27T18:56:38.270035538-05:00","level":"INFO","msg":"client connected","listener":"auth","remote":"172.25.32.1:2992"}
-{"time":"2026-07-27T18:56:38.282994834-05:00","level":"INFO","msg":"retail LSG client connected","listener":"lsg","remote":"172.25.32.1:2992"}
-{"time":"2026-07-27T18:56:38.283288034-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":152,"sha256":"352db41af2ebc26b0c108c4852b4a375d52b4ef684cbc8db836da5afe46c358c","frame_hex":"b4000000ffff00008c000000000711000000000200000090ae4b398b13069c340b9e5a1527628e7c66800623268ccb040000000000000000000000a0aa9ba34b73030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}
-{"time":"2026-07-27T18:56:38.28337641-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":1,"bytes":14}
-{"time":"2026-07-27T18:56:38.417579801-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"4a8d5f6264e282d6837da7897b26b6e2062f46e7d9de0f3cddc24333579c5dfc","frame_hex":"1d0000000100000000dd3066c9c9752ee0213fa3a6012af5d1ced578e05b957b1d"}
-{"time":"2026-07-27T18:56:38.417702655-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":2,"service_id":18,"payload_len":19,"payload_hex":"01000000000000000000000000002e47080000","visible_strings":null,"operation_id":1}
-{"time":"2026-07-27T18:56:38.417851113-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":2,"bytes":25}
-{"time":"2026-07-27T18:56:38.418363781-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"bc36a30f070f422b25be2ae6730f1f2da10a036cf5e56bab44ed0963ae8a9d1a","frame_hex":"1d0000000101000000cf0a4a076248c433ba8071e675121bec00343cc2efe03dd1"}
-{"time":"2026-07-27T18:56:38.418425269-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":3,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000001010101010101","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:38.418497269-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":3,"bytes":81}
-{"time":"2026-07-27T18:56:38.418906682-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"d9e0487f6361363662033604496bc88b1087cf0094c20a2c0614e47a0c090be0","frame_hex":"1d0000000102000000408af55d8637cc6ab963b22d6569d38cb1ae4e476cf32931"}
-{"time":"2026-07-27T18:56:38.418949062-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":4,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000002020202020202","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:38.419003622-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":4,"bytes":81}
-{"time":"2026-07-27T18:56:38.419328349-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":41,"sha256":"ce4f79fa09ee32e1ce7f514c2a41e3c2e9374b74a1c6ccbfe716954bc90913e9","frame_hex":"2500000001030000005133e332d34b86dcf92b0ad896714004bea45c0c080507731e0f7bee51948355"}
-{"time":"2026-07-27T18:56:38.419378149-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":5,"service_id":10,"payload_len":27,"payload_hex":"c7c10050fadae35e3ed104b808000000c090010003030303030303","visible_strings":null,"operation_id":199}
-{"time":"2026-07-27T18:56:38.419439326-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":5,"bytes":33}
-{"time":"2026-07-27T18:56:42.836968554-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"f801b5186f06908498bb737b3da451de1a24e3d6e6c86eec4b13341ceaf8a878","frame_hex":"1d0000000104000000a71439b78f01e48e4e588dd17200dc1684a449054c1f2589"}
-{"time":"2026-07-27T18:56:42.837074214-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":6,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400404","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:56:42.837160373-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":6,"bytes":25}
-{"time":"2026-07-27T18:56:45.442778062-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"c0b27dcfa7837f1d23c67c9ea30bf746eafac22dfc0cefac63e5863485d9ea3e","frame_hex":"1d000000010500000091c2ff7a58c5c55417b2a3b45b696aa00103d0b7641d50b9"}
-{"time":"2026-07-27T18:56:45.442842475-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":7,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000005050505050505","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:45.442894268-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":7,"bytes":81}
-{"time":"2026-07-27T18:56:45.443590758-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"d9b516c8723fddb111e3e8572a87083bde58265dd7ae91dc737a4415ddc9dcd5","frame_hex":"1d0000000106000000ebfef6718d32dd129cfecdcb657fa4ce1977b477d7f018ca"}
-{"time":"2026-07-27T18:56:45.443635083-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":8,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400606","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:56:45.443702401-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":8,"bytes":25}
-{"time":"2026-07-27T18:56:46.830909779-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"934e8e3e1be3298288ae886376b7f9dfc5159986c15412eaa21cdcbd221aa3bf","frame_hex":"1d000000010700000008ed0f4003063afdb87f05c546db2494b51e5a5d75aac665"}
-{"time":"2026-07-27T18:56:46.830986658-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":9,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400707","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:56:46.831075696-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":9,"bytes":25}
-{"time":"2026-07-27T18:56:49.457649244-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"6748f79b05e3969d8357a461a0b3fbf8d1c34f8822ccf8a744405318dfe75fec","frame_hex":"1d0000000108000000a6b7dca0135e6165d8f4f07ded42b40bc54e4b0de4ff1df7"}
-{"time":"2026-07-27T18:56:49.457748025-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":10,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000008080808080808","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:49.457855267-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":10,"bytes":81}
-{"time":"2026-07-27T18:56:54.235192251-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"3a6e7951dbcafaafa73f24ec0f1f02f00244ac34f9a3366af4f1e859a586b349","frame_hex":"1d000000010900000062aac0a7bcf04e59d0277a1dac36d93c357caf9a879c394b"}
-{"time":"2026-07-27T18:56:54.235271744-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":11,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400909","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:56:54.235353988-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":11,"bytes":25}
-{"time":"2026-07-27T18:56:55.759860986-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"347a4aec9c131ea8b019379481e3fe64aae8f485d788f2a843414e7672c4d499","frame_hex":"1d000000010a0000001f51bbbba6b26aea45d994f6bf75a5793bc5440417b07444"}
-{"time":"2026-07-27T18:56:55.759946567-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":12,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400a0a","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:56:55.760030542-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":12,"bytes":25}
-{"time":"2026-07-27T18:56:57.435370792-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"e4516c974985bafe3a9eec615e5b9223d054a62654da8af0a8a1bfe855fabd31","frame_hex":"1d000000010b000000e66052e55f4db3de086649b95df1b9f7e8a8e948041a4173"}
-{"time":"2026-07-27T18:56:57.435444408-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":13,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c00000b0b0b0b0b0b0b","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:57.435537601-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":13,"bytes":81}
-{"time":"2026-07-27T18:56:57.665293841-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":41,"sha256":"d344936cefe86aac4bedb42a0d92f85910f538a9168d638daa557e6f3ffba65c","frame_hex":"25000000010c000000f4a2f0cba9f3c8e0cc6266641d63ecdec277f90249457d59bc1803af72271b3d"}
-{"time":"2026-07-27T18:56:57.665362529-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":14,"service_id":4,"payload_len":27,"payload_hex":"07c10038010000002800000040e96b8f7bf94413e0020c0c0c0c0c","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:57.665444414-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":14,"bytes":41}
-{"time":"2026-07-27T18:56:57.749753895-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":41,"sha256":"1fce2c6cc2073764e7b4116c4d7cf537d11f04a6b7d17a61cf46eabcde097c44","frame_hex":"25000000010d000000a68668675cf0a58270ba974077615a1944e3002ec1907f4cf9c6b55db49b272b"}
-{"time":"2026-07-27T18:56:57.749859266-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":15,"service_id":4,"payload_len":27,"payload_hex":"07c10038030000002800000040e96b8f7bf94413e0020d0d0d0d0d","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:56:57.74994626-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":15,"bytes":41}
-{"time":"2026-07-27T18:57:04.671592275-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"87652150f595f87e18e0ca3cae376e412b6d5d38232eeba234b71d9a49500869","frame_hex":"1d000000010e0000003ca545b728923d1368469296d70f9bf6c04c1b5a1080fe8b"}
-{"time":"2026-07-27T18:57:04.671671008-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":16,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400e0e","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:04.671793607-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":16,"bytes":25}
-{"time":"2026-07-27T18:57:10.765470907-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"f852d897519615e383526d55f6560369f0b689a2c07dc36ca051b9ea8f4b2d15","frame_hex":"1d000000010f0000003c3236f8dff9f264a9cf9006252eec9406f505f5751c111a"}
-{"time":"2026-07-27T18:57:10.765548788-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":17,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd400f0f","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:10.765662701-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":17,"bytes":25}
-{"time":"2026-07-27T18:57:13.456490541-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"cf8c120521370fe9c29fde97684d4396734061a18677bbb98c1dff68fd821990","frame_hex":"1d00000001100000008d02fee8667f4e9182fba3119cce49b7c64a806c69820aa9"}
-{"time":"2026-07-27T18:57:13.456564348-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":18,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000010101010101010","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:57:13.456627144-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":18,"bytes":81}
-{"time":"2026-07-27T18:57:19.463748085-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"d53857de62e88fe10db889c3005c29804e85e8db5999676a5068ae4554c85e95","frame_hex":"1d0000000111000000f7c671acae6c36f6a694919bed3e8a1ebb89c1c678598dd9"}
-{"time":"2026-07-27T18:57:19.463893177-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":19,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401111","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:19.464007035-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":19,"bytes":25}
-{"time":"2026-07-27T18:57:19.546741668-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"1ee510c9f4ea2940998a3afca9af7032a90f62be8404ca6d18044d271786bc0d","frame_hex":"1d000000011200000040674219b3b462f8a2ea49f0b04b6cc61ce40d6cb547d045"}
-{"time":"2026-07-27T18:57:19.546807481-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":20,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401212","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:19.546885645-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":20,"bytes":25}
-{"time":"2026-07-27T18:57:21.055061307-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"981f7b67446cc2fdcccb67a29307ac8ab60f0ea3b1272bc36c5f483cbd71c1d2","frame_hex":"1d0000000113000000b1c9536758cb4aa7d01a1da11dcdafe3dba7cc5f73e75f00"}
-{"time":"2026-07-27T18:57:21.055186433-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":21,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401313","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:21.055312966-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":21,"bytes":25}
-{"time":"2026-07-27T18:57:29.325064526-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"81ce4402ce35bd06886cfcdd57f63dd6ed495fbf6672223adbd53d64dccc62ff","frame_hex":"1d0000000114000000e3f5b7f815a6e882270859bf829aa864f7e86c2ca7caa961"}
-{"time":"2026-07-27T18:57:29.325167051-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":22,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401414","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:29.325234627-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":22,"bytes":25}
-{"time":"2026-07-27T18:57:37.465500397-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"51164620e947a55aa34230afbf98fb8d685e11dc96c3c7cb21ca1fb3c4a9872e","frame_hex":"1d0000000115000000cf7f34323cd48787f0445204da03ea8b86f0086f2e1d1eee"}
-{"time":"2026-07-27T18:57:37.46558283-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":23,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401515","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:37.465684998-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":23,"bytes":25}
-{"time":"2026-07-27T18:57:42.262641235-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"c87757e4e2a70d3cbd0c16c228be2fb5866b322791e9a4c886536c7cad4ba1cf","frame_hex":"1d0000000116000000e4615f728de433f5d6152e448433ef329a421cb35f1cd304"}
-{"time":"2026-07-27T18:57:42.262822701-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":24,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401616","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:42.2629208-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":24,"bytes":25}
-{"time":"2026-07-27T18:57:45.466818037-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"aaec805a778336a6118951d6d36b1929c795a4aaaab18e031f5b8195010cb735","frame_hex":"1d00000001170000007e97b237cd29870540d040c0552273dc2723e70c952fc5f0"}
-{"time":"2026-07-27T18:57:45.466902997-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":25,"service_id":10,"payload_len":19,"payload_hex":"07c2004000000000860c000017171717171717","visible_strings":null,"operation_id":7}
-{"time":"2026-07-27T18:57:45.466999943-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":25,"bytes":81}
-{"time":"2026-07-27T18:57:45.753229487-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"79b331b2be9fb0fc82d7ea0d8098c5317d98f20d1968e71a78aeb8729eff8a0d","frame_hex":"1d0000000118000000e9acde4016773137082965ebc886143de22d3a065a6c102f"}
-{"time":"2026-07-27T18:57:45.753315954-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":26,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401818","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:45.753391339-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":26,"bytes":25}
-{"time":"2026-07-27T18:57:54.022780235-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"1aaa8b4fa4b3620d8d28d84c2d429b35380d2add388860fb6e2ec375bb55dcd6","frame_hex":"1d00000001190000002d90655e544c7c7fd917115076d7f6b92869dad901b2fb89"}
-{"time":"2026-07-27T18:57:54.022845606-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":27,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401919","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:57:54.022945282-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":27,"bytes":25}
-{"time":"2026-07-27T18:58:02.127190599-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"29487693cf41ada6c683985c4942dcde00838df3cc9b71ca00416256c3f49774","frame_hex":"1d000000011a000000de619467255a3c2909e74263cf5071c7da050e2bd5ef69f9"}
-{"time":"2026-07-27T18:58:02.127272021-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":28,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401a1a","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:02.127364872-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":28,"bytes":25}
-{"time":"2026-07-27T18:58:04.678478554-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"9e6889051137797262165a1bcf884d5cd9426b28980a83f68e0c036f5a6bf237","frame_hex":"1d000000011b00000083169ec8b53829ac824bdc26a08e2e251078f7e8168b8d71"}
-{"time":"2026-07-27T18:58:04.678558463-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":29,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401b1b","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:04.678680814-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":29,"bytes":25}
-{"time":"2026-07-27T18:58:09.710477715-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"b5ae33f956e441fe3122b5f3f3a340e677882567c0b960d979b42eef3a24174f","frame_hex":"1d000000011c000000d1ab81d7972add1454703071c33b64b3416f67ac6d597ff1"}
-{"time":"2026-07-27T18:58:09.710559283-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":30,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401c1c","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:09.710622835-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":30,"bytes":25}
-{"time":"2026-07-27T18:58:15.058257818-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"2c2674d6b57009d7801c10d312465b68f114e520b06f6cbd09f1f3bc36abf512","frame_hex":"1d000000011d000000337902e08db11859512850b32fdb35e37afcc9adb20c46bc"}
-{"time":"2026-07-27T18:58:15.058344196-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":31,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401d1d","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:15.058485925-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":31,"bytes":25}
-{"time":"2026-07-27T18:58:18.384171257-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"668181b61eb2c48697a4266df163bfbcaba76689ffd2b73794a57ab4c6182e9a","frame_hex":"1d000000011e00000082e9f7f5c64f46cfbfd27753e5690a11d59f3462b5272676"}
-{"time":"2026-07-27T18:58:18.384241147-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":32,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401e1e","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:18.384315841-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":32,"bytes":25}
-{"time":"2026-07-27T18:58:21.912955765-05:00","level":"INFO","msg":"retail LSG record received","listener":"lsg","remote":"172.25.32.1:2992","bytes":33,"sha256":"407f3aa16f97776a58f381d6d21a2515c0e4284b51f01e13965c255b4ca9d865","frame_hex":"1d000000011f00000029419f577f506a464add874406fb60c4b571208faa08e3b1"}
-{"time":"2026-07-27T18:58:21.913044988-05:00","level":"INFO","msg":"retail LSG service request decrypted","listener":"lsg","remote":"172.25.32.1:2992","step":33,"service_id":18,"payload_len":19,"payload_hex":"010000000000724c3800000000000dcd401f1f","visible_strings":["rL8"],"operation_id":1}
-{"time":"2026-07-27T18:58:21.913134825-05:00","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"172.25.32.1:2992","step":33,"bytes":25}
-```
+- file ID: `0x1122334455667788`;
+- filename: `playlists.info`;
+- public visibility;
+- zero owner and timestamps;
+- the MW2 `bdFileInfo` typed-field order confirmed through ELF/PDB analysis.
+
+Implemented storage operations:
+
+| Operation | Meaning | Current response |
+|---:|---|---|
+| `7` | List files by owner | Successful empty result. |
+| `8` | List publisher/all files | One `bdFileInfo` result for `playlists.info`. |
+| `5` | Get file | If the requested file ID matches, returns one result containing `bdFileInfo` and the raw playlist blob. |
+
+`playlists.info` is loaded from `MW2_PLAYLISTS_FILE`, then the repository root fallback, with an additional test-friendly relative fallback. Empty files and files larger than `0x20000` are rejected. The current fixture is a minimal version-504 Free-for-All playlist.
+
+## Latest RPCS3 run: 2026-07-27 20:44–20:45
+
+### Successful sequence
+
+1. RPCS3 authenticated dynamically and received a fresh session key and LSG ticket.
+2. It connected to LSG and completed the hello exchange.
+3. Client encrypted service requests decrypted successfully.
+4. The client issued storage operation `8` several times.
+5. Each operation-8 reply contained one result and both count fields, producing a 68-byte plaintext payload / 89-byte encrypted frame.
+6. The client issued storage owner-list operation `7` and accepted the successful empty result.
+7. The same LSG connection stayed alive and advanced into service `4`, operation `7` stats traffic, reaching at least step 25.
+
+Observed storage transactions:
+
+| LSG step | Service | Operation | Transaction | Result counts |
+|---:|---:|---:|---:|---|
+| 3 | `10` | `8` | 0 | `1, 1` |
+| 4 | `10` | `8` | 1 | `1, 1` |
+| 5 | `10` | `7` | 2 | `0, 0` |
+| 7 | `10` | `8` | 3 | `1, 1` |
+| 10 | `10` | `8` | 4 | `1, 1` |
+
+### Interpretation
+
+- The prior RPCS3 crash while processing storage metadata is fixed.
+- The corrected replies are not causing an auth restart, LSG disconnect, or immediate malformed-result loop.
+- Repeated operation-8 requests appear to be distinct queued initialization requests: their request suffixes/sequence values advance, and successful requests to other services are interleaved.
+- No storage operation `5` appears in the run, so `playlists.info` was advertised but not downloaded.
+- Reaching stats traffic proves the bootstrap progressed beyond the original storage failure, but it does not yet prove that playlists, rank, profile, or lobby data loaded.
+
+## Important corrections to earlier notes
+
+- Earlier progress text said operation `8` should contain only one serialized result count. The latest implementation plus live RPCS3 behavior disproves that conclusion for this task-result path. Both `numResults` and `totalNumResults` are required.
+- “Connecting to Matchmaking Server Complete.” means the client reached the connected LSG state. It does **not** mean the full online bootstrap, playlist fetch, profile/rank initialization, or lobby population is complete.
+- The current issue is no longer the old RPCN HMAC/key-offset failure. Runtime requests now decrypt correctly using the marker-relative key extraction.
+
+## Current implementation areas
+
+- `internal/auth/raw_server.go`
+  - Auth/LSG connection handling, RPCN key diagnostics, request logging, encrypted response dispatch.
+- `internal/auth/legacy_response.go`
+  - Dynamic MW2 authentication response and ticket generation.
+- `internal/auth/lsg_record.go`
+  - LSG record parsing, encryption/decryption, 3DES, IV derivation, and HMAC validation.
+- `internal/auth/lsg_protocol.go`
+  - LSG session state, normal typed task replies, service dispatch, title utilities, DML, bandwidth, and stats stubs.
+- `internal/auth/lsg_storage.go`
+  - MW2 bit-packed storage request parser, reply serializer, transaction IDs, operations `5`/`7`/`8`, `bdFileInfo`, and playlist loading.
+- `internal/auth/lsg_storage_test.go`
+  - Storage request/reply layout, count fields, transactions, metadata, blob serving, size limits, and encryption-prefix regression tests.
+
+## Verification
+
+After the storage result-header correction:
+
+- `gofmt` completed successfully.
+- `go test ./internal/auth` passed.
+- `go test ./...` passed for the full repository.
+- No linter errors were reported for the edited storage files.
+- Live RPCS3 accepted the corrected storage replies and continued into stats requests.
+
+## Current blocker
+
+The next single problem to solve is:
+
+> Why does MW2 accept/list `playlists.info` through storage operation `8` but never issue operation `5` to retrieve the advertised file?
+
+Likely investigation points, in priority order:
+
+1. Trace the MW2 publisher-file list callback/result-selection path in `default_mp.elf`, from the accepted `bdFileInfo` result to the decision to call `getFile`/`getPublisherFile`.
+2. Verify every advertised metadata field used by that decision, especially file ID, filename, visibility flags, timestamps, owner ID, and whether MW2 expects file size or another field not present in the current seven-field serialization.
+3. Determine whether operation `8` is actually the expected publisher-list task for playlist discovery or whether its arguments select a different namespace/category.
+4. Correlate each repeated operation-8 request’s decoded arguments with its game initialization purpose rather than treating the trailing request bytes as opaque.
+5. Check the RPCS3 log and relevant client error strings immediately after each accepted list result for a silent filename/version/filter rejection.
+
+Do not move on to profile/rank implementation until the operation-8 → operation-5 transition is understood or ruled out; playlist retrieval is the current flow-order blocker.
+
+## Later work, after playlist retrieval
+
+1. Confirm operation `5` returns the raw local `playlists.info` bytes and that MW2 parses version 504.
+2. Add/serve MOTD or any other required publisher files discovered by the client.
+3. Implement the profile/rank/stat result structures required after the existing empty stats stub.
+4. Implement create-a-class and related per-user storage/profile tasks.
+5. Continue into matchmaking/lobby population and NAT/session behavior.
+6. Replace temporary diagnostics/stubs with production-safe validation once wire compatibility is established.
+
+## Reference material
+
+- Retail source of truth: `captures/mw2 ps3.pcapng`
+- Client executable: `captures/default_mp.elf` (loaded in IDA)
+- Cross-reference symbols: `iw6_ds_ps3.exe` / `iw6_ds_ps3.pdb`
+- Playlist fixture: `playlists.info`
+- Focused docs:
+  - `docs/demonware-flow.md`
+  - `docs/demonware-auth.md`
+  - `docs/demonware-lsg.md`
+  - `docs/demonware-lobby-messages.md`
+  - `docs/demonware-storage-playlists.md`
+  - `docs/demonware-next-steps.md`
+
+Some focused documents predate the latest runtime fixes and may still describe storage as unimplemented or the RPCN HMAC as the active blocker. This file is the authoritative current status until those documents are refreshed.

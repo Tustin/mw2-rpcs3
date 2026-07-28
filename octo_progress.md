@@ -201,8 +201,9 @@ The reply envelope contains a typed `u64` transaction ID, although the
 operation request payload itself does not contain one.
 
 MW2's task manager dispatches replies against its pending-task queue. A server
-should use a monotonically increasing reply transaction ID for compatibility.
-The provided codec accepts the ID as an explicit argument.
+should use a monotonically increasing reply transaction ID for compatibility,
+starting at zero for the first task on a connection. The provided codec accepts
+the ID as an explicit argument.
 
 ## Lobby encryption and framing
 
@@ -518,6 +519,7 @@ Check that:
 
 - operation-8 error code is zero;
 - result count is at least one;
+- the first file record begins immediately after that count with a typed `u64`;
 - filename is exactly `playlists.info`;
 - filename is a typed, NUL-terminated string;
 - file ID is nonzero and encoded as typed `u64`;

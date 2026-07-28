@@ -244,11 +244,14 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		if !reply {
 			continue
 		}
+		responseIV := session.responseIV
+		logLSGResponsePayload(log, step, responseType, responsePayload, session.lastServiceID == bdServiceStorage)
 		response, err := session.encryptResponse(responseType, responsePayload)
 		if err != nil {
 			log.Warn("retail LSG response encryption failed", "step", step, "error", err)
 			return
 		}
+		logLSGEncryptedResponse(log, step, responseIV, responseType, responsePayload, response, session.key[:])
 		if !s.writeLSGResponse(conn, remote, response, step, log) {
 			return
 		}
@@ -263,7 +266,24 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 		"payload_hex", hex.EncodeToString(payload),
 		"visible_strings", printableStrings(payload, 3),
 	}
-	if len(payload) > 0 {
+	if serviceID == bdServiceStorage {
+		request, err := parseMW2StorageRequest(payload)
+		if err != nil {
+			attrs = append(attrs, "storage_parse_error", err)
+		} else {
+			attrs = append(attrs, "operation_id", request.operationID)
+			switch request.operationID {
+			case bdStorageGetFile:
+				attrs = append(attrs, "file_id", fmt.Sprintf("0x%016x", request.fileID))
+			case bdStorageListOwnerFiles:
+				attrs = append(attrs,
+					"owner_id", fmt.Sprintf("0x%016x", request.ownerID),
+					"offset", request.offset,
+					"maximum", request.maximum,
+				)
+			}
+		}
+	} else if len(payload) > 0 {
 		operationID := payload[0]
 		if operationID == bdTypeU8 && len(payload) >= 2 {
 			operationID = payload[1]
@@ -271,6 +291,49 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 		attrs = append(attrs, "operation_id", operationID)
 	}
 	log.Info("retail LSG service request decrypted", attrs...)
+}
+
+func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, storageReply bool) {
+	attrs := []any{
+		"step", step,
+		"message_type", messageType,
+		"payload_len", len(payload),
+		"payload_hex", hex.EncodeToString(payload),
+		"visible_strings", printableStrings(payload, 3),
+	}
+	if summary, err := parseMW2StorageReplySummary(payload); storageReply && err == nil {
+		attrs = append(attrs,
+			"transaction_id", summary.transactionID,
+			"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
+			"operation_id", summary.operationID,
+			"result_count", summary.resultCount,
+		)
+	}
+	log.Info("retail LSG response plaintext prepared", attrs...)
+}
+
+func logLSGEncryptedResponse(log *slog.Logger, step int, ivSeed uint32, messageType byte, payload, frame, sessionKey []byte) {
+	attrs := []any{
+		"step", step,
+		"iv_seed", fmt.Sprintf("0x%08x", ivSeed),
+		"message_type", messageType,
+		"frame_len", len(frame),
+		"frame_hex", hex.EncodeToString(frame),
+	}
+	decrypted, err := DecryptLSGRecord(frame, sessionKey)
+	if err != nil {
+		attrs = append(attrs, "roundtrip_error", err)
+	} else {
+		roundtripPayload := decrypted.Plaintext[5 : 5+len(payload)]
+		attrs = append(attrs,
+			"roundtrip_hmac", fmt.Sprintf("0x%08x", decrypted.HMAC),
+			"roundtrip_hmac_valid", decrypted.HMACValid,
+			"roundtrip_message_type", decrypted.MessageType,
+			"roundtrip_payload_match", bytes.Equal(roundtripPayload, payload),
+			"roundtrip_plaintext_hex", hex.EncodeToString(decrypted.Plaintext),
+		)
+	}
+	log.Info("retail LSG response encrypted", attrs...)
 }
 
 func handleLSGMessage(session *lsgConnection, serviceID byte, payload []byte) (byte, []byte, bool, bool) {

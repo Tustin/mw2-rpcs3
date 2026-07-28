@@ -152,7 +152,6 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 	}
 	connection.connectionID = binary.LittleEndian.Uint64(random[:8])
 	connection.responseIV = binary.LittleEndian.Uint32(random[8:])
-	connection.nextTransaction = 1
 	return connection, nil
 }
 
@@ -264,6 +263,7 @@ const (
 	bdTypeString = 0x10
 	bdTypeBlob   = 0x13
 
+	bdServiceStats          = 4
 	bdServiceStorage        = 10
 	bdServiceTitleUtilities = 12
 	bdServiceBandwidth      = 18
@@ -323,7 +323,7 @@ func (w *bdByteWriter) writeString(value string) {
 
 func (c *lsgConnection) taskReply(operationID byte, errorCode uint32, results func(*bdByteWriter)) []byte {
 	writer := &bdByteWriter{}
-	writer.writeU64(0)
+	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(errorCode)
 	writer.writeU8(operationID)
 	resultCount := uint32(0)
@@ -379,6 +379,8 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeU32(0)
 			writer.writeU32(0)
 		}), true
+	case serviceID == bdServiceStats && operationID == 7:
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
 	case serviceID == bdServiceBandwidth && operationID == 1:
 		response := make([]byte, 11)
 		response[8] = 1
