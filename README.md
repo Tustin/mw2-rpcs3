@@ -4,28 +4,74 @@ A clean-room Go research backend for restoring private-match connectivity to **C
 
 ## Current status
 
-This repository now provides a safe, testable compatibility-server foundation:
+This repository now provides a clean-room compatibility-server foundation with
+two deliberately separate paths:
 
-- bounded binary framing and typed-buffer primitives;
-- service/task dispatch with protocol-level error responses;
-- experimental RPCN identity mapping and session tickets;
-- independently authored static MOTD/playlist responses;
-- concurrency-safe private-session creation, discovery, join, leave, heartbeat, and expiry;
-- an experimental UDP observed-address endpoint;
-- opt-in, bounded, redacted capture records and an offline inspector;
-- health, readiness, and privacy-safe JSON metrics.
+- a retail MW2 authentication and encrypted LSG path on TCP `3074`; and
+- an older experimental lobby/session scaffold on TCP `3075`.
 
-The authentication listener now reproduces the first verified retail exchange: BLUS30377 1.14 connects to `mw2-ps3-auth.mmp3.demonware.net` over TCP `3074`, sends a 304-byte request, receives the observed 11-byte rejection, and the server closes the connection. Successful authentication, post-authentication framing, cryptography, service IDs, and required publisher files remain unknown and must be established from user-owned runtime evidence. The lobby wire format remains an explicitly experimental envelope rather than pretending unverified details are authentic Demonware behavior.
+Prior RPCS3 runs have completed dynamic authentication, the LSG hello, and
+encrypted service requests. The server implements minimal title-utilities, DML,
+bandwidth, stats, and retail storage handlers. The corrected storage path
+advertises and serves the bundled 205-byte `playlists.info`; its operation-8 and
+operation-5 layouts are backed by client-disassembly evidence and golden tests.
+The retail parser also confirms that playlist ID `0`, the gametype alias, the
+weighted map entry, and the solo party bounds produce a visible, selectable
+row. A new live RPCS3 download is still required.
+
+Retail matchmaking is service `5`. The exact request schemas for operations
+`1` through `5` are recovered. The retail `3074` path now implements
+create/update/delete plus zero/nonempty `findSessions` against one shared,
+thread-safe directory, with generated session ID/key material and exact
+result objects. All seven query-field meanings are recovered; only the proven
+required-free-slot comparison is applied because the other historical backend
+comparators are absent from the client. Operation `4` and live RPCS3
+two-client confirmation remain pending. Automated harnesses cover both
+synthetic encrypted LSG clients and two real TCP authentication exchanges
+through issued one-use LSG tickets, storage, and candidate deletion. The
+session directory on `3075` remains a separate research scaffold.
+
+The retail directory has two explicit emulator hardening policies: a
+4096-record cap and update/delete ownership bound to the creating LSG
+connection. Owned records are reclaimed when that authenticated connection
+closes, preventing abandoned records from permanently consuming the bounded
+directory. Authenticated LSG connections use a separate five-minute idle limit,
+which safely exceeds the recovered 180-second host refresh cadence. None of
+these policies is claimed as a recovered historical backend rule.
+See [CURRENT_PROGRESS.md](CURRENT_PROGRESS.md) and [the service-5 protocol
+note](docs/demonware-matchmaking.md). The current milestone's evidence,
+validation boundary, and continuation checklist are in
+[docs/MILESTONE_HANDOVER.md](docs/MILESTONE_HANDOVER.md).
+
+Public-address and NAT discovery are separate recovered UDP exchanges. The
+server accepts exact MW2 v2 `1e 02 00` and `14 02 00 command` requests on
+primary UDP `3074`; classification commands `3` and `2` reply from alternate
+UDP `3075`. Exact later peer QoS and NAT-traversal packet codecs are recovered,
+as are the complete old-bdDTLS Init/InitAck/CookieEcho/CookieAck/Error/Data
+formats, authentication scope, and replay window.
+The current legacy introducer's strict 29-byte, embedded-destination
+type-`0x0a` -> type-`0x0b` relay was independently reproduced and is
+implemented on primary UDP `3074` behind a disabled-by-default safety flag;
+QoS and secure title traffic remain peer-to-peer. Live two-client confirmation
+remains pending. See the
+[IP-discovery protocol
+note](docs/demonware-ip-discovery.md) and [peer protocol
+notes](docs/demonware-peer-qos.md) ([DTLS](docs/demonware-peer-dtls.md)).
 
 ## Scope
 
-The first target is two RPCS3 clients running `BLUS30377` update `1.14`, signed into RPCN, joining one private match over a LAN or manually forwarded UDP. Public matchmaking, stats, progression, leaderboards, physical PS3 consoles, relays, anti-cheat, and host migration are out of scope.
+The target is two RPCS3 clients running `BLUS30377` update `1.14`, signed into
+RPCN, discovering and joining an MW2 match over the recovered retail control
+plane. Stats/profile behavior is implemented only as needed to complete the
+online bootstrap. Leaderboards, physical PS3 consoles, relays beyond the
+proven introducer forwarder, anti-cheat, and host migration remain out of
+scope.
 
 RPCN remains responsible for PSN-like identity, friends, presence, invitations, NP tickets, and standard NP signaling. This service is intended to provide only the title-specific control plane proven necessary through capture. Gameplay should remain directly between clients.
 
 ## Build and test
 
-Requirements: Go 1.25 or Docker.
+Requirements: Go 1.25.12 or newer in the 1.25 line, or Docker.
 
 ```bash
 go test ./...
@@ -40,20 +86,21 @@ Start locally:
 MW2_LOG_LEVEL=debug go run ./cmd/mw2-server
 ```
 
-Or with Docker Compose:
+Or with Docker Compose, replacing the example with the IPv4 address reachable
+by the game clients:
 
 ```bash
+echo "MW2_NAT_ADVERTISED_IP=192.168.1.10" > .env
 docker compose up --build
 ```
 
 Default listeners:
 
-- retail authentication TCP `3074`, verified from BLUS30377 1.14 capture;
-- experimental post-authentication/lobby TCP `3075`, not yet verified;
-- experimental observed-address UDP `3076`, not yet verified;
+- retail authentication and LSG TCP `3074`, exercised by prior RPCS3 runs;
+- recovered MW2 public-address/NAT discovery UDP `3074` plus alternate reply
+  source UDP `3075`, both of which coexist with TCP;
+- experimental custom lobby TCP `3075`, not a retail Demonware service;
 - health/metrics HTTP `8080`.
-
-Only the initial authentication address and TCP port are currently verified MW2 behavior.
 
 ## Configuration
 
@@ -61,15 +108,24 @@ All configuration is environment-based:
 
 - `MW2_AUTH_ADDR`, default `:3074`
 - `MW2_LOBBY_ADDR`, default `:3075`
-- `MW2_NAT_ADDR`, default `:3076`
+- `MW2_NAT_ADDR`, default `:3074` (primary UDP discovery socket)
+- `MW2_NAT_ALT_ADDR`, default `:3075` (alternate UDP reply-source socket; its
+  port must differ from the primary port)
+- `MW2_NAT_ADVERTISED_IP`, default blank for native runs (canonical
+  client-reachable alternate/source-check IPv4 for `0x15` replies; otherwise
+  the alternate socket's specific bind or a route-derived IPv4)
+- `MW2_NAT_RELAY_ENABLED`, default `false` (enables the exact unauthenticated
+  introducer forwarder; use only in an isolated/trusted lab)
 - `MW2_HTTP_ADDR`, default `:8080`
 - `MW2_LOG_LEVEL`, one of `debug`, `info`, `warn`, or `error`
 - `MW2_MAX_FRAME_BYTES`, default 1 MiB, valid range 64 bytes to 16 MiB
 - `MW2_READ_TIMEOUT`, default `30s`
 - `MW2_WRITE_TIMEOUT`, default `10s`
-- `MW2_SESSION_TTL`, default `2m`
+- `MW2_SESSION_TTL`, default `2m` (experimental TCP-3075 session scaffold
+  only; the retail service-5 directory does not invent a backend TTL)
 - `MW2_CAPTURE_ENABLED`, default `false`
 - `MW2_CAPTURE_DIR`, default `captures`
+- `MW2_PLAYLISTS_FILE`, default runtime fallbacks include `./playlists.info`
 - `MW2_MOTD`, independently authored text returned by the experimental storage service
 
 Endpoints:
@@ -83,14 +139,17 @@ Endpoints:
 1. Use a legally obtained `BLUS30377` installation updated to `1.14` on both clients.
 2. Record the exact RPCS3 build/commit, firmware, patches, DLC inventory, and RPCN version.
 3. Create separate RPCS3 profiles and RPCN accounts. Set Network Status to **Connected** and PSN Status to **RPCN**.
-4. Start with both clients and the server on one LAN. Do not debug NAT and the title protocol simultaneously.
+4. Start with both clients and the server on one LAN. Validate the title
+   protocol and recovered NAT-classification exchange before testing traversal.
 5. Enable focused RPCS3 logging for `sys_net`, `rpcn`, and signaling. Keep logs private until credentials and tokens are removed.
 6. Capture DNS and network metadata with Wireshark or tcpdump on the host interface and loopback where applicable.
 7. Inventory each hostname, destination, port, transport, TLS SNI, connection order, packet length, retry, timeout, and menu transition.
 8. Add RPCS3 IP/Host Switch entries one hostname at a time after the original hostname is observed. Do not use a wildcard initially. The exact mapping syntax and hostnames must come from the current RPCS3 documentation and the captured title behavior.
 9. If redirection reaches the server but TLS or application validation fails, stop and record the evidence. Do not disable security checks server-side or claim success; a narrowly scoped RPCS3 game patch requires separate review.
 
-RPCN commonly uses TCP `31313`, its UDP endpoint helper uses `3657`, and RPCS3 peer signaling commonly uses UDP `3658`. These RPCN values are separate from unknown MW2 publisher endpoints.
+RPCN commonly uses TCP `31313`, its UDP endpoint helper uses `3657`, and RPCS3
+peer signaling commonly uses UDP `3658`. These RPCN values are separate from
+MW2's captured auth, LSG, and discovery endpoints.
 
 ## Capture workflow
 
@@ -101,6 +160,10 @@ MW2_CAPTURE_ENABLED=true MW2_CAPTURE_DIR=./captures go run ./cmd/mw2-server
 ```
 
 Capture records are JSON Lines with timestamp, listener, direction, remote address, original length, SHA-256, and a bounded hexadecimal payload. Common textual credential labels are redacted, but binary secrets cannot be identified reliably. Review every record manually before sharing or committing it. `captures/*` is ignored by Git.
+
+Ordinary server logs intentionally omit raw authorization tickets, session
+keys, decrypted payload bytes, and frame hex. Enable packet capture only for a
+controlled debugging session and treat its output as secret material.
 
 Inspect a raw stream encoded with this project's experimental frame envelope:
 
@@ -114,23 +177,54 @@ Inspect a server capture file:
 go run ./cmd/mw2-inspect -jsonl ./captures/capture-YYYYMMDD.jsonl
 ```
 
-The inspector failing to decode a retail packet is expected until the actual framing is discovered. Preserve original PCAPs outside the repository and add only sanitized, legally shareable fixtures to `testdata/`.
+The inspector can decode server captures when the corresponding generated
+session material is available. An official retail PCAP alone does not contain
+the PS3 platform key needed to recover its encrypted LSG session. Preserve
+original PCAPs outside the repository and add only sanitized, legally shareable
+fixtures to `testdata/`.
 
-## Verified retail authentication exchange
+## Retail authentication and LSG
 
 RPCS3 host redirection should map:
 
 ```text
 mw2-ps3-auth.mmp3.demonware.net=<SERVER_IP>
+mw2-ps3-lsg.live.mmp3.demonware.net=<SERVER_IP>
+mw2-stun.us.demonware.net=<SERVER_IP>
+mw2-stun.eu.demonware.net=<SERVER_IP>
 ```
 
-The TCP `3074` listener reads exactly 303 bytes, logs a SHA-256 and bounded printable-field summary, optionally records the raw request when capture is enabled, sends the observed rejection below, and closes the connection:
+The TCP `3074` listener distinguishes the initial auth exchange from the
+follow-up LSG connection. It generates the auth tickets and session material,
+consumes the one-use LSG ticket, completes the hello, then decrypts and
+dispatches retail service tasks. Unsupported service/operation pairs are logged
+with their correctly decoded packed operation ID and receive a protocol error
+reply so runtime discovery can continue.
 
-```text
-07 00 00 00 00 13 C4 05 00 00 00
-```
+## MW2 public-address and NAT discovery
 
-The retail client closes the auth socket and retries after receiving this response. Replaying it verifies the redirected transport path, but does not authorize the client or advance it to the lobby endpoint.
+The two captured `mw2-stun.*.demonware.net` names use a compact proprietary UDP
+exchange, not RFC STUN. Exact `1e 02 00` requests receive a nine-byte `0x1f`
+observed-address reply. Exact `14 02 00 command` requests accept commands `0`,
+`3`, and `2` and receive a 15-byte `0x15` reply containing the observed client
+endpoint and advertised server endpoint. Command `0` replies from the primary
+socket; commands `3` and `2` reply from the alternate socket.
+
+Docker users must set `MW2_NAT_ADVERTISED_IP` to the host's client-reachable
+IPv4 and publish/forward both `3074/udp` and `3075/udp`; container route
+discovery cannot determine the host's public/LAN address. The advertised
+IPv4 at the primary port must also route to the primary listener because the
+client sends command `2` to that endpoint. The primary listener also performs
+the exact introducer relay: a strict 29-byte type-`0x0a` packet with
+little-endian version `>=2` is forwarded to its embedded destination after
+changing only the type to `0x0b`. The central service does not answer QoS
+probes or carry secure title traffic; the selected game host and seeker do.
+
+The relay is disabled by default because the historical packet contains no
+server-verifiable credential and its embedded destination controls where the
+server sends UDP. Enable `MW2_NAT_RELAY_ENABLED=true` only on an isolated or
+trusted test network; do not expose this research forwarder as a public
+internet service.
 
 ## Experimental post-authentication protocol envelope
 
@@ -153,16 +247,30 @@ Experimental services are:
 
 ## Validation gates
 
-1. Identify all publisher endpoints and TLS behavior.
-2. Decode the first client request from BLUS30377 1.14.
-3. Reach the multiplayer menu and remain authenticated for ten minutes.
-4. Register a host private session.
-5. Resolve and join from a second RPCS3 client on the same LAN.
-6. Confirm gameplay packets flow directly between clients and complete a match.
-7. Only then test manual UDP forwarding, UPnP, and two ordinary NATs.
+1. Live-confirm corrected storage operation `8` with file size `205`.
+2. Capture operation `5` and confirm the client parses the 205-byte playlist.
+3. Confirm the client issues the recovered service-5 operation-5 query and
+   accepts both zero- and nonempty-result replies.
+4. Run two distinct RPCN accounts through simultaneous LSG sessions and record
+   whether the current synthetic game-ticket identity appears in any later
+   request.
+5. Live-confirm create/find/update/delete and compare the post-find peer
+   QoS/traversal and DTLS transitions with the recovered packet codecs.
+6. Live-confirm the implemented introducer relay across two distinct NAT
+   mappings; implement operation `4` only if live use establishes its result
+   object.
+7. Live-confirm the `0` -> `3` -> `2` classification sequence and complete a
+   same-LAN/direct match before deploying introducer-assisted traversal.
 
-The repository's automated tests validate the research scaffold, not retail-game compatibility.
+The automated tests validate the recovered serializers and server behavior; they
+do not replace the pending live RPCS3 gates.
 
 ## Legal and security
 
-Do not distribute Activision or Sony binaries, publisher files, certificates, private keys, credentials, production tickets, or copyrighted captures. Public implementations may be studied for behavior and architecture, but code must not be copied unless its license is deliberately accepted and complied with. This project currently uses only the Go standard library and independently authored code/data.
+Do not distribute Activision or Sony binaries, publisher files, certificates,
+private keys, credentials, production tickets, or copyrighted captures. Public
+implementations may be studied for behavior and architecture, but code must not
+be copied unless its license is deliberately accepted and complied with. The
+server uses the MIT-licensed `github.com/cxmcc/tiger` package; required notices
+for it and the Go runtime are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

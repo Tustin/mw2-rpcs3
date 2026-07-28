@@ -34,20 +34,26 @@ typed   ticket_length  (u32)
 bytes   authorization_ticket[ticket_length]
 ```
 
-The authorization ticket embeds platform/PSN identity. Two fields are extracted
-from it by the server:
+The authorization ticket embeds platform/PSN identity and session material.
+The current retail handler extracts two cryptographic fields:
 
 - **Platform key** — `ticket[32:56]` (24 bytes). Used as the 3DES key that
   encrypts the game ticket in the response.
-- **LSG session key** — 24 bytes read from inside the ticket at a
-  platform-dependent offset:
-  - `151` for a retail PS3/NP ticket.
-  - `91` when the ticket contains the ASCII marker `RPCN` (RPCN clients).
-  This key is what the following LSG connection will use for 3DES.
+- **LSG session key** — 24 bytes read at offset `151` for a conforming retail
+  PS3/NP ticket, or 60 bytes before the `RPCN` marker for an RPCN ticket. The
+  marker-relative rule is used because earlier variable-length RPCN fields can
+  shift the absolute offset. This key is what the following LSG connection
+  uses for 3DES.
 
-Visible strings in a real request: user id (e.g. `179712`), `Tustin`,
+Visible strings in a real request include a ticket serial and an online ID such
+as `Tustin`,
 `UP0002-BLUS30377_00` (title/region), an NP ticket token, and `RPCN` for RPCN
-clients.
+clients. The visible decimal serial is not the subject account ID. The
+authorization ticket also contains a big-endian subject account ID and a
+32-byte online ID, but the current response builder deliberately does not map
+them into Demonware identity fields: an official PSN/RPCN-to-Demonware account
+namespace transform has not been proven above the project's confidence
+threshold.
 
 ## Response (server → client, 295 bytes)
 
@@ -76,14 +82,19 @@ and IV = `Tiger(iv_seed)[:8]`:
 0x04  u8    type  = 0
 0x05  u32   game_id
 0x09  16×   0x0a filler
-0x19  u64   user_id = 0x01100001deadc0de
-0x21  0x40  username ("Tustin"), null/zero padded
+0x19  u64   synthetic user_id = 0x01100001deadc0de
+0x21  0x40  synthetic username ("Tustin"), null/zero padded
 0x61  24×   session_key
 0x79  ..    0x0a filler to 128
 ```
 
 The client decrypts this with its own copy of the platform key to recover the
-session key. **Important consequence for reverse engineering:** because the
+session key. Direct MW2 client tracing proves the ticket parser reads the ID and
+name fields, but the authentication completion path persists only the 24-byte
+session key. Separate retail connections and matchmaking entries are keyed by
+random session material, not by these current synthetic identity values.
+
+**Important consequence for reverse engineering:** because the
 platform key lives only inside the PSN/RPCN ticket (not on the wire in a
 reusable form), the captured retail session key cannot be recovered from the
 pcap. The skipped test `TestDeriveCapturedLSGSessionKey` documents this dead
@@ -94,6 +105,7 @@ plaintext oracle.
 ### LSG ticket (128 bytes)
 
 `buildCandidateLSGTicket`: `session_key[24]` + 8 zero bytes + 4 zero bytes +
-`"Tustin"`. This is the token the client echoes back in the LSG hello so the
-server can look the session up (see `demonware-lsg.md`). The server stores the
-mapping `lsg_ticket → session_key` keyed on the first 24 bytes.
+`"Tustin"`. The trailing text is not established as an identity field. This is
+the opaque token the client echoes in the LSG hello so the server can look the
+session up (see `demonware-lsg.md`). The server stores the mapping
+`lsg_ticket → session_key` keyed on the first 24 bytes.

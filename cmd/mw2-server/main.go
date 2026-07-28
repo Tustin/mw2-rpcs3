@@ -42,7 +42,14 @@ func main() {
 	recorder := capture.New(cfg.CaptureEnabled, cfg.CaptureDir, int(cfg.MaxFrameBytes))
 	authServer := auth.NewRawServer(cfg.AuthAddr, logger, recorder, cfg.ReadTimeout, cfg.WriteTimeout)
 	lobbyServer := server.NewTCP("lobby", cfg.LobbyAddr, logger, dispatcher, recorder, cfg.MaxFrameBytes, cfg.ReadTimeout, cfg.WriteTimeout)
-	natServer := nat.New(cfg.NATAddr, logger, recorder)
+	natServer := nat.NewWithAddresses(
+		cfg.NATAddr,
+		cfg.NATAlternateAddr,
+		cfg.NATAdvertisedIP,
+		cfg.NATRelayEnabled,
+		logger,
+		recorder,
+	)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	type runner struct {

@@ -4,7 +4,6 @@ import (
 	"crypto/des"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"math"
@@ -74,14 +73,16 @@ func (s *lsgSessionStore) consume(ticket []byte) (lsgStoredSession, bool) {
 }
 
 type lsgConnection struct {
-	key             [24]byte
-	pendingKey      [24]byte
-	connectionID    uint64
-	requestIV       uint32
-	responseIV      uint32
-	nextTransaction uint64
-	lastServiceID   byte
-	lastOperationID byte
+	key                 [24]byte
+	pendingKey          [24]byte
+	connectionID        uint64
+	requestIV           uint32
+	responseIV          uint32
+	nextTransaction     uint64
+	lastServiceID       byte
+	lastOperationID     byte
+	lastTaskSupported   bool
+	matchmakingSessions *mw2MatchmakingStore
 }
 
 type lsgInitialRequest struct {
@@ -145,7 +146,11 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 	if _, err := des.NewTripleDESCipher(pendingKey[:]); err != nil {
 		return nil, fmt.Errorf("create pending LSG 3DES cipher: %w", err)
 	}
-	connection := &lsgConnection{key: key, pendingKey: pendingKey}
+	connection := &lsgConnection{
+		key:                 key,
+		pendingKey:          pendingKey,
+		matchmakingSessions: newMW2MatchmakingStore(),
+	}
 	var random [12]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return nil, fmt.Errorf("generate LSG connection state: %w", err)
@@ -223,11 +228,12 @@ func (c *lsgConnection) diagnoseRequest(log *slog.Logger, step int, frame []byte
 		}
 		log.Warn("LSG HMAC diagnostic",
 			"step", step,
-			"key", k.name,
-			"key_hex", hex.EncodeToString(k.key[:]),
+			"key_role", k.name,
+			"frame_len", len(frame),
+			"frame_sha256", digestHex(frame),
 			"stored_hmac", fmt.Sprintf("0x%08x", stored),
 			"message_type", messageType,
-			"plaintext_hex", hex.EncodeToString(plaintext),
+			"plaintext_len", len(plaintext),
 			"matching_scopes", matches,
 		)
 	}
@@ -257,6 +263,7 @@ const (
 	bdTypeBool   = 0x01
 	bdTypeU8     = 0x03
 	bdTypeU16    = 0x06
+	bdTypeI32    = 0x07
 	bdTypeU32    = 0x08
 	bdTypeU64    = 0x0a
 	bdTypeF32    = 0x0d
@@ -264,6 +271,7 @@ const (
 	bdTypeBlob   = 0x13
 
 	bdServiceStats          = 4
+	bdServiceMatchmaking    = 5
 	bdServiceStorage        = 10
 	bdServiceTitleUtilities = 12
 	bdServiceBandwidth      = 18
@@ -338,26 +346,73 @@ func (c *lsgConnection) taskReply(operationID byte, errorCode uint32, results fu
 	return writer.data
 }
 
+// decodeLSGTaskOperation reads the type-checking marker and typed operation
+// directly from the LSB-packed task payload.
+func decodeLSGTaskOperation(payload []byte) (byte, bool) {
+	reader := newLSBBitReader(payload)
+	typeChecked, err := reader.readBits(1)
+	if err != nil || typeChecked != 1 {
+		return 0, false
+	}
+	dataType, err := reader.readBits(5)
+	if err != nil || byte(dataType) != bdTypeU8 {
+		return 0, false
+	}
+	operationID, err := reader.readBits(8)
+	if err != nil {
+		return 0, false
+	}
+	return byte(operationID), true
+}
+
+func decodeLegacyLSGTaskOperation(payload []byte) (byte, bool) {
+	// Older tests and synthetic clients used a two-byte typed value followed by
+	// optional zero block-padding. Do not broaden this to payload[0]: packed
+	// payloads combine several fields in that byte and can otherwise be
+	// misidentified as another operation.
+	if len(payload) < 2 || payload[0] != bdTypeU8 {
+		return 0, false
+	}
+	for _, padding := range payload[2:] {
+		if padding != 0 {
+			return 0, false
+		}
+	}
+	return payload[1], true
+}
+
 func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte, bool) {
+	c.lastTaskSupported = false
 	if len(payload) == 0 {
 		return 0, nil, false
+	}
+	if serviceID == bdServiceBandwidth {
+		return c.handleBandwidthTask(payload)
 	}
 	if serviceID == bdServiceStorage {
 		return c.handleStorageTask(payload)
 	}
-	operationID := payload[0]
-	if operationID == bdTypeU8 && len(payload) >= 2 {
-		operationID = payload[1]
+	if serviceID == bdServiceMatchmaking {
+		return c.handleMatchmakingTask(payload)
+	}
+	operationID, ok := decodeLSGTaskOperation(payload)
+	if !ok {
+		operationID, ok = decodeLegacyLSGTaskOperation(payload)
+		if !ok {
+			return 0, nil, false
+		}
 	}
 	c.lastServiceID = serviceID
 	c.lastOperationID = operationID
 
 	switch {
 	case serviceID == bdServiceTitleUtilities && operationID == 6:
+		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeU32(uint32(time.Now().Unix()))
 		}), true
 	case serviceID == bdServiceDML && operationID == 2:
+		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeString("US")
 			writer.writeString("United States")
@@ -367,6 +422,7 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeF32(0)
 		}), true
 	case serviceID == bdServiceDML && operationID == 3:
+		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, func(writer *bdByteWriter) {
 			writer.writeString("US")
 			writer.writeString("United States")
@@ -379,14 +435,24 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeU32(0)
 			writer.writeU32(0)
 		}), true
-	case serviceID == bdServiceStats && operationID == 7:
+	case serviceID == bdServiceStats && operationID == 4:
+		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
-	case serviceID == bdServiceBandwidth && operationID == 1:
-		response := make([]byte, 11)
-		response[8] = 1
-		binary.LittleEndian.PutUint16(response[9:], bdErrorServiceNotAvailable)
-		return lsgServiceTaskReplyType, response, true
 	default:
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 	}
+}
+
+func (c *lsgConnection) handleBandwidthTask(payload []byte) (byte, []byte, bool) {
+	// Retail bandwidth probes are service tasks, not regular type-checked bd
+	// tasks. The captured request starts with raw operation 1.
+	operationID := payload[0]
+	c.lastServiceID = bdServiceBandwidth
+	c.lastOperationID = operationID
+	c.lastTaskSupported = operationID == 1
+
+	response := make([]byte, 11)
+	response[8] = operationID
+	binary.LittleEndian.PutUint16(response[9:], bdErrorServiceNotAvailable)
+	return lsgServiceTaskReplyType, response, true
 }

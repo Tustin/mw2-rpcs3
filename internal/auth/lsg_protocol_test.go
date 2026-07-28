@@ -107,14 +107,26 @@ func TestHandleLSGDMLTaskReply(t *testing.T) {
 	}
 }
 
-func TestHandleLSGStatsMultipleRanksReturnsEmptySuccess(t *testing.T) {
+func TestDecodeObservedLSGStatsTaskOperation(t *testing.T) {
+	payload := mustDecodeHex("07c10038010000002800000040e96b8f7bf94413e002")
+	operationID, ok := decodeLSGTaskOperation(payload)
+	if !ok || operationID != 4 {
+		t.Fatalf("stats service=%d operation=%d ok=%v payload=%x", bdServiceStats, operationID, ok, payload)
+	}
+}
+
+func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	responseType, result, ok, reply := handleLSGMessage(session, bdServiceStats, []byte{bdTypeU8, 7})
+	payload := mustDecodeHex("07c10038010000002800000040e96b8f7bf94413e002")
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceStats, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
 		t.Fatalf("stats response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if session.lastServiceID != bdServiceStats || session.lastOperationID != 4 {
+		t.Fatalf("stats service=%d operation=%d", session.lastServiceID, session.lastOperationID)
 	}
 	if len(result) != 26 {
 		t.Fatalf("stats reply length=%d payload=%x", len(result), result)
@@ -125,21 +137,49 @@ func TestHandleLSGStatsMultipleRanksReturnsEmptySuccess(t *testing.T) {
 	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorNone {
 		t.Fatalf("stats error=%d", errorCode)
 	}
-	if result[14] != bdTypeU8 || result[15] != 7 || result[16] != bdTypeU32 || binary.LittleEndian.Uint32(result[17:21]) != 0 || result[21] != bdTypeU32 || binary.LittleEndian.Uint32(result[22:26]) != 0 {
+	if result[14] != bdTypeU8 || result[15] != 4 || result[16] != bdTypeU32 || binary.LittleEndian.Uint32(result[17:21]) != 0 || result[21] != bdTypeU32 || binary.LittleEndian.Uint32(result[22:26]) != 0 {
 		t.Fatalf("malformed stats reply=%x", result)
 	}
 }
 
-func TestHandleLSGBandwidthUsesServiceTaskReply(t *testing.T) {
+func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	responseType, result, ok, reply := handleLSGMessage(session, bdServiceBandwidth, []byte{1})
+	// Exact decrypted core from the prior live RPCS3 run. Unlike normal tasks,
+	// bandwidth uses an untyped raw operation byte.
+	payload := mustDecodeHex("010000000000724c3800000000000dcd40")
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceBandwidth, payload)
 	if !ok || !reply || responseType != lsgServiceTaskReplyType {
 		t.Fatalf("bandwidth response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
 	}
+	if !session.lastTaskSupported || session.lastServiceID != bdServiceBandwidth || session.lastOperationID != 1 {
+		t.Fatalf("supported=%v service=%d operation=%d", session.lastTaskSupported, session.lastServiceID, session.lastOperationID)
+	}
 	if len(result) != 11 || result[8] != 1 || binary.LittleEndian.Uint16(result[9:]) != bdErrorServiceNotAvailable {
 		t.Fatalf("malformed bandwidth reply=%x", result)
+	}
+}
+
+func TestHandleUnknownLSGTaskReturnsErrorAndMarksUnsupported(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte{0x47, 0x0f}
+	const unknownService = byte(99)
+	responseType, result, ok, reply := handleLSGMessage(session, unknownService, payload)
+	if !ok || !reply || responseType != lsgTaskReplyType {
+		t.Fatalf("unknown task response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if session.lastTaskSupported {
+		t.Fatal("unknown service task was marked supported")
+	}
+	if session.lastServiceID != unknownService || session.lastOperationID != 61 {
+		t.Fatalf("service=%d operation=%d", session.lastServiceID, session.lastOperationID)
+	}
+	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorServiceNotAvailable {
+		t.Fatalf("error=%d payload=%x", errorCode, result)
 	}
 }

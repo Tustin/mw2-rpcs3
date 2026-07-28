@@ -1,15 +1,22 @@
 # MW2 (PS3) Demonware client ↔ server flow
 
-Reconstructed from `captures/mw2 ps3.pcapng` (retail PS3, XMB → Play Online →
-PSN sign-in → Demonware auth → lobby data) cross-referenced with
-`captures/default_mp.elf` symbol strings and the current server implementation
-in `internal/auth/`.
+Reconstructed from the externally supplied retail PS3 capture (XMB → Play
+Online → PSN sign-in → Demonware auth → lobby data), cross-referenced with the
+externally supplied `default_mp.elf` and the current server implementation in
+`internal/auth/`. The proprietary capture and executable are local research
+inputs and are not committed to this repository.
 
 This is a multi-part document:
 
 - **`demonware-flow.md`** (this file) — high-level connection map and phases.
 - **`demonware-auth.md`** — the authentication service (TCP 3074, unencrypted).
 - **`demonware-lsg.md`** — the LSG lobby-service connection (TCP 3074, 3DES).
+- **`demonware-ip-discovery.md`** — separate public-address and NAT-classification
+  UDP exchanges.
+- **`demonware-peer-qos.md`** — post-find game-peer QoS and NAT-traversal
+  datagrams.
+- **`demonware-peer-dtls.md`** — the peer-only secure association after
+  address resolution.
 - **`demonware-next-steps.md`** — what is implemented vs. what blocks lobby entry.
 
 ## Connection map (from the capture)
@@ -27,6 +34,15 @@ Both endpoints speak the same length-prefixed Demonware framing but are
 different services: stream 9 is the stateless authentication endpoint, stream 11
 is the persistent Lobby Service Gateway (LSG). The game resolves them as
 separate hostnames (see `DW_DNS_RESOLVING` / `DW_LOBBY_CONNECTING` in the ELF).
+
+The capture also resolves `mw2-stun.us.demonware.net` and
+`mw2-stun.eu.demonware.net` for separate UDP public-address and NAT-classification
+exchanges. The exact `0x1e`/`0x1f` and v2 `0x14`/`0x15` paths are implemented
+on primary `3074` plus alternate-source `3075`. The primary listener also
+implements the independently wire-validated type-`0x0a` to type-`0x0b`
+introducer relay. None of these are LSG traffic, and the central service does
+not answer the game peers' QoS probes. The exact later peer packet formats are
+recovered in `demonware-peer-qos.md`.
 
 ## Client-side state machine (ELF strings)
 
@@ -60,9 +76,18 @@ DW_LOBBY_CONNECTED          ← LSG hello ack + connection-ID exchanged
    unencrypted LSG hello (type 7) carrying game ID + the LSG ticket. Server
    replies with an unencrypted hello-ack containing a connection nonce.
    All subsequent records are 3DES-CBC encrypted with a SHA-1 HMAC.
-4. **Lobby bootstrap** (stream 11, encrypted) — connection-ID notification,
-   service login, then a burst of service tasks (title utilities time,
-   DML/geo, storage file fetches including a ~63 kB payload) that populate
-   playlists, message-of-the-day, and profile data.
+4. **Address/NAT discovery** (UDP 3074/3075) — the client obtains its observed
+   address and performs the recovered three-test NAT classification. This can
+   overlap the persistent lobby bootstrap.
+5. **Lobby bootstrap** (stream 11, encrypted) — the raw message type identifies
+   each Demonware service, followed by storage, stats, bandwidth, and later
+   matchmaking tasks. The connection ID was already returned in the
+   unencrypted type-4 hello acknowledgement.
+6. **Candidate QoS/traversal** (game-peer UDP) — after a nonempty service-5
+   search result, the seeker probes the advertised host directly. This phase
+   uses raw packet types `0x28`/`0x29` and `0x0a..0x0d`, not LSG task records.
+7. **Peer DTLS/title traffic** (game-peer UDP) — the clients perform the
+   recovered type-`1..4` secure-association handshake, then exchange
+   authenticated type-`6` title data directly.
 
-The exact byte layouts for phases 2–4 are in the sibling documents.
+The exact byte layouts for phases 2–7 are in the sibling documents.

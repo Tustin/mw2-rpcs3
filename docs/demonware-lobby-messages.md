@@ -12,7 +12,8 @@ DemonWare has two separate transports; do not confuse them:
 - **`bdConnection`** — SCTP-style over UDP. Chunked `bdPacket` with
   `bdChunkTypes` (`BD_CT_DATA=2`, `BD_CT_INIT=3`, `BD_CT_INIT_ACK=4`,
   `BD_CT_SACK=5`, `BD_CT_COOKIE_ECHO=13`, …, max 14) and init/cookie/SAck
-  handshake. Used for matchmaking/NAT-style traffic, **not** the LSG lobby.
+  handshake. Used for later peer/traversal-style traffic, **not** the compact
+  `0x1e`/`0x14` discovery datagrams and **not** the LSG lobby.
 - **`bdLobbyConnection`** — the LSG stream on TCP 3074. Length-prefixed message
   framing with a receive state machine and per-message encryption. **This is
   what our server already speaks.**
@@ -190,21 +191,19 @@ padding (the last plaintext byte equals the outer IV and repeats to fill the
 
 ## Implications for the current emulator
 
-The current constants/dispatch logic should not be treated as authoritative:
+The retail path now follows the recovered direction-dependent dispatch:
 
-- `lsgInitialType = 7` works because 7 is the LobbyService **service ID** used by
-  the initial authentication request, not because 7 is a peer core-message enum.
-- `lsgResultReplyType = 1` is a valid normal **response** type, but message type 1
-  should not be required as a generic wrapper around client service requests.
-- `lsgConnectionIDType = 0x12` conflates service ID 18 (`bdBandwidthTest`) with
-  the connection response. The confirmed connection response enum is value 4.
-- The server sends the connection-ID response after the initial service-7
-  handshake. No evidence currently supports waiting for a later client
-  connection-ID registration message before accepting normal service requests.
-- `handleLSGMessage` should eventually dispatch the decrypted message byte as
-  `serviceID` and pass the remaining bytes to that service's task parser.
-
-These are documented findings only; the implementation has not yet been changed.
+- `lsgInitialServiceType = 7` names the LobbyService **service ID** used by the
+  initial authentication request.
+- `lsgTaskReplyType = 1` is a normal server **response** type; it is not required
+  as a generic wrapper around client service requests.
+- `lsgConnectionType = 4` is the server's hello/connection response.
+- `handleLSGMessage` dispatches the decrypted message byte directly as
+  `serviceID` and passes the remaining bytes to that service's task parser.
+- Service `18` bypasses the normal typed-operation decoder because each
+  preserved MW2 bandwidth body starts with the raw operation byte `01`. A
+  captured encrypted-frame regression proves that this body reaches the
+  special type-5 reply path without being rejected as a malformed typed task.
 
 ## Open questions (next RE targets)
 

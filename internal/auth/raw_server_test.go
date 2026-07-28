@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +297,29 @@ func TestRawServerSendsDynamicLSGHello(t *testing.T) {
 	}
 }
 
+func TestRawServerInjectsSharedMatchmakingStore(t *testing.T) {
+	service := NewRawServer(
+		"",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		capture.New(false, "", RetailRequestSize),
+		time.Second,
+		time.Second,
+	)
+	first, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.matchmakingSessions == nil ||
+		first.matchmakingSessions != second.matchmakingSessions ||
+		first.matchmakingSessions != service.matchmakingSessions {
+		t.Fatal("LSG connections do not share the RawServer matchmaking directory")
+	}
+}
+
 func buildLSGInitialRecord(gameID, randomNumber uint32, ticket [legacyTicketLen]byte) []byte {
 	payload := newLSBBitWriter(1 + 5 + 32 + 5 + 32 + legacyTicketLen*8)
 	payload.writeBit(true)
@@ -395,5 +419,41 @@ func TestRawServerSendsDynamicSuccess(t *testing.T) {
 	<-done
 	if service.Requests() != 1 {
 		t.Fatalf("requests=%d", service.Requests())
+	}
+}
+
+func TestRetailDiagnosticLogsDoNotExposeRawSecrets(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	secret := []byte("TOP-SECRET-RPCN-MARKER")
+	ticket := make([]byte, 96)
+	copy(ticket[16:], secret)
+	var key [24]byte
+	copy(key[:], secret)
+
+	logTicketKeyDiagnostic(log, ticket, key)
+	logLSGRequest(log, 2, 0xfe, secret)
+	logLSGResponsePayload(log, 2, 1, secret, false)
+	logLSGEncryptedResponse(log, 2, 1, secret)
+	frame, err := EncryptLSGRecord(0xfe, secret, 7, key[:])
+	if err != nil {
+		t.Fatalf("encrypt diagnostic frame: %v", err)
+	}
+	(&lsgConnection{key: key}).diagnoseRequest(log, 3, frame)
+
+	text := output.String()
+	for _, forbidden := range []string{
+		string(secret),
+		fmt.Sprintf("%x", secret),
+		"ticket_hex",
+		"extracted_key_hex",
+		"payload_hex",
+		"frame_hex",
+		"plaintext_hex",
+		"visible_strings",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("diagnostic log contains forbidden value %q: %s", forbidden, text)
+		}
 	}
 }

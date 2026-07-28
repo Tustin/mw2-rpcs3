@@ -1,56 +1,76 @@
-# Implementation status & next steps
+# Implementation status and next live steps
 
-## Working today
+## Working or statically validated
 
-- **Auth (stream 9):** request parsed, platform key + LSG session key extracted
-  (retail offset 151, RPCN offset 91), 295-byte success response generated with
-  a fresh random session key and LSG ticket. Ticket→key mapping stored.
-- **LSG hello (stream 11):** ticket consumed, session key recovered, 3DES/HMAC
-  record codec works both directions, connection nonce returned.
-- **First encrypted message:** type `0x12` connection-ID notification recorded;
-  `loggedIn` set.
-- Client reaches "Connecting to Matchmaking Server Complete." (`DW_LOBBY_CONNECTED`).
+- Dynamic RPCN authentication, one-use LSG tickets, 3DES/HMAC record handling,
+  and the hello/connection response work in prior live runs.
+- Captured service IDs and operation IDs now decode correctly:
+  - storage `10/8` and `10/7`;
+  - stats `4/4`;
+  - bandwidth `18/1`, whose operation byte is raw rather than type-packed.
+- Storage `10/8` and `10/5` replies match their retail consumers.
+- The bundled 205-byte `playlists.info` is valid for the retail parser and
+  Public Playlists feeder.
+- Matchmaking service `5` operations `1..5` have recovered request schemas.
+- Create/update/delete and exact op-5 find-sessions queries are implemented
+  against shared retail-LSG state.
+- Exact op-1 ID/key, op-2/op-3 mutation, and zero/nonempty op-5 reply layouts
+  are covered by golden and two-connection lifecycle tests.
+- Exact v2 public-address and NAT-classification requests/replies are
+  implemented on primary UDP `3074` and alternate-source UDP `3075`.
+- Exact peer QoS `0x28`/`0x29` and NAT-traversal `0x0a..0x0d` packet codecs
+  are recovered directly from the MW2 ELF. They are peer traffic, not central
+  discovery replies.
+- The current legacy introducer's strict 29-byte relay was directly probed and
+  is implemented: version `>=2`, embedded-destination routing, only
+  `0x0a` -> `0x0b` mutation, and primary UDP `3074` as the source.
+- The complete old-bdDTLS peer packet layer is recovered through canonical
+  Init, InitAck, CookieEcho, CookieAck, Error, authenticated Data, and replay
+  handling. It is peer traffic; no central join RPC exists between the
+  candidate result and this handshake.
 
-## Known gaps (in flow order)
+## Important live boundary
 
-1. **RPCN LSG request HMAC fails.** In recent runs the RPCN client's second LSG
-   record is rejected with `invalid LSG request HMAC` (see CURRENT_PROGRESS log
-   lines for `.49229` / `.49397` / `.64437`). The type-`0x12` path works for
-   some sessions but the encrypted task record fails HMAC validation. This is
-   the current blocker and should be confirmed first: verify the RPCN session
-   key offset (91) actually matches the key the client uses for the LSG
-   connection, since a wrong key yields exactly this symptom.
-2. **Storage service returns no files.** Retail returns a ~63 kB bundle at
-   step 10 (`bdStorage`/`bdGetFileResult`). The server currently answers every
-   storage op with `bdErrorNoFile`. Playlists and message-of-the-day come from
-   here, so lobby population will be empty/failed until real file blobs are
-   served.
-3. **Playlist / profile / rank tasks unimplemented.** ELF references
-   `Error getting playlists`, `%iplaylistIsNew/Old`, matchmaking info, and
-   leaderboard/stats results. These ride on the same LSG task channel and are
-   not yet handled beyond the default "service not available".
+No preserved emulated run ever sent storage `10/5` or any matchmaking service-5
+request. Automated tests and Ghidra evidence therefore establish wire
+compatibility, not end-to-end RPCS3 completion.
 
-## Recommended next action
+The old run's repeated `10/8` replies advertised file size `1`; the corrected
+reply advertises `205`. A new run is necessary before any playlist download or
+matchmaking claim.
 
-Because the capture cannot be decrypted (platform key is not on the wire), the
-productive path is **runtime**, not more static pcap work:
+## Next checkpoints
 
-1. Reproduce a fresh RPCN session against the dynamic server.
-2. Focus on gap #1: instrument `decryptRequest` to log, on HMAC failure, the
-   decrypted candidate plaintext for both the primary and pending keys, and the
-   RPCN key-offset bytes. Confirm whether offset 91 is correct for the current
-   RPCN build or whether the LSG key must instead come from the game ticket
-   (offset `0x61`) like retail.
-3. Once the first post-login task record validates, log its
-   `service_id`/`operation_id` and implement handlers working down the
-   sequence: title utilities → DML → storage (playlists/MOTD) → profile/rank →
-   create-a-class.
+1. Start the current server build and capture one fresh RPCS3 login.
+2. Redirect both `mw2-stun.*` names and live-confirm the `0x1f` public-address
+   reply plus the primary/alternate-source `0x15` classification replies.
+3. Confirm storage `10/8` returns count `1`, byte size `205`, and the exact
+   `playlists.info` metadata.
+4. Observe storage `10/5`, verify the advertised file ID, serve the 205-byte
+   blob, and confirm the Public Playlists row appears.
+5. Select the row and confirm the exact service-5 op-5 request from
+   `demonware-matchmaking.md`.
+6. Verify zero- and nonempty-result responses complete without a remote-task
+   error.
+7. Run two distinct clients through create -> find -> update -> delete and
+   compare every request/result with the recovered schemas.
+8. Capture and compare the post-find type-`0x28`/`0x29` QoS and
+   type-`0x0d`/`0x0c` direct-traversal packets with
+   `demonware-peer-qos.md`. Do not infer the seven-field retail filtering
+   policy from field names alone.
+9. Redirect the introducer endpoint and live-confirm the implemented
+   type-`0x0a` -> type-`0x0b` relay with clients behind distinct mappings.
+   Enable `MW2_NAT_RELAY_ENABLED` only for that isolated/trusted lab.
+10. Compare the canonical type-`1..6` peer flow with
+    `demonware-peer-dtls.md`, then verify authenticated title traffic,
+    teardown, and a completed match.
 
 ## Cross-references
 
-- Framing / phase overview: `demonware-flow.md`
-- Auth byte layout: `demonware-auth.md`
-- LSG record codec + task encoding: `demonware-lsg.md`
-- Code: `internal/auth/raw_server.go`, `lsg_protocol.go`, `lsg_record.go`,
-  `legacy_response.go`
-- Fixtures / dead-end key derivation: `internal/auth/derive_capture_key_test.go`
+- Authoritative status: `../CURRENT_PROGRESS.md`
+- Storage/playlist protocol: `demonware-storage-playlists.md`
+- Retail matchmaking protocol: `demonware-matchmaking.md`
+- Public-address/NAT protocol: `demonware-ip-discovery.md`
+- Peer QoS/NAT-traversal protocol: `demonware-peer-qos.md`
+- Peer DTLS protocol: `demonware-peer-dtls.md`
+- LSG framing and service dispatch: `demonware-lsg.md`

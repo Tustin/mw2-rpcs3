@@ -41,6 +41,11 @@ func (w *bdBitWriter) writeU16(value uint16) {
 	w.bits.writeBits(uint64(value), 16)
 }
 
+func (w *bdBitWriter) writeI32(value int32) {
+	w.writeType(bdTypeI32)
+	w.bits.writeBits(uint64(uint32(value)), 32)
+}
+
 func (w *bdBitWriter) writeU32(value uint32) {
 	w.writeType(bdTypeU32)
 	w.bits.writeBits(uint64(value), 32)
@@ -101,6 +106,14 @@ func (r *bdBitReader) readU16() (uint16, error) {
 	return uint16(value), err
 }
 
+func (r *bdBitReader) readI32() (int32, error) {
+	if err := r.readType(bdTypeI32); err != nil {
+		return 0, err
+	}
+	value, err := r.bits.readBits(32)
+	return int32(uint32(value)), err
+}
+
 func (r *bdBitReader) readU32() (uint32, error) {
 	if err := r.readType(bdTypeU32); err != nil {
 		return 0, err
@@ -116,20 +129,36 @@ func (r *bdBitReader) readU64() (uint64, error) {
 	return r.bits.readBits(64)
 }
 
+func (r *bdBitReader) readBlob(maximum int) ([]byte, error) {
+	if err := r.readType(bdTypeBlob); err != nil {
+		return nil, err
+	}
+	length, err := r.readU32()
+	if err != nil {
+		return nil, err
+	}
+	if length > uint32(maximum) {
+		return nil, fmt.Errorf("blob length %d exceeds maximum %d", length, maximum)
+	}
+	return r.bits.readBytes(int(length))
+}
+
 type mw2StorageRequest struct {
 	operationID byte
+	value       byte
 	fileID      uint64
 	ownerID     uint64
 	offset      uint32
 	maximum     uint16
+	filter      string
 }
 
 type mw2StorageReplySummary struct {
-	transactionID    uint64
-	errorCode        uint32
-	operationID      byte
-	resultCount      uint32
-	totalResultCount uint32
+	transactionID uint64
+	errorCode     uint32
+	operationID   byte
+	resultCount   uint32
+	fileSize      uint32
 }
 
 func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
@@ -145,7 +174,8 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 	request := mw2StorageRequest{operationID: operationID}
 	switch operationID {
 	case bdStorageListOwnerFiles:
-		if _, err := reader.readU8(); err != nil {
+		request.value, err = reader.readU8()
+		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read owner file list value: %w", err)
 		}
 		request.ownerID, err = reader.readU64()
@@ -161,7 +191,8 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 			return mw2StorageRequest{}, fmt.Errorf("read owner file list maximum: %w", err)
 		}
 	case bdStorageListFiles:
-		if _, err := reader.readU8(); err != nil {
+		request.value, err = reader.readU8()
+		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read storage list value: %w", err)
 		}
 		request.offset, err = reader.readU32()
@@ -172,10 +203,50 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read storage list maximum: %w", err)
 		}
+		nextType, readErr := reader.bits.readBits(5)
+		if readErr != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage list filter type: %w", readErr)
+		}
+		switch byte(nextType) {
+		case 0:
+			// No optional filename filter.
+		case bdTypeString:
+			var filter []byte
+			for {
+				character, stringErr := reader.bits.readBits(8)
+				if stringErr != nil {
+					return mw2StorageRequest{}, fmt.Errorf("read storage list filter: %w", stringErr)
+				}
+				if character == 0 {
+					break
+				}
+				if len(filter) >= 128 {
+					return mw2StorageRequest{}, fmt.Errorf("storage list filter exceeds 128 bytes")
+				}
+				filter = append(filter, byte(character))
+			}
+			request.filter = string(filter)
+			terminator, terminatorErr := reader.bits.readBits(5)
+			if terminatorErr != nil {
+				return mw2StorageRequest{}, fmt.Errorf("read storage list terminator: %w", terminatorErr)
+			}
+			if terminator != 0 {
+				return mw2StorageRequest{}, fmt.Errorf("unexpected storage list terminator type %d", terminator)
+			}
+		default:
+			return mw2StorageRequest{}, fmt.Errorf("unexpected storage list filter type %d", nextType)
+		}
 	case bdStorageGetFile:
 		request.fileID, err = reader.readU64()
 		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read storage file ID: %w", err)
+		}
+		terminator, terminatorErr := reader.bits.readBits(5)
+		if terminatorErr != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage get terminator: %w", terminatorErr)
+		}
+		if terminator != 0 {
+			return mw2StorageRequest{}, fmt.Errorf("unexpected storage get terminator type %d", terminator)
 		}
 	}
 	return request, nil
@@ -201,13 +272,24 @@ func parseMW2StorageReplySummary(payload []byte) (mw2StorageReplySummary, error)
 		operationID:   operationID,
 	}
 	if errorCode == bdErrorNone {
-		summary.resultCount, err = reader.readU32()
-		if err != nil {
-			return mw2StorageReplySummary{}, fmt.Errorf("read storage reply result count: %w", err)
-		}
-		summary.totalResultCount, err = reader.readU32()
-		if err != nil {
-			return mw2StorageReplySummary{}, fmt.Errorf("read storage reply total result count: %w", err)
+		switch operationID {
+		case bdStorageListFiles, bdStorageListOwnerFiles:
+			summary.resultCount, err = reader.readU32()
+			if err != nil {
+				return mw2StorageReplySummary{}, fmt.Errorf("read storage reply result count: %w", err)
+			}
+			if summary.resultCount != 0 {
+				summary.fileSize, err = reader.readU32()
+				if err != nil {
+					return mw2StorageReplySummary{}, fmt.Errorf("read storage reply file size: %w", err)
+				}
+			}
+		case bdStorageGetFile:
+			summary.resultCount = 1
+			summary.fileSize, err = reader.readU32()
+			if err != nil {
+				return mw2StorageReplySummary{}, fmt.Errorf("read storage reply file buffer size: %w", err)
+			}
 		}
 	}
 	return summary, nil
@@ -237,14 +319,23 @@ func (c *lsgConnection) storageErrorReply(operationID byte, errorCode uint32) []
 	return writer.bytes()
 }
 
-func (c *lsgConnection) storageListReply() []byte {
+func (c *lsgConnection) storageListReply(data []byte) []byte {
 	writer := newBDBitWriter()
 	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageListFiles)
 	writer.writeU32(1)
-	writer.writeU32(1)
+	writer.writeU32(uint32(len(data)))
 	writeMW2FileInfo(writer)
+	return writer.bytes()
+}
+
+func (c *lsgConnection) storageEmptyListReply() []byte {
+	writer := newBDBitWriter()
+	writer.writeU64(c.nextTransactionID())
+	writer.writeU32(bdErrorNone)
+	writer.writeU8(bdStorageListFiles)
+	writer.writeU32(0)
 	return writer.bytes()
 }
 
@@ -254,7 +345,6 @@ func (c *lsgConnection) storageOwnerListReply() []byte {
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageListOwnerFiles)
 	writer.writeU32(0)
-	writer.writeU32(0)
 	return writer.bytes()
 }
 
@@ -263,8 +353,7 @@ func (c *lsgConnection) storageGetReply(data []byte) []byte {
 	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageGetFile)
-	writer.writeU32(1)
-	writer.writeU32(1)
+	writer.writeU32(uint32(len(data)))
 	writeMW2FileInfo(writer)
 	writer.writeBlob(data)
 	return writer.bytes()
@@ -294,24 +383,34 @@ func loadMW2Playlist() ([]byte, error) {
 }
 
 func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
+	c.lastServiceID = bdServiceStorage
+	c.lastOperationID = 0
 	request, err := parseMW2StorageRequest(payload)
 	if err != nil {
 		return lsgTaskReplyType, c.storageErrorReply(0, bdErrorServiceNotAvailable), true
 	}
-	c.lastServiceID = bdServiceStorage
 	c.lastOperationID = request.operationID
 
 	var reply []byte
 	switch request.operationID {
 	case bdStorageListOwnerFiles:
+		c.lastTaskSupported = true
 		reply = c.storageOwnerListReply()
 	case bdStorageListFiles:
-		if _, loadErr := loadMW2Playlist(); loadErr != nil {
+		c.lastTaskSupported = true
+		if request.maximum == 0 || request.offset > 0 ||
+			(request.filter != "" && request.filter != mw2PlaylistFilename) {
+			reply = c.storageEmptyListReply()
+			break
+		}
+		data, loadErr := loadMW2Playlist()
+		if loadErr != nil {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
 		}
-		reply = c.storageListReply()
+		reply = c.storageListReply(data)
 	case bdStorageGetFile:
+		c.lastTaskSupported = true
 		if request.fileID != mw2PlaylistFileID {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
