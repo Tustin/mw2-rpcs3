@@ -18,6 +18,9 @@ Confirmed statically and covered by repository tests:
 - operation `8` lists publisher files;
 - operation `5` retrieves the selected file ID;
 - operation-8 results contain an outer result count and a per-file typed size;
+- the proven unfiltered publisher directory contains exactly
+  `messageoftheday.info` followed by `playlists.info`; the speculative
+  `mp/mappack.info` entry has been removed pending direct retail proof;
 - operation `5` begins with a typed destination-buffer size and has no outer
   result count on the wire;
 - both paths use the same seven-field `bdFileInfo` metadata serializer;
@@ -87,16 +90,16 @@ tag is immediately followed by its value, so most fields are not byte-aligned.
 
 Relevant tags:
 
-| Tag | Type |
-|---:|---|
-| `0` | terminator |
-| `1` | bool |
-| `3` | `u8` |
-| `6` | `u16` |
-| `8` | `u32` |
-| `10` | `u64` |
+|  Tag | Type                  |
+| ---: | --------------------- |
+|  `0` | terminator            |
+|  `1` | bool                  |
+|  `3` | `u8`                  |
+|  `6` | `u16`                 |
+|  `8` | `u32`                 |
+| `10` | `u64`                 |
 | `16` | NUL-terminated string |
-| `19` | blob |
+| `19` | blob                  |
 
 The common successful logical-reply prefix is:
 
@@ -202,7 +205,8 @@ buffer through `0x003ec290`.
 The blob's nested byte length is the authoritative count of raw bytes that
 follow. The leading value is a destination-buffer capacity hint, not an
 equality check. This implementation uses the canonical and safe encoding where
-both values are the payload length; for the bundled fixture, both are `205`.
+both values are the payload length; for the current bundled fixture, both are
+`193`.
 
 An extra typed `u32` before `bdFileInfo` is fatal: the metadata parser expects a
 typed `u64` file ID next and rejects tag `8`.
@@ -224,16 +228,16 @@ typed string filename
 Neutral names are intentional where the exact MW2 semantic label is not needed.
 The corresponding recovered object storage is:
 
-| Object offset | Stored value |
-|---:|---|
-| `0x08` | file ID |
-| `0x10` | first `u32` |
-| `0x14` | second `u32` |
-| `0x18` | first bool |
-| `0x1c` | second bool |
-| `0x20` | trailing `u64` |
-| `0x28` | filename buffer, 128 bytes |
-| `0xa8` | file size injected by the operation result handler |
+| Object offset | Stored value                                       |
+| ------------: | -------------------------------------------------- |
+|        `0x08` | file ID                                            |
+|        `0x10` | first `u32`                                        |
+|        `0x14` | second `u32`                                       |
+|        `0x18` | first bool                                         |
+|        `0x1c` | second bool                                        |
+|        `0x20` | trailing `u64`                                     |
+|        `0x28` | filename buffer, 128 bytes                         |
+|        `0xa8` | file size injected by the operation result handler |
 
 The filename encoding is:
 
@@ -322,19 +326,20 @@ not prove the game has downloaded or applied the file in a live session.
 `internal/auth/lsg_storage.go` currently:
 
 - parses the observed operation-8 and operation-5 request fields;
-- advertises one stable publisher-file ID;
+- advertises stable IDs for `messageoftheday.info` and `playlists.info`, in
+  that order;
 - writes operation `8` as count -> actual size -> `bdFileInfo`;
 - writes operation `5` as actual buffer size -> `bdFileInfo` -> blob;
-- uses the same ID and filename in both replies;
+- uses each selected file's same ID and filename in list/get replies;
 - rejects unknown IDs, empty files, and files over `0x20000`.
 
 The request parser consumes and logs the operation-8 selector, offset, maximum,
-optional filename filter, and five-bit terminator. Since this server advertises
-one file, offset `0` with a positive maximum can return it; a mismatched exact
-filename filter, zero maximum, or nonzero offset returns a successful empty
-list. Full transport-block padding is left available for diagnostics instead
-of being treated as another task field. Operation 5 likewise requires its
-five-bit terminator to be zero.
+optional filename filter, and five-bit terminator. Offset/maximum pagination and
+exact filename filters are applied to the two-file directory; a mismatched
+filter, zero maximum, or offset at/after the directory length returns a
+successful empty list. Full transport-block padding is left available for
+diagnostics instead of being treated as another task field. Operation 5
+likewise requires its five-bit terminator to be zero.
 
 The final Docker image now:
 
@@ -346,23 +351,26 @@ ENV MW2_PLAYLISTS_FILE=/playlists.info
 This fixes the previous deployment state in which the scratch image contained
 only the executable and operation `8` returned `bdErrorNoFile`.
 
-MOTD and other publisher files are not yet implemented on the retail storage
-path.
+MOTD and playlist downloads are implemented on the retail storage path. No
+other publisher file is advertised without direct MW2 proof.
 
 ## Live evidence versus pending work
 
 An older RPCS3 run received replies that encoded `1, 1` after the operation;
 static analysis proves those values meant result count `1` and the incorrect
-file size `1`. The latest Linux run correctly returned one 193-byte canonical
-LF fixture but still did not issue operation `5`. Sensitive structured logging
-is now required to isolate client deserialization from task-routing failure.
+file size `1`. A later Linux run correctly returned one 193-byte canonical LF
+fixture but still did not issue operation `5`. A fresh current-bandwidth run
+then advertised MOTD, playlist, and a speculative `mp/mappack.info` entry and
+repeated operation `8`; the unproven third entry has now been removed while the
+statically established serializer remains unchanged.
 
 The next live checkpoint is:
 
-1. send operation `8` with count `1` and the actual loaded file size;
+1. send operation `8` with count `2`, exact runtime sizes, and only MOTD then
+   playlist metadata;
 2. confirm the remote task completes;
-3. capture operation `5` using the advertised ID;
-4. send the actual buffer size, matching metadata, and the same raw-byte blob;
+3. capture operation `5` for the advertised MOTD ID and then playlist ID;
+4. send each actual buffer size, matching metadata, and raw-byte blob;
 5. confirm the client parses version 504 and advances.
 
 ## Related retail services

@@ -303,15 +303,14 @@ func TestNormalAndStorageRepliesShareTransactionSequence(t *testing.T) {
 	}
 }
 
-func TestSeparateStorageTasksReceiveDistinctTransactions(t *testing.T) {
+func TestRepeatedMW2PublisherListsUseDistinctTransactionIDs(t *testing.T) {
 	connection := &lsgConnection{}
 	request := buildMW2StorageListRequest()
 	_, first, ok := connection.handleStorageTask(request)
 	if !ok {
 		t.Fatal("first storage request was not handled")
 	}
-	secondRequest := append(append([]byte(nil), request...), bytes.Repeat([]byte{0x1f}, 8)...)
-	_, second, ok := connection.handleStorageTask(secondRequest)
+	_, second, ok := connection.handleStorageTask(request)
 	if !ok {
 		t.Fatal("second storage request was not handled")
 	}
@@ -325,6 +324,31 @@ func TestSeparateStorageTasksReceiveDistinctTransactions(t *testing.T) {
 	}
 	if firstSummary.transactionID != 0 || secondSummary.transactionID != 1 {
 		t.Fatalf("transactions=%d,%d", firstSummary.transactionID, secondSummary.transactionID)
+	}
+	if connection.nextTransaction != 2 {
+		t.Fatalf("next transaction=%d", connection.nextTransaction)
+	}
+}
+
+func TestPlaylistGetAfterRepeatedPublisherListsUsesNextTransactionID(t *testing.T) {
+	connection := &lsgConnection{}
+	request := buildMW2StorageListRequest()
+	if _, _, ok := connection.handleStorageTask(request); !ok {
+		t.Fatal("first storage request was not handled")
+	}
+	if _, _, ok := connection.handleStorageTask(request); !ok {
+		t.Fatal("second storage request was not handled")
+	}
+	_, reply, ok := connection.handleStorageTask(buildMW2StorageGetRequest(mw2PlaylistFileID))
+	if !ok {
+		t.Fatal("playlist get request was not handled")
+	}
+	summary, err := parseMW2StorageReplySummary(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.transactionID != 2 {
+		t.Fatalf("transaction=%d", summary.transactionID)
 	}
 }
 
