@@ -1,8 +1,9 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-29 after diagnosing the live publisher-directory stall,
-correcting the mandatory typed-task reply marker, adding the required
-message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
+_Last updated: 2026-07-29 after identifying the repeated post-directory packets
+as valid operation-5 fetches, correcting the missing typed zero selector in the
+request parser, correcting the mandatory typed-task reply marker, adding the
+required message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
 implementing the statically recovered retail matchmaking lifecycle, recovering
 the UDP public-address/NAT-classification exchanges, directly validating the
 legacy introducer relay, recovering the post-find peer
@@ -31,12 +32,16 @@ Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
   before `playlists.info`; both must be present in the publisher directory.
 
 The newest sensitive trace confirms that the leading type-checking marker fix
-is deployed: every operation-8 reply logs `type_checked=true`. It also exposes
-the next blocker unambiguously: the client requests operation `8` six times,
-never requests operation `5`, and every reply advertises only
-`playlists.info`. Static analysis then found two `messageoftheday.info` state
-initializers (`0x0030a748`, `0x0030a788`) before the playlist initializer
-(`0x0030a7c8`). The server now lists and serves both publisher files.
+is deployed: every operation-8 reply logs `type_checked=true`. It also captures
+five service-10 operation-5 fetches, alternating with repeated operation-8
+lists. They were previously misreported as unknown tasks because the parser
+expected the `u64` file ID immediately after the operation and encountered type
+tag `3`. Builder `0x003edf18` proves the retail request writes typed `u8(0)`
+before typed `u64(file ID)`. The parser, tests, telemetry, and packet codec now
+consume that selector. Static analysis also found two
+`messageoftheday.info` state initializers (`0x0030a748`, `0x0030a788`) before
+the playlist initializer (`0x0030a7c8`), so the server lists and serves both
+publisher files.
 
 The Go serializers and focused tests have been updated to those layouts. Direct
 tracing of the retail playlist parser and Public Playlists feeder confirms that
@@ -106,7 +111,7 @@ anti-abuse policy remain unresolved.
 | Encrypted retail LSG                | Working in prior live runs                                                                                      | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing.                                                                                                                                                                                                                                                                     |
 | Storage operation `8`               | Corrected statically and covered by tests; fresh two-file live recheck pending                                  | Returns leading type-checking bit `1`, then exactly the two proven publisher results: `messageoftheday.info` and `playlists.info`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry observed in a fresh three-result retry loop has been removed.                                                                         |
 | Storage operation `7`               | Implemented; corrected live recheck pending                                                                     | Returns a successful empty outer result count.                                                                                                                                                                                                                                                                                                              |
-| Storage operation `5`               | Corrected statically and covered by tests; not observed live                                                    | Resolves either advertised opaque ID and returns actual buffer size, matching `bdFileInfo`, then the raw typed blob.                                                                                                                                                                                                                                        |
+| Storage operation `5`               | Request now observed live and parser corrected; reply live recheck pending                                     | Consumes typed `u8(0)` before the advertised opaque ID, then returns actual buffer size, matching `bdFileInfo`, and the raw typed blob.                                                                                                                                                                                                                       |
 | MOTD prerequisite                   | Implemented from static proof; live recheck pending                                                             | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text.                                                                                                                                                                                     |
 | Bundled `playlists.info`            | Retail-parser valid; 95% confidence                                                                             | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection.                                                                                                                                                                                                                                          |
 | Docker playlist packaging           | Fixed in the working tree                                                                                       | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`.                                                                                                                                                                                                                                                                      |
@@ -122,8 +127,9 @@ anti-abuse policy remain unresolved.
 | Runtime discovery telemetry         | Corrected in the working tree                                                                                   | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply.                                                                                                                                                                                                            |
 
 Operation-8 request handling also honors the two-file directory's exact
-filename filter and pagination boundaries. Operation-5 requests must include
-the recovered zero five-bit terminator.
+filename filter and pagination boundaries. Operation-5 requests contain a typed
+zero selector before the file ID and must include the recovered zero five-bit
+terminator.
 
 ## Established protocol findings
 

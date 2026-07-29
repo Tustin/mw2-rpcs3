@@ -32,6 +32,7 @@ func buildMW2StorageGetRequest(fileID uint64) []byte {
 	writer.writeBit(true)
 	bd := &bdBitWriter{bits: writer}
 	bd.writeU8(bdStorageGetFile)
+	bd.writeU8(0)
 	bd.writeU64(fileID)
 	writer.writeBits(0, 5)
 	return bd.bytes()
@@ -125,6 +126,20 @@ func TestParseObservedMW2StorageListRequest(t *testing.T) {
 	}
 }
 
+func TestParseObservedMW2StorageGetRequest(t *testing.T) {
+	payload, err := hex.DecodeString("47c10050897766554433221100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := parseMW2StorageRequest(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.operationID != bdStorageGetFile || request.value != 0 || request.fileID != mw2MOTDFileID {
+		t.Fatalf("get request=%+v", request)
+	}
+}
+
 func TestParseMW2StorageRequests(t *testing.T) {
 	list, err := parseMW2StorageRequest(buildMW2StorageListRequest())
 	if err != nil {
@@ -142,8 +157,14 @@ func TestParseMW2StorageRequests(t *testing.T) {
 		t.Fatalf("get=%+v", get)
 	}
 
+	malformedValue := buildMW2StorageGetRequest(mw2PlaylistFileID)
+	malformedValue[2] |= 0x08
+	if _, err := parseMW2StorageRequest(malformedValue); err == nil {
+		t.Fatalf("accepted nonzero op5 value: %x", malformedValue)
+	}
+
 	malformedGet := buildMW2StorageGetRequest(mw2PlaylistFileID)
-	malformedGet[len(malformedGet)-1] |= 0x08
+	malformedGet[len(malformedGet)-1] |= 0x10
 	if _, err := parseMW2StorageRequest(malformedGet); err == nil {
 		t.Fatalf("accepted nonzero op5 terminator: %x", malformedGet)
 	}

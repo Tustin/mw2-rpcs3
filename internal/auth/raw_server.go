@@ -413,7 +413,10 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 			attrs = append(attrs, "operation_id", request.operationID)
 			switch request.operationID {
 			case bdStorageGetFile:
-				attrs = append(attrs, "file_id", fmt.Sprintf("0x%016x", request.fileID))
+				attrs = append(attrs,
+					"value", request.value,
+					"file_id", fmt.Sprintf("0x%016x", request.fileID),
+				)
 			case bdStorageListOwnerFiles:
 				attrs = append(attrs,
 					"value", request.value,

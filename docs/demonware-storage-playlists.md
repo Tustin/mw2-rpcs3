@@ -35,10 +35,13 @@ Confirmed statically and covered by repository tests:
 
 Still pending live verification:
 
-- the corrected operation-8 reply with both required publisher files;
-- an observed operation-5 request for `messageoftheday.info`;
-- an observed operation-5 request for `playlists.info`;
+- acceptance of the corrected operation-5 request parser and replies;
 - successful download and client parsing of the bundled bytes.
+
+The latest decrypted server trace already contains five operation-5 fetch
+requests. They alternated with operation-8 listings but were rejected before
+the operation ID could be retained because the parser omitted their typed zero
+selector.
 
 Do not treat the current static proof and unit tests as full live completion.
 
@@ -66,8 +69,9 @@ getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested filename,
 then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on equality.
 The getters return `bdFileInfo + 0x28` and the `u64` at `+0x08`,
 respectively. The selected ID is stored at fetch-state offset `+0x10`; wrapper
-`0x00322cd8` then calls `0x00322848`, which starts operation `5` with only that
-ID.
+`0x00322cd8` then calls `0x00322848`, which starts operation `5` for that ID.
+Its lower request builder `0x003edf18` also serializes the required typed zero
+selector before the ID.
 
 No timestamp, owner, privacy flag, or other neutral metadata field is read in
 this transition. There is also no local cache/version comparison in this
@@ -175,12 +179,16 @@ The request is:
 raw u8   service = 10
 raw bit  type-checking-present = 1
 typed u8 operation = 5
+typed u8 value = 0
 typed u64 file ID
 raw 5-bit terminator = 0
 zero padding to the current byte
 ```
 
-The ID must be the stable ID returned with exact filename `playlists.info`.
+The zero value precedes the file ID. Builder `0x003edf18` writes typed tag `3`
+and eight zero value bits before typed tag `10` and the selected ID, then the
+task wrapper appends the terminator. The ID must be the stable ID returned with
+exact filename `playlists.info`.
 
 The corrected successful reply is:
 
@@ -339,7 +347,8 @@ exact filename filters are applied to the two-file directory; a mismatched
 filter, zero maximum, or offset at/after the directory length returns a
 successful empty list. Full transport-block padding is left available for
 diagnostics instead of being treated as another task field. Operation 5
-likewise requires its five-bit terminator to be zero.
+consumes and validates its typed zero selector before the file ID and likewise
+requires its five-bit terminator to be zero.
 
 The final Docker image now:
 
@@ -359,19 +368,17 @@ other publisher file is advertised without direct MW2 proof.
 An older RPCS3 run received replies that encoded `1, 1` after the operation;
 static analysis proves those values meant result count `1` and the incorrect
 file size `1`. A later Linux run correctly returned one 193-byte canonical LF
-fixture but still did not issue operation `5`. A fresh current-bandwidth run
-then advertised MOTD, playlist, and a speculative `mp/mappack.info` entry and
-repeated operation `8`; the unproven third entry has now been removed while the
-statically established serializer remains unchanged.
+fixture. The newest decrypted trace advertised both proven files and contains
+five operation-5 requests interleaved with repeated operation-8 requests. Their
+payload lengths and parse failures match the typed `u8(0)` selector recovered
+from builder `0x003edf18`; the server parser has now been corrected.
 
 The next live checkpoint is:
 
-1. send operation `8` with count `2`, exact runtime sizes, and only MOTD then
-   playlist metadata;
-2. confirm the remote task completes;
-3. capture operation `5` for the advertised MOTD ID and then playlist ID;
-4. send each actual buffer size, matching metadata, and raw-byte blob;
-5. confirm the client parses version 504 and advances.
+1. run the corrected parser against RPCS3;
+2. confirm each operation-5 request logs selector `0` and its advertised ID;
+3. send each actual buffer size, matching metadata, and raw-byte blob;
+4. confirm the client parses the playlist and advances.
 
 ## Related retail services
 

@@ -265,6 +265,13 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 			return mw2StorageRequest{}, fmt.Errorf("unexpected storage list filter type %d", nextType)
 		}
 	case bdStorageGetFile:
+		request.value, err = reader.readU8()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage get value: %w", err)
+		}
+		if request.value != 0 {
+			return mw2StorageRequest{}, fmt.Errorf("unexpected storage get value %d", request.value)
+		}
 		request.fileID, err = reader.readU64()
 		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read storage file ID: %w", err)
