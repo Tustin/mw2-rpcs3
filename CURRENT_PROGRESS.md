@@ -1,27 +1,17 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-29 after decrypting the vanilla title-update SELF and
-recovering its exact publisher filename `playlists.patch3`, adding that playlist
-variant alongside TU0's `playlists.info`, identifying repeated post-directory
-packets as valid operation-5 fetches, correcting the missing typed zero selector
-in the request parser, correcting the mandatory typed-task reply marker, adding
-the required message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
-implementing the statically recovered retail matchmaking lifecycle, recovering
-the UDP public-address/NAT-classification exchanges, directly validating the
-legacy introducer relay, recovering the post-find peer
-QoS/NAT-traversal/old-bdDTLS datagrams, determining that the latest preserved
-playlist-stall trace came from a stale/pre-bandwidth-fix runtime, removing a
-speculative third `mp/mappack.info` publisher entry, then replacing the ELF
-playlist dump's non-executable trampoline and incorrect filesystem branch
-targets with an executable playlist-only wrapper that resumes the parser._
+_Last updated: 2026-07-29 after retrieving the retail `playlists.info`,
+completing the storage flow, and confirming that the game client accepts the
+emulated server's playlist. The active task is now solving the matchmaking lobby
+flow entered when the client searches for a match._
 
 ## Executive summary
 
 The project gets MW2 on RPCS3 through dynamic Demonware authentication, the
-encrypted Lobby Service Gateway (LSG) handshake, and a sustained post-login
-task session. A prior live run displayed "Connecting to Matchmaking Server
-Complete." and continued issuing service requests without an authentication
-restart or LSG reconnect.
+encrypted Lobby Service Gateway (LSG) handshake, storage, and playlist loading.
+The retail `playlists.info` has been retrieved, the storage flow works live, and
+the game client accepts the emulated server's playlist. The next task is the
+matchmaking lobby flow entered when finding a match.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -58,9 +48,8 @@ player. The operation-8 completion loop is also now proven: it selects exact
 filename `playlists.info`, copies only its `u64` ID, starts operation `5`, and
 passes the downloaded buffer (up to `0x20000` bytes) directly to the playlist
 parser. The same filename/opaque-ID handoff serves a bounded plain-text MOTD
-first. Neutral metadata fields are not a fetch gate. The expanded publisher
-directory still requires a new live RPCS3 run; no preserved emulator run ever
-sent storage operation `5`.
+first. Neutral metadata fields are not a fetch gate. Live RPCS3 testing has now
+confirmed that storage completes and the client accepts the served playlist.
 
 The service-5 audit recovered operations `1` create, `2` update, `3` delete,
 `4` find by ID, and `5` find sessions. The server now implements the
@@ -116,10 +105,10 @@ anti-abuse policy remain unresolved.
 | Dynamic authentication              | Working in prior live runs                                                                                      | A fresh session key, game ticket, and LSG ticket are generated per connection.                                                                                                                                                                                                                                                                              |
 | RPCN key extraction                 | Working in prior live runs                                                                                      | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset.                                                                                                                                                                                                                                                                   |
 | Encrypted retail LSG                | Working in prior live runs                                                                                      | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing.                                                                                                                                                                                                                                                                     |
-| Storage operation `8`               | TU0 and title-update filenames recovered; fresh live recheck pending                                             | Returns leading type-checking bit `1`, then the proven publisher results `messageoftheday.info`, TU0 `playlists.info`, and title-update `playlists.patch3`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry remains removed.                                                                                           |
-| Storage operation `7`               | Implemented; corrected live recheck pending                                                                     | Returns a successful empty outer result count.                                                                                                                                                                                                                                                                                                              |
-| Storage operation `5`               | Request now observed live and parser corrected; reply live recheck pending                                     | Consumes typed `u8(0)` before the advertised opaque ID, then returns actual buffer size, matching `bdFileInfo`, and the raw typed blob.                                                                                                                                                                                                                       |
-| MOTD prerequisite                   | Implemented from static proof; live recheck pending                                                             | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text.                                                                                                                                                                                     |
+| Storage operation `8`               | Working live                                                                                                    | Returns leading type-checking bit `1`, then the proven publisher results `messageoftheday.info`, TU0 `playlists.info`, and title-update `playlists.patch3`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry remains removed.                                                                                           |
+| Storage operation `7`               | Implemented                                                                                                     | Returns a successful empty outer result count.                                                                                                                                                                                                                                                                                                              |
+| Storage operation `5`               | Working live                                                                                                    | Consumes typed `u8(0)` before the advertised opaque ID, then returns actual buffer size, matching `bdFileInfo`, and the raw typed blob. The client accepts the served playlist.                                                                                                                                                                                |
+| MOTD prerequisite                   | Implemented                                                                                                     | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text.                                                                                                                                                                                         |
 | Bundled `playlists.info`            | Retail-parser valid; 95% confidence                                                                             | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection.                                                                                                                                                                                                                                          |
 | Docker playlist packaging           | Fixed in the working tree                                                                                       | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`.                                                                                                                                                                                                                                                                      |
 | Stats                               | Placeholder only                                                                                                | The observed retail request is service `4`, operation `4`; the server currently returns an empty success.                                                                                                                                                                                                                                                   |
@@ -451,9 +440,21 @@ Repository verification:
   type byte changes;
 - Docker packaging now includes the fixture.
 
-Pending live verification:
+## Completed live storage verification
 
-The diagnostic is now reduced to a playlist-only raw dump. The MOTD hook at
+The retail `playlists.info` was retrieved successfully. The emulator's storage
+flow now completes live, and the game client accepts the served playlist.
+
+## Current task: matchmaking lobby
+
+The next implementation and live-debugging target is the lobby flow entered
+when the client selects Find Match. Use the retail PS3 capture as the source of
+truth for the exact service-5 request/reply sequence and continue through session
+discovery, candidate selection, and lobby/peer handoff.
+
+## Prior playlist dump diagnostic
+
+The diagnostic was reduced to a playlist-only raw dump. The MOTD hook at
 `0x0030b598` has been removed and its original `lwz r8, dword_1F91128`
 instruction restored. At `0x0030b530`, only the original `bl sub_258BF0` parser
 call is replaced with a direct `bl` to the dump wrapper; all surrounding
@@ -484,38 +485,21 @@ The relocated branch words and segment bounds were recomputed from their actual
 addresses and verified in the patched ELF. The ELF is ready to be resigned and
 tested on RPCS3/hardware.
 
-The dump must be captured on a retail PS3 connected to the real Demonware
-service. RPCS3 against the emulated server cannot produce the source-of-truth
-`playlists.info` because the emulator does not yet have that retail file to
-serve. `default.self` and `default_mp.self` are distinct executables; the patched
-and resigned multiplayer executable must be deployed as `default_mp.self` on
-the retail PS3 rather than replacing RPCS3's `default.self`.
+The dump was captured on a retail PS3 connected to the real Demonware service,
+and the retrieved raw `playlists.info` is now the emulator fixture. The patched
+multiplayer executable was correctly deployed as `default_mp.self`.
 
-1. Deploy the newly resigned `default_mp.self` to the retail PS3, connect through
-   the real Demonware playlist download path, and retrieve
-   `/dev_hdd0/tmp/playlists.info`. It should contain only the raw playlist text,
-   with no length prefix.
-2. Clean-build and redeploy the current source with
-   `MW2_NAT_ADVERTISED_IP` set to the IPv4 address reachable by RPCS3. The
-   repository currently has no `.env`, Compose refuses to interpolate the
-   required value, and no `mw2` container is running.
-3. Confirm service `18/1` logs `bandwidth_phase=request`, `payload_len=51`, and
-   encrypted `frame_len=65` rather than the stale 11-byte error-108 rejection.
-4. Capture five 512-byte UDP uploads with sequences `0..4`, followed by
-   `bandwidth_phase=finalize`, `payload_len=29`, and encrypted `frame_len=49`.
-5. Run the vanilla title-update RPCS3 client against the three-file operation-8
-   reply, confirm it selects `playlists.patch3`, and verify the list request no
-   longer repeats.
-6. Capture operation `5` for `messageoftheday.info`, then operation `5` for the
-   advertised `playlists.info` ID, and confirm the client parses version 504.
-7. Confirm the exact service-5 operation-5 request and zero/nonempty responses
-   live.
-8. Run two distinct clients through create -> find -> update -> delete and
-   capture the recovered type-`0x28`/`0x29` QoS and type-`0x0d`/`0x0c`
-   direct-traversal transition.
-9. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
-   public-address reply plus primary/alternate-source NAT-classification
-   replies.
+Current matchmaking-lobby work:
+
+1. Compare the retail PS3 Find Match sequence against a fresh RPCS3/server trace.
+2. Confirm the exact service-5 operation-5 request and zero/nonempty responses
+   live, including the candidate tuples returned to the client.
+3. Run two distinct clients through create -> find -> update -> delete and trace
+   the transition from directory results into the matchmaking lobby.
+4. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
+   type-`0x0d`/`0x0c` direct-traversal transition required for lobby/peer handoff.
+5. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
+   public-address reply plus primary/alternate-source NAT-classification replies.
 
 ## Current implementation areas
 
