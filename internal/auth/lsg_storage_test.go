@@ -185,7 +185,7 @@ func TestMW2StorageListHonorsFilterAndPagination(t *testing.T) {
 	requests := [][]byte{
 		buildMW2StorageListRequestWith(0, 100, "other.info"),
 		buildMW2StorageListRequestWith(0, 0, ""),
-		buildMW2StorageListRequestWith(2, 100, ""),
+		buildMW2StorageListRequestWith(3, 100, ""),
 	}
 	for index, request := range requests {
 		_, reply, handled := connection.handleStorageTask(request)
@@ -213,6 +213,18 @@ func TestMW2StorageListHonorsFilterAndPagination(t *testing.T) {
 		t.Fatalf("exact filename summary=%+v", summary)
 	}
 
+	_, reply, handled = connection.handleStorageTask(buildMW2StorageListRequestWith(0, 100, mw2PlaylistPatch3Name))
+	if !handled {
+		t.Fatal("exact title-update playlist filename request was not handled")
+	}
+	summary, err = parseMW2StorageReplySummary(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.resultCount != 1 || summary.fileSize == 0 {
+		t.Fatalf("exact title-update playlist filename summary=%+v", summary)
+	}
+
 	_, reply, handled = connection.handleStorageTask(buildMW2StorageListRequestWith(0, 100, mw2MOTDFilename))
 	if !handled {
 		t.Fatal("exact MOTD filename request was not handled")
@@ -226,11 +238,12 @@ func TestMW2StorageListHonorsFilterAndPagination(t *testing.T) {
 	}
 }
 
-func TestMW2PublisherDirectoryAdvertisesMOTDBeforePlaylist(t *testing.T) {
+func TestMW2PublisherDirectoryAdvertisesMOTDBeforePlaylistVariants(t *testing.T) {
 	playlist := []byte("version 504\n")
 	files := []mw2PublisherFile{
 		{id: mw2MOTDFileID, name: mw2MOTDFilename, data: []byte(mw2DefaultMOTD)},
 		{id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: playlist},
+		{id: mw2PlaylistPatch3FileID, name: mw2PlaylistPatch3Name, data: playlist},
 	}
 	payload := (&lsgConnection{}).storagePublisherListReply(files)
 	reader := mustBDTaskReplyReader(t, payload)
@@ -243,7 +256,7 @@ func TestMW2PublisherDirectoryAdvertisesMOTDBeforePlaylist(t *testing.T) {
 	if operation, err := reader.readU8(); err != nil || operation != bdStorageListFiles {
 		t.Fatalf("operation=%d err=%v", operation, err)
 	}
-	if count, err := reader.readU32(); err != nil || count != 2 {
+	if count, err := reader.readU32(); err != nil || count != 3 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	if size, err := reader.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
@@ -254,6 +267,10 @@ func TestMW2PublisherDirectoryAdvertisesMOTDBeforePlaylist(t *testing.T) {
 		t.Fatalf("playlist size=%d err=%v", size, err)
 	}
 	assertMW2FileInfoValue(t, reader, mw2PlaylistFileID, mw2PlaylistFilename)
+	if size, err := reader.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("title-update playlist size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, reader, mw2PlaylistPatch3FileID, mw2PlaylistPatch3Name)
 }
 
 func TestMW2StorageGetReplyContainsMOTDBlob(t *testing.T) {
@@ -295,6 +312,42 @@ func TestParseMW2StorageListReplySummary(t *testing.T) {
 	}
 	if summary.transactionID != 0 || summary.errorCode != bdErrorNone || summary.operationID != bdStorageListFiles || summary.resultCount != 1 || summary.fileSize != uint32(len(playlist)) {
 		t.Fatalf("summary=%+v", summary)
+	}
+}
+
+func TestMW2StorageGetsTitleUpdatePlaylistVariant(t *testing.T) {
+	playlist := []byte("version 504\n")
+	path := t.TempDir() + "/playlists.info"
+	if err := os.WriteFile(path, playlist, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MW2_PLAYLISTS_FILE", path)
+
+	connection := &lsgConnection{}
+	_, reply, handled := connection.handleStorageTask(buildMW2StorageGetRequest(mw2PlaylistPatch3FileID))
+	if !handled || !connection.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, connection.lastTaskSupported)
+	}
+	reader := mustBDTaskReplyReader(t, reply)
+	if _, err := reader.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := reader.readU8(); err != nil || operation != bdStorageGetFile {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if size, err := reader.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, reader, mw2PlaylistPatch3FileID, mw2PlaylistPatch3Name)
+	blob, err := reader.readBlob(mw2PlaylistMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(blob, playlist) {
+		t.Fatalf("blob=%q", blob)
 	}
 }
 
@@ -510,7 +563,7 @@ func TestMW2StorageListThenGetActualPlaylist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if listSummary.transactionID != 0 || listSummary.operationID != bdStorageListFiles || listSummary.resultCount != 2 || listSummary.fileSize != uint32(len(mw2DefaultMOTD)) {
+	if listSummary.transactionID != 0 || listSummary.operationID != bdStorageListFiles || listSummary.resultCount != 3 || listSummary.fileSize != uint32(len(mw2DefaultMOTD)) {
 		t.Fatalf("op8 summary=%+v playlist_bytes=%d", listSummary, len(playlist))
 	}
 

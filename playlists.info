@@ -11,7 +11,7 @@ rule session_immediateDeleteTinySessions 1
 rule party_minlobbytime 60
 
 gametype ffa
-name english "Free-for-all"
+name english "Free-for-all1111"
 name french "M�l�e g�n�rale"
 name italian "Tutti contro tutti"
 name german "Frei f�r alle"
@@ -41,25 +41,11 @@ description russian "�������� ������� ����
 description japanese "�^���������̃f�X�}�b�`�B\n�����ȊO�͂��ׂēG�B�G�͂��ׂĎE���B\n\n__________\n�v���C���[���F4�`8"
 unlockxp 0
 maxparty 1
-rule party_minplayers 4
+rule party_minplayers 1
 rule party_maxplayers 8
-rule party_matchedplayercount 4
+rule party_matchedplayercount 1
 rule scr_dm_scorelimit 1500
 rule cg_everyonehearseveryone 1
 
-mp_afghan,ffa,4
-mp_boneyard,ffa,4
-mp_brecourt,ffa,4
-mp_checkpoint,ffa,4
-//mp_derail,ffa,4
-mp_estate,ffa,4
-mp_favela,ffa,4
-mp_highrise,ffa,4
-mp_invasion,ffa,4
-mp_nightshift,ffa,4
-mp_quarry,ffa,4
-mp_rundown,ffa,4
+
 mp_rust,ffa,1
-mp_subbase,ffa,4
-mp_terminal,ffa,4
-mp_underpass,ffa,4

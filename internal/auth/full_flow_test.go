@@ -146,7 +146,7 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	if operationID, err := list.readU8(); err != nil || operationID != bdStorageListFiles {
 		t.Fatalf("op8 operation=%d err=%v", operationID, err)
 	}
-	if count, err := list.readU32(); err != nil || count != 2 {
+	if count, err := list.readU32(); err != nil || count != 3 {
 		t.Fatalf("op8 count=%d err=%v", count, err)
 	}
 	if size, err := list.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
@@ -162,6 +162,13 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	fileID := readFullFlowFileInfo(t, list, mw2PlaylistFilename)
 	if fileID != mw2PlaylistFileID {
 		t.Fatalf("op8 file ID=%x", fileID)
+	}
+	if size, err := list.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("op8 title-update size=%d want=%d err=%v", size, len(playlist), err)
+	}
+	patch3FileID := readFullFlowFileInfo(t, list, mw2PlaylistPatch3Name)
+	if patch3FileID != mw2PlaylistPatch3FileID {
+		t.Fatalf("op8 title-update file ID=%x", patch3FileID)
 	}
 
 	motdReply := client.exchange(t, bdServiceStorage, buildMW2StorageGetRequest(motdFileID))

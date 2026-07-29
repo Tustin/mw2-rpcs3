@@ -1,9 +1,11 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-29 after identifying the repeated post-directory packets
-as valid operation-5 fetches, correcting the missing typed zero selector in the
-request parser, correcting the mandatory typed-task reply marker, adding the
-required message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
+_Last updated: 2026-07-29 after decrypting the vanilla title-update SELF and
+recovering its exact publisher filename `playlists.patch3`, adding that playlist
+variant alongside TU0's `playlists.info`, identifying repeated post-directory
+packets as valid operation-5 fetches, correcting the missing typed zero selector
+in the request parser, correcting the mandatory typed-task reply marker, adding
+the required message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
 implementing the statically recovered retail matchmaking lifecycle, recovering
 the UDP public-address/NAT-classification exchanges, directly validating the
 legacy introducer relay, recovering the post-find peer
@@ -31,17 +33,22 @@ Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 - `messageoftheday.info` is fetched through the same list/get state machine
   before `playlists.info`; both must be present in the publisher directory.
 
-The newest sensitive trace confirms that the leading type-checking marker fix
-is deployed: every operation-8 reply logs `type_checked=true`. It also captures
-five service-10 operation-5 fetches, alternating with repeated operation-8
-lists. They were previously misreported as unknown tasks because the parser
-expected the `u64` file ID immediately after the operation and encountered type
-tag `3`. Builder `0x003edf18` proves the retail request writes typed `u8(0)`
-before typed `u64(file ID)`. The parser, tests, telemetry, and packet codec now
-consume that selector. Static analysis also found two
-`messageoftheday.info` state initializers (`0x0030a748`, `0x0030a788`) before
-the playlist initializer (`0x0030a7c8`), so the server lists and serves both
-publisher files.
+The vanilla and modified-client traces use identical operation-8 requests and
+receive identical replies, but only the modified TU0-derived client advances to
+operation 5. The reason is executable version, not the dump hook: the loaded IDA
+ELF is the TU0 build and requests `playlists.info`, while RPCS3 boots the
+9,038,448-byte NPDRM title-update SELF from `/dev_hdd0/game/BLUS30377`. After
+decrypting that exact SELF with content ID
+`UP0002-BLUS30377_00-MW2P000000000014`, its publisher state table proves the
+exact playlist filename is `playlists.patch3`. The server now advertises and
+serves both playlist names from the same bytes, with distinct stable IDs.
+
+A separate sensitive trace captures five service-10 operation-5 fetches. They
+were previously misreported as unknown tasks because the parser expected the
+`u64` file ID immediately after the operation and encountered type tag `3`.
+Builder `0x003edf18` proves the retail request writes typed `u8(0)` before typed
+`u64(file ID)`. The parser, tests, telemetry, and packet codec consume that
+selector.
 
 The Go serializers and focused tests have been updated to those layouts. Direct
 tracing of the retail playlist parser and Public Playlists feeder confirms that
@@ -109,7 +116,7 @@ anti-abuse policy remain unresolved.
 | Dynamic authentication              | Working in prior live runs                                                                                      | A fresh session key, game ticket, and LSG ticket are generated per connection.                                                                                                                                                                                                                                                                              |
 | RPCN key extraction                 | Working in prior live runs                                                                                      | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset.                                                                                                                                                                                                                                                                   |
 | Encrypted retail LSG                | Working in prior live runs                                                                                      | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing.                                                                                                                                                                                                                                                                     |
-| Storage operation `8`               | Corrected statically and covered by tests; fresh two-file live recheck pending                                  | Returns leading type-checking bit `1`, then exactly the two proven publisher results: `messageoftheday.info` and `playlists.info`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry observed in a fresh three-result retry loop has been removed.                                                                         |
+| Storage operation `8`               | TU0 and title-update filenames recovered; fresh live recheck pending                                             | Returns leading type-checking bit `1`, then the proven publisher results `messageoftheday.info`, TU0 `playlists.info`, and title-update `playlists.patch3`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry remains removed.                                                                                           |
 | Storage operation `7`               | Implemented; corrected live recheck pending                                                                     | Returns a successful empty outer result count.                                                                                                                                                                                                                                                                                                              |
 | Storage operation `5`               | Request now observed live and parser corrected; reply live recheck pending                                     | Consumes typed `u8(0)` before the advertised opaque ID, then returns actual buffer size, matching `bdFileInfo`, and the raw typed blob.                                                                                                                                                                                                                       |
 | MOTD prerequisite                   | Implemented from static proof; live recheck pending                                                             | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text.                                                                                                                                                                                     |
@@ -126,8 +133,8 @@ anti-abuse policy remain unresolved.
 | Playlist parsing / lobby population | Not live-verified                                                                                               | No corrected operation-5 download and client parse have been captured yet.                                                                                                                                                                                                                                                                                  |
 | Runtime discovery telemetry         | Corrected in the working tree                                                                                   | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply.                                                                                                                                                                                                            |
 
-Operation-8 request handling also honors the two-file directory's exact
-filename filter and pagination boundaries. Operation-5 requests contain a typed
+Operation-8 request handling honors the version-aware publisher directory's
+exact filename filter and pagination boundaries. Operation-5 requests contain a typed
 zero selector before the file ID and must include the recovered zero five-bit
 terminator.
 
@@ -423,8 +430,8 @@ Repository verification:
 
 - focused Go tests assert the corrected operation-8 and operation-5 layouts;
 - storage/full-flow/logging tests assert that the unfiltered publisher
-  directory contains exactly `messageoftheday.info` followed by
-  `playlists.info`, with no speculative mappack result;
+  directory contains `messageoftheday.info`, TU0 `playlists.info`, and
+  title-update `playlists.patch3`, with no speculative mappack result;
 - focused Go tests also assert that the captured RPCN service-18 request reaches
   the raw handler, receives reply type `5` with the exact request/finalize
   success bodies, and that only exact 512-byte sequence-`0..4` UDP uploads are
@@ -496,9 +503,9 @@ the retail PS3 rather than replacing RPCS3's `default.self`.
    encrypted `frame_len=65` rather than the stale 11-byte error-108 rejection.
 4. Capture five 512-byte UDP uploads with sequences `0..4`, followed by
    `bandwidth_phase=finalize`, `payload_len=29`, and encrypted `frame_len=49`.
-5. Run RPCS3 against the two-file operation-8 reply containing the actual
-   loaded sizes and SHA-256, then confirm the remote task completes rather than
-   repeating the three-result operation-8 loop from the latest diagnostic.
+5. Run the vanilla title-update RPCS3 client against the three-file operation-8
+   reply, confirm it selects `playlists.patch3`, and verify the list request no
+   longer repeats.
 6. Capture operation `5` for `messageoftheday.info`, then operation `5` for the
    advertised `playlists.info` ID, and confirm the client parses version 504.
 7. Confirm the exact service-5 operation-5 request and zero/nonempty responses

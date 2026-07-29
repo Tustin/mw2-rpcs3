@@ -1,7 +1,8 @@
-# Demonware storage and `playlists.info`
+# Demonware storage and playlist publisher files
 
-This document describes the MW2 PS3 retail storage path confirmed from
-`default_mp.elf`, the current server implementation, and the bundled fixture.
+This document describes the MW2 PS3 retail storage path confirmed from the TU0
+`default_mp.elf` and decrypted title-update executable, the current server
+implementation, and the bundled fixture.
 It separates statically proven wire behavior from behavior that still needs a
 live RPCS3 capture.
 
@@ -9,17 +10,18 @@ live RPCS3 capture.
 
 Confirmed statically and covered by repository tests:
 
-- MW2 initializes `messageoftheday.info` publisher-download states before the
-  `playlists.info` state, so both files must be present in the publisher
-  directory;
+- MW2 initializes `messageoftheday.info` publisher-download states before its
+  playlist state;
+- the TU0 executable requests `playlists.info`, while the vanilla title-update
+  executable requests `playlists.patch3`;
 - every received typed task payload starts with a one-bit type-checking marker
   which the client consumes before any five-bit type tag;
 - storage is retail service `10`;
 - operation `8` lists publisher files;
 - operation `5` retrieves the selected file ID;
 - operation-8 results contain an outer result count and a per-file typed size;
-- the proven unfiltered publisher directory contains exactly
-  `messageoftheday.info` followed by `playlists.info`; the speculative
+- the proven publisher directory contains `messageoftheday.info`, TU0
+  `playlists.info`, and title-update `playlists.patch3`; the speculative
   `mp/mappack.info` entry has been removed pending direct retail proof;
 - operation `5` begins with a typed destination-buffer size and has no outer
   result count on the wire;
@@ -35,7 +37,7 @@ Confirmed statically and covered by repository tests:
 
 Still pending live verification:
 
-- acceptance of the corrected operation-5 request parser and replies;
+- vanilla title-update selection and fetch of `playlists.patch3`;
 - successful download and client parsing of the bundled bytes.
 
 The latest decrypted server trace already contains five operation-5 fetch
@@ -57,16 +59,19 @@ storage operation 8
 
 storage operation 8
     -> receive publisher-file metadata
-    -> find exact filename "playlists.info"
+    -> find exact filename "playlists.info" on TU0 or "playlists.patch3" on the title update
     -> read its stable u64 file ID
     -> storage operation 5 with that ID
     -> receive metadata and raw text blob
     -> parse the playlist locally
 ```
 
-The operation-8 completion loop at `0x00322aa8..0x00322bfc` calls the filename
-getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested filename,
-then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on equality.
+The TU0 operation-8 completion loop at `0x00322aa8..0x00322bfc` calls the
+filename getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested
+filename, then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on
+equality. The decrypted title-update executable contains the same state-machine
+shape at relocated addresses but its publisher state table points to
+`playlists.patch3`.
 The getters return `bdFileInfo + 0x28` and the `u64` at `+0x08`,
 respectively. The selected ID is stored at fetch-state offset `+0x10`; wrapper
 `0x00322cd8` then calls `0x00322848`, which starts operation `5` for that ID.
@@ -334,8 +339,8 @@ not prove the game has downloaded or applied the file in a live session.
 `internal/auth/lsg_storage.go` currently:
 
 - parses the observed operation-8 and operation-5 request fields;
-- advertises stable IDs for `messageoftheday.info` and `playlists.info`, in
-  that order;
+- advertises stable IDs for `messageoftheday.info`, TU0 `playlists.info`, and
+  title-update `playlists.patch3`, in that order;
 - writes operation `8` as count -> actual size -> `bdFileInfo`;
 - writes operation `5` as actual buffer size -> `bdFileInfo` -> blob;
 - uses each selected file's same ID and filename in list/get replies;
@@ -343,7 +348,7 @@ not prove the game has downloaded or applied the file in a live session.
 
 The request parser consumes and logs the operation-8 selector, offset, maximum,
 optional filename filter, and five-bit terminator. Offset/maximum pagination and
-exact filename filters are applied to the two-file directory; a mismatched
+exact filename filters are applied to the version-aware directory; a mismatched
 filter, zero maximum, or offset at/after the directory length returns a
 successful empty list. Full transport-block padding is left available for
 diagnostics instead of being treated as another task field. Operation 5

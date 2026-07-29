@@ -8,6 +8,8 @@ import (
 const (
 	mw2PlaylistFileID       = uint64(0x1122334455667788)
 	mw2PlaylistFilename     = "playlists.info"
+	mw2PlaylistPatch3FileID = uint64(0x112233445566778a)
+	mw2PlaylistPatch3Name   = "playlists.patch3"
 	mw2PlaylistMaxSize      = 0x20000
 	mw2MOTDFileID           = uint64(0x1122334455667789)
 	mw2MOTDFilename         = "messageoftheday.info"
@@ -449,6 +451,7 @@ func loadMW2PublisherFiles() ([]mw2PublisherFile, error) {
 	return []mw2PublisherFile{
 		{id: mw2MOTDFileID, name: mw2MOTDFilename, data: motd},
 		{id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: playlist},
+		{id: mw2PlaylistPatch3FileID, name: mw2PlaylistPatch3Name, data: playlist},
 	}, nil
 }
 
@@ -526,7 +529,7 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		}
 		c.lastStorageGetFile = file.name
 		c.lastStorageGetID = fmt.Sprintf("0x%016x", file.id)
-		if file.id == mw2PlaylistFileID {
+		if file.id == mw2PlaylistFileID || file.id == mw2PlaylistPatch3FileID {
 			c.playlistBytes = len(file.data)
 			c.playlistSHA256 = digestHex(file.data)
 		}
