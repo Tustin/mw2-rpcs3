@@ -24,12 +24,17 @@ wire layouts are not imported where the MW2 ELF differs.
 | required-free-slot condition (`openPublic >= requiredFreeSlots`) | >90% |
 | 25-byte common-address layout and create-to-result echo | >95% |
 | encrypted two-client storage-to-candidate server lifecycle | >95%; automated |
+| live RPCS3 op-1/op-2/op-3/op-5 request parsing | confirmed on 2026-07-29 |
+| live RPCS3 zero-result op-5 response acceptance | confirmed on 2026-07-29 |
+| live RPCS3 nonempty candidate acceptance and peer handoff | not yet established |
 | live RPCS3 two-client join/gameplay | not yet established |
 
 The retail PCAP confirms record framing but cannot decrypt the lobby payload
-without the unavailable production session secret. No preserved emulated run
-ever reached storage op `5` or matchmaking service `5`, so the schemas below
-are static-analysis results pending live confirmation.
+without the unavailable production session secret. The 2026-07-29 emulated run
+reached storage op `5` and matchmaking operations `1`, `5`, `2`, and `3`,
+confirming the request layouts and zero-result operation-5 reply live. That run
+advertised only private slots (`openPublic = 0`, `openPrivate = 8`), so it did
+not establish a nonempty candidate result or the peer handoff.
 
 ## Common request encoding
 
@@ -395,11 +400,29 @@ intervening central service-5 join RPC. The host client answers the peer
 QoS/title handshake; later host state changes produce operation `2` slot-count
 updates.
 
-The supplied 62.655-second retail PCAP contains no traffic to a candidate
-LAN/residential peer and no QoS request/reply pair. Direct MW2 serializers and
-parsers nevertheless establish the exact peer QoS and NAT-traversal datagrams,
-HMAC input, and retry state above the implementation threshold; see
-`demonware-peer-qos.md`. Their live endpoint selection, the central introducer
-contract, and live peer-DTLS confirmation remain pending. The canonical
-peer-DTLS handshake itself is statically recovered in
+The supplied 62.655-second retail startup/lobby PCAP contains no traffic to a
+candidate LAN/residential peer and no QoS request/reply pair. The separate
+90.964-second `mw2 ps3 ingame.pcapng` trace does contain the post-find peer
+phase: the first candidate-directed UDP packet is a type-`0x28` QoS probe at
+frame 1782 (`57.466207`, `192.168.0.199:3074 -> 94.7.20.216:3074`), followed
+by traversal traffic. This packet sequence corroborates the statically recovered
+handoff and confirms that retail proceeds from the central directory result to
+direct peer traffic without another central service-5 join RPC. The production
+LSG payload remains encrypted and the ingame capture has TCP sequence gaps, so
+the returned candidate tuple itself is not recoverable from these PCAPs.
+
+The 2026-07-29 emulated trace reaches the same central request boundary but
+returns zero candidates. Its host records advertise `openPublic = 0` and
+`openPrivate = 8`, while the live query requires one public slot. The server
+therefore correctly emits a zero-result operation-5 reply, which the client
+accepts before retrying and eventually deleting the hosted session; no
+candidate-directed `0x28`/`0x29` QoS or `0x0a`..`0x0d` traversal datagram is
+sent. A fresh two-client run with at least one advertised public slot is the
+next required live comparison.
+
+Direct MW2 serializers and parsers establish the exact peer QoS and
+NAT-traversal datagrams, HMAC input, and retry state above the implementation
+threshold; see `demonware-peer-qos.md`. The complete live endpoint selection,
+central introducer contract, and peer-DTLS confirmation remain pending. The
+canonical peer-DTLS handshake itself is statically recovered in
 `demonware-peer-dtls.md`.

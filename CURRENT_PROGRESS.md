@@ -447,10 +447,19 @@ flow now completes live, and the game client accepts the served playlist.
 
 ## Current task: matchmaking lobby
 
-The next implementation and live-debugging target is the lobby flow entered
-when the client selects Find Match. Use the retail PS3 capture as the source of
-truth for the exact service-5 request/reply sequence and continue through session
-discovery, candidate selection, and lobby/peer handoff.
+The retail Find Match sequence has now been compared with the latest preserved
+RPCS3/server trace. The emulated client reaches storage op `5`, creates a
+service-5 session, sends the exact operation-5 query, accepts repeated
+zero-result replies, updates the session, and deletes it. The first divergence
+from the retail ingame trace is after directory lookup: retail sends a
+candidate-directed type-`0x28` QoS probe, while the emulated run has no eligible
+candidate because its hosted record advertises `openPublic = 0` and
+`openPrivate = 8` against `requiredFreeSlots = 1`.
+
+The active implementation and live-debugging target is therefore a fresh
+two-client run whose host advertises at least one public slot, followed by
+candidate acceptance and lobby/peer handoff. The retail PS3 captures remain the
+source of truth.
 
 ## Prior playlist dump diagnostic
 
@@ -491,14 +500,18 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Compare the retail PS3 Find Match sequence against a fresh RPCS3/server trace.
-2. Confirm the exact service-5 operation-5 request and zero/nonempty responses
-   live, including the candidate tuples returned to the client.
-3. Run two distinct clients through create -> find -> update -> delete and trace
-   the transition from directory results into the matchmaking lobby.
-4. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
+1. Completed: compared retail Find Match with the latest preserved
+   RPCS3/server trace. Retail reaches a type-`0x28` candidate QoS probe; the
+   emulated run reaches service-5 op `5` but correctly returns zero because the
+   hosted session has no open public slot. The preserved `mw2 rpcs3.pcapng` is
+   older than the 2026-07-29 server/RPCS3 logs and cannot be packet-correlated
+   with that run.
+2. Run two distinct clients with `openPublic >= 1` through create -> find ->
+   update -> delete; confirm the nonempty operation-5 candidate tuple is
+   accepted and trace the transition into the matchmaking lobby.
+3. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
    type-`0x0d`/`0x0c` direct-traversal transition required for lobby/peer handoff.
-5. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
+4. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
    public-address reply plus primary/alternate-source NAT-classification replies.
 
 ## Current implementation areas
