@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -41,8 +42,25 @@ func main() {
 	}
 	recorder := capture.New(cfg.CaptureEnabled, cfg.CaptureDir, int(cfg.MaxFrameBytes))
 	authServer := auth.NewRawServer(cfg.AuthAddr, logger, recorder, cfg.ReadTimeout, cfg.WriteTimeout)
+	authServer.SetSensitiveLogging(cfg.LogSensitive)
+	natEndpoint, err := net.ResolveUDPAddr("udp", cfg.NATAddr)
+	if err != nil {
+		logger.Error("bandwidth endpoint initialization failed", "error", err)
+		os.Exit(1)
+	}
+	authServer.SetBandwidthEndpoint(net.ParseIP(cfg.NATAdvertisedIP), uint16(natEndpoint.Port))
+	if cfg.LogSensitive {
+		logger.Warn("sensitive protocol logging enabled; logs contain credentials, keys, decrypted payloads, and raw frames")
+	}
 	lobbyServer := server.NewTCP("lobby", cfg.LobbyAddr, logger, dispatcher, recorder, cfg.MaxFrameBytes, cfg.ReadTimeout, cfg.WriteTimeout)
-	natServer := nat.New(cfg.NATAddr, logger, recorder)
+	natServer := nat.NewWithAddresses(
+		cfg.NATAddr,
+		cfg.NATAlternateAddr,
+		cfg.NATAdvertisedIP,
+		cfg.NATRelayEnabled,
+		logger,
+		recorder,
+	)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	type runner struct {

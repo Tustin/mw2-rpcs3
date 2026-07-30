@@ -2,43 +2,56 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"time"
 )
 
 type Config struct {
-	AuthAddr       string
-	LobbyAddr      string
-	NATAddr        string
-	HTTPAddr       string
-	LogLevel       string
-	CaptureEnabled bool
-	CaptureDir     string
-	MaxFrameBytes  uint32
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	SessionTTL     time.Duration
-	StaticMOTD     string
+	AuthAddr         string
+	LobbyAddr        string
+	NATAddr          string
+	NATAlternateAddr string
+	NATAdvertisedIP  string
+	NATRelayEnabled  bool
+	HTTPAddr         string
+	LogLevel         string
+	LogSensitive     bool
+	CaptureEnabled   bool
+	CaptureDir       string
+	MaxFrameBytes    uint32
+	ReadTimeout      time.Duration
+	WriteTimeout     time.Duration
+	SessionTTL       time.Duration
+	StaticMOTD       string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		AuthAddr:      env("MW2_AUTH_ADDR", ":3074"),
-		LobbyAddr:     env("MW2_LOBBY_ADDR", ":3075"),
-		NATAddr:       env("MW2_NAT_ADDR", ":3076"),
-		HTTPAddr:      env("MW2_HTTP_ADDR", ":8080"),
-		LogLevel:      env("MW2_LOG_LEVEL", "info"),
-		CaptureDir:    env("MW2_CAPTURE_DIR", "captures"),
-		StaticMOTD:    env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
-		MaxFrameBytes: 1 << 20,
-		ReadTimeout:   30 * time.Second,
-		WriteTimeout:  10 * time.Second,
-		SessionTTL:    2 * time.Minute,
+		AuthAddr:         env("MW2_AUTH_ADDR", ":3074"),
+		LobbyAddr:        env("MW2_LOBBY_ADDR", ":3075"),
+		NATAddr:          env("MW2_NAT_ADDR", ":3074"),
+		NATAlternateAddr: env("MW2_NAT_ALT_ADDR", ":3075"),
+		NATAdvertisedIP:  env("MW2_NAT_ADVERTISED_IP", ""),
+		HTTPAddr:         env("MW2_HTTP_ADDR", ":8080"),
+		LogLevel:         env("MW2_LOG_LEVEL", "info"),
+		CaptureDir:       env("MW2_CAPTURE_DIR", "captures"),
+		StaticMOTD:       env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
+		MaxFrameBytes:    1 << 20,
+		ReadTimeout:      30 * time.Second,
+		WriteTimeout:     10 * time.Second,
+		SessionTTL:       2 * time.Minute,
 	}
 
 	var err error
+	if cfg.LogSensitive, err = envBool("MW2_LOG_SENSITIVE", false); err != nil {
+		return Config{}, err
+	}
 	if cfg.CaptureEnabled, err = envBool("MW2_CAPTURE_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.NATRelayEnabled, err = envBool("MW2_NAT_RELAY_ENABLED", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFrameBytes, err = envUint32("MW2_MAX_FRAME_BYTES", cfg.MaxFrameBytes); err != nil {
@@ -55,6 +68,24 @@ func Load() (Config, error) {
 	}
 	if cfg.MaxFrameBytes < 64 || cfg.MaxFrameBytes > 16<<20 {
 		return Config{}, fmt.Errorf("MW2_MAX_FRAME_BYTES must be between 64 and 16777216")
+	}
+	primaryAddr, err := net.ResolveUDPAddr("udp", cfg.NATAddr)
+	if err != nil {
+		return Config{}, fmt.Errorf("MW2_NAT_ADDR: %w", err)
+	}
+	alternateAddr, err := net.ResolveUDPAddr("udp", cfg.NATAlternateAddr)
+	if err != nil {
+		return Config{}, fmt.Errorf("MW2_NAT_ALT_ADDR: %w", err)
+	}
+	if primaryAddr.Port == alternateAddr.Port {
+		return Config{}, fmt.Errorf("MW2_NAT_ADDR and MW2_NAT_ALT_ADDR must use different UDP ports")
+	}
+	if cfg.NATAdvertisedIP != "" {
+		ipv4 := net.ParseIP(cfg.NATAdvertisedIP).To4()
+		if ipv4 == nil || ipv4.IsUnspecified() || ipv4.IsMulticast() || ipv4.Equal(net.IPv4bcast) {
+			return Config{}, fmt.Errorf("MW2_NAT_ADVERTISED_IP must be a usable IPv4 address")
+		}
+		cfg.NATAdvertisedIP = ipv4.String()
 	}
 	return cfg, nil
 }

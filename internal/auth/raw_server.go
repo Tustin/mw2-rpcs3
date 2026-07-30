@@ -43,26 +43,41 @@ type RequestSummary struct {
 }
 
 type RawServer struct {
-	addr           string
-	log            *slog.Logger
-	recorder       *capture.Recorder
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	connections    atomic.Uint64
-	requests       atomic.Uint64
-	lsgConnections atomic.Uint64
-	lsgFrames      atomic.Uint64
-	lsgSessions    *lsgSessionStore
+	addr                string
+	log                 *slog.Logger
+	recorder            *capture.Recorder
+	readTimeout         time.Duration
+	writeTimeout        time.Duration
+	lsgIdleTimeout      time.Duration
+	logSensitive        bool
+	connections         atomic.Uint64
+	requests            atomic.Uint64
+	lsgConnections      atomic.Uint64
+	lsgFrames           atomic.Uint64
+	lsgSessions         *lsgSessionStore
+	matchmakingOnce     sync.Once
+	matchmakingSessions *mw2MatchmakingStore
+	bandwidthIPv4       [4]byte
+	bandwidthPort       uint16
+	bandwidthConfigured bool
 }
 
+const minimumAuthenticatedLSGIdleTimeout = 5 * time.Minute
+
 func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, readTimeout, writeTimeout time.Duration) *RawServer {
+	lsgIdleTimeout := readTimeout
+	if lsgIdleTimeout < minimumAuthenticatedLSGIdleTimeout {
+		lsgIdleTimeout = minimumAuthenticatedLSGIdleTimeout
+	}
 	return &RawServer{
-		addr:         addr,
-		log:          log,
-		recorder:     recorder,
-		readTimeout:  readTimeout,
-		writeTimeout: writeTimeout,
-		lsgSessions:  newLSGSessionStore(),
+		addr:                addr,
+		log:                 log,
+		recorder:            recorder,
+		readTimeout:         readTimeout,
+		writeTimeout:        writeTimeout,
+		lsgIdleTimeout:      lsgIdleTimeout,
+		lsgSessions:         newLSGSessionStore(),
+		matchmakingSessions: newMW2MatchmakingStore(),
 	}
 }
 
@@ -70,6 +85,28 @@ func (s *RawServer) Connections() uint64    { return s.connections.Load() }
 func (s *RawServer) Requests() uint64       { return s.requests.Load() }
 func (s *RawServer) LSGConnections() uint64 { return s.lsgConnections.Load() }
 func (s *RawServer) LSGFrames() uint64      { return s.lsgFrames.Load() }
+
+// SetSensitiveLogging enables credential-bearing protocol diagnostics for an
+// isolated development environment. It must be called before Serve.
+func (s *RawServer) SetSensitiveLogging(enabled bool) {
+	s.logSensitive = enabled
+}
+
+// SetBandwidthEndpoint configures the client-reachable endpoint used by the
+// Demonware bandwidth-test prerequisite. It normally matches the primary NAT
+// listener. When ip is nil, an accepted TCP connection's concrete local IPv4
+// is used for native (non-container) runs.
+func (s *RawServer) SetBandwidthEndpoint(ip net.IP, port uint16) {
+	ipv4 := ip.To4()
+	if ipv4 == nil || port == 0 {
+		s.bandwidthConfigured = false
+		s.bandwidthPort = port
+		return
+	}
+	copy(s.bandwidthIPv4[:], ipv4)
+	s.bandwidthPort = port
+	s.bandwidthConfigured = true
+}
 
 func (s *RawServer) Serve(ctx context.Context) error {
 	listener, err := net.Listen("tcp", s.addr)
@@ -138,7 +175,7 @@ func (s *RawServer) handle(conn net.Conn) {
 		log.Warn("authentication capture failed", "error", err)
 	}
 	summary := SummarizeRequest(request)
-	log.Info("retail authentication request received", "bytes", len(request), "sha256", summary.SHA256, "visible_strings", summary.Strings)
+	log.Info("retail authentication request received", "bytes", len(request), "sha256", summary.SHA256)
 
 	authRequest, err := ParseRetailAuthRequest(request)
 	if err != nil {
@@ -156,12 +193,25 @@ func (s *RawServer) handle(conn net.Conn) {
 		return
 	}
 	logTicketKeyDiagnostic(log, authRequest.Ticket, lsgSessionKey)
+	s.logSensitiveEvent(log, "sensitive retail authentication request",
+		"request_hex", hex.EncodeToString(request),
+		"authorization_ticket_hex", hex.EncodeToString(authRequest.Ticket),
+		"platform_key_hex", hex.EncodeToString(platformKey),
+		"client_lsg_key_hex", hex.EncodeToString(lsgSessionKey[:]),
+	)
 	response, details, err := BuildLegacySuccessResponse(platformKey, authRequest.GameID)
 	if err != nil {
 		log.Warn("authentication response generation failed", "error", err)
 		return
 	}
 	s.sessionStore().putWithPendingKey(details.LSGTicket, [24]byte{}, lsgSessionKey)
+	s.logSensitiveEvent(log, "sensitive retail authentication response",
+		"response_hex", hex.EncodeToString(response),
+		"server_session_key_hex", hex.EncodeToString(details.SessionKey[:]),
+		"game_ticket_hex", hex.EncodeToString(details.GameTicket[:]),
+		"encrypted_game_ticket_hex", hex.EncodeToString(details.EncryptedGameTicket[:]),
+		"lsg_ticket_hex", hex.EncodeToString(details.LSGTicket[:]),
+	)
 	_ = conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 	if _, err := conn.Write(response); err != nil {
 		log.Warn("authentication response failed", "error", err)
@@ -172,9 +222,8 @@ func (s *RawServer) handle(conn net.Conn) {
 	}
 	log.Info("MW2 authentication success generated",
 		"bytes", len(response),
-		"response_hex", hex.EncodeToString(response),
+		"sha256", digestHex(response),
 		"game_id", fmt.Sprintf("0x%08x", authRequest.GameID),
-		"session_key_hex", hex.EncodeToString(details.SessionKey[:]),
 	)
 }
 
@@ -205,20 +254,55 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		log.Warn("retail LSG authentication rejected", "reason", "unknown or expired ticket")
 		return
 	}
-	session, err := newLSGConnectionWithPendingKey(storedSession.key, storedSession.pendingKey)
+	s.logSensitiveEvent(log, "sensitive retail LSG authentication",
+		"initial_record_hex", hex.EncodeToString(initial),
+		"lsg_ticket_hex", hex.EncodeToString(request.Ticket[:]),
+		"active_key_hex", hex.EncodeToString(storedSession.key[:]),
+		"pending_key_hex", hex.EncodeToString(storedSession.pendingKey[:]),
+	)
+	session, err := s.newLSGConnection(storedSession.key, storedSession.pendingKey)
 	if err != nil {
 		log.Warn("retail LSG session setup failed", "error", err)
 		return
 	}
-	if !s.writeLSGResponse(conn, remote, session.helloResponse(), 1, log) {
+	session.bandwidthIPv4 = s.bandwidthIPv4
+	session.bandwidthPort = s.bandwidthPort
+	session.bandwidthConfigured = s.bandwidthConfigured
+	if !session.bandwidthConfigured {
+		if local, ok := conn.LocalAddr().(*net.TCPAddr); ok && local != nil {
+			if ipv4 := local.IP.To4(); ipv4 != nil && !ipv4.IsUnspecified() && session.bandwidthPort != 0 {
+				copy(session.bandwidthIPv4[:], ipv4)
+				session.bandwidthConfigured = true
+			}
+		}
+	}
+	defer func() {
+		if removed := session.matchmakingSessions.deleteOwner(session.connectionID); removed > 0 {
+			log.Info("reclaimed matchmaking sessions for closed LSG connection", "sessions", removed)
+		}
+	}()
+	hello := session.helloResponse()
+	s.logSensitiveEvent(log, "sensitive retail LSG hello response",
+		"step", 1,
+		"connection_id", fmt.Sprintf("0x%016x", session.connectionID),
+		"response_hex", hex.EncodeToString(hello),
+	)
+	if !s.writeLSGResponse(conn, remote, hello, 1, log) {
 		return
 	}
 
 	for step := 2; ; step++ {
-		_ = conn.SetReadDeadline(time.Now().Add(s.readTimeout))
+		// Authenticated LSG traffic has a dedicated idle deadline because the
+		// recovered host refresh interval (180 seconds) is longer than the
+		// general handshake/frame timeout.
+		_ = conn.SetReadDeadline(time.Now().Add(s.lsgIdleTimeout))
 		frame, err := readLSGFrame(conn, 16<<20)
 		if err != nil {
-			if !isTimeout(err) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			if isTimeout(err) {
+				log.Info("retail LSG idle timeout", "idle_timeout", s.lsgIdleTimeout)
+				return
+			}
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 				log.Warn("retail LSG request failed", "step", step, "error", err)
 			}
 			return
@@ -232,26 +316,77 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			session.diagnoseRequest(log, step, frame)
 			return
 		}
+		s.logSensitiveEvent(log, "sensitive retail LSG request decrypted",
+			"step", step,
+			"message_type", messageType,
+			"request_iv", session.requestIV,
+			"payload_hex", hex.EncodeToString(payload),
+		)
 		logLSGRequest(log, step, messageType, payload)
 		responseType, responsePayload, handled, reply := handleLSGMessage(session, messageType, payload)
 		if !handled {
 			// Keep the connection open so the client continues to send the rest
 			// of its post-login sequence, letting us observe every unimplemented
 			// service/operation instead of tearing down at the first unknown one.
-			log.Warn("unimplemented retail LSG request", "step", step, "service_id", messageType, "payload_hex", hex.EncodeToString(payload))
+			log.Warn(
+				"unimplemented retail LSG request",
+				"step", step,
+				"service_id", messageType,
+				"payload_len", len(payload),
+				"payload_sha256", digestHex(payload),
+			)
 			continue
+		}
+		if !session.lastTaskSupported {
+			log.Warn(
+				"unsupported retail LSG service task",
+				"step", step,
+				"service_id", session.lastServiceID,
+				"operation_id", session.lastOperationID,
+				"payload_len", len(payload),
+				"payload_sha256", digestHex(payload),
+			)
 		}
 		if !reply {
 			continue
 		}
-		responseIV := session.responseIV
-		logLSGResponsePayload(log, step, responseType, responsePayload, session.lastServiceID == bdServiceStorage)
+		if session.lastServiceID == bdServiceStorage {
+			switch session.lastOperationID {
+			case bdStorageListFiles:
+				session.playlistListReplies++
+				if session.playlistListReplies >= 2 {
+					log.Warn("playlist listing has not progressed to a file fetch",
+						"step", step,
+						"list_replies_without_get", session.playlistListReplies,
+						"expected_next_operation_id", bdStorageGetFile,
+						"file_name", mw2PlaylistFilename,
+						"file_id", fmt.Sprintf("0x%016x", mw2PlaylistFileID),
+						"playlist_bytes", session.playlistBytes,
+						"playlist_sha256", session.playlistSHA256,
+					)
+				}
+			case bdStorageGetFile:
+				session.playlistListReplies = 0
+			}
+		}
+		logLSGResponsePayload(log, step, responseType, responsePayload, session)
+		s.logSensitiveEvent(log, "sensitive retail LSG response plaintext",
+			"step", step,
+			"message_type", responseType,
+			"payload_hex", hex.EncodeToString(responsePayload),
+		)
 		response, err := session.encryptResponse(responseType, responsePayload)
 		if err != nil {
 			log.Warn("retail LSG response encryption failed", "step", step, "error", err)
 			return
 		}
-		logLSGEncryptedResponse(log, step, responseIV, responseType, responsePayload, response, session.key[:])
+		logLSGEncryptedResponse(log, step, responseType, response)
+		s.logSensitiveEvent(log, "sensitive retail LSG response encrypted",
+			"step", step,
+			"message_type", responseType,
+			"response_iv", session.responseIV-1,
+			"frame_hex", hex.EncodeToString(response),
+		)
 		if !s.writeLSGResponse(conn, remote, response, step, log) {
 			return
 		}
@@ -263,10 +398,14 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 		"step", step,
 		"service_id", serviceID,
 		"payload_len", len(payload),
-		"payload_hex", hex.EncodeToString(payload),
-		"visible_strings", printableStrings(payload, 3),
+		"payload_sha256", digestHex(payload),
 	}
-	if serviceID == bdServiceStorage {
+	if serviceID == bdServiceBandwidth && len(payload) > 0 {
+		attrs = append(attrs,
+			"operation_id", payload[0],
+			"operation_encoding", "raw",
+		)
+	} else if serviceID == bdServiceStorage {
 		request, err := parseMW2StorageRequest(payload)
 		if err != nil {
 			attrs = append(attrs, "storage_parse_error", err)
@@ -274,66 +413,135 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 			attrs = append(attrs, "operation_id", request.operationID)
 			switch request.operationID {
 			case bdStorageGetFile:
-				attrs = append(attrs, "file_id", fmt.Sprintf("0x%016x", request.fileID))
+				attrs = append(attrs,
+					"value", request.value,
+					"file_id", fmt.Sprintf("0x%016x", request.fileID),
+				)
 			case bdStorageListOwnerFiles:
 				attrs = append(attrs,
+					"value", request.value,
 					"owner_id", fmt.Sprintf("0x%016x", request.ownerID),
 					"offset", request.offset,
 					"maximum", request.maximum,
 				)
+			case bdStorageListFiles:
+				attrs = append(attrs,
+					"value", request.value,
+					"offset", request.offset,
+					"maximum", request.maximum,
+					"filter", request.filter,
+				)
+			}
+		}
+	} else if serviceID == bdServiceMatchmaking {
+		request, err := parseMW2MatchmakingRequest(payload)
+		if err != nil {
+			attrs = append(attrs, "matchmaking_parse_error", err)
+		} else {
+			attrs = append(attrs,
+				"operation_id", request.operationID,
+				"reserved", request.reserved,
+			)
+			switch request.operationID {
+			case bdMatchmakingCreateSession, bdMatchmakingUpdateSession:
+				attrs = append(attrs,
+					"common_address_bytes", len(request.info.commonAddress),
+					"session_id_bytes", len(request.info.sessionID),
+					"security_key_bytes", len(request.info.securityKey),
+					"open_public", request.info.openPublic,
+					"filled_public", request.info.filledPublic,
+					"open_private", request.info.openPrivate,
+					"filled_private", request.info.filledPrivate,
+					"matchmaking_attributes", request.info.attributes,
+				)
+			case bdMatchmakingDeleteSession, bdMatchmakingFindByID:
+				attrs = append(attrs, "session_id_bytes", len(request.sessionID))
+			case bdMatchmakingFindSessions:
+				attrs = append(attrs,
+					"query_type", request.queryType,
+					"maximum_results", request.maxResults,
+					"unranked", request.search.gameType,
+					"playlist_or_game_mode", request.search.gameMode,
+					"netcode_version", request.search.netcodeVersion,
+					"map_pack_flags", request.search.mapPackFlags,
+					"playlist_version", request.search.playlistVersion,
+					"required_free_slots", request.search.requiredFreeSlots,
+					"performance", request.search.performance,
+				)
 			}
 		}
 	} else if len(payload) > 0 {
-		operationID := payload[0]
-		if operationID == bdTypeU8 && len(payload) >= 2 {
-			operationID = payload[1]
+		if operationID, ok := decodeLSGTaskOperation(payload); ok {
+			attrs = append(attrs, "operation_id", operationID)
+		} else if operationID, ok := decodeLegacyLSGTaskOperation(payload); ok {
+			attrs = append(attrs, "operation_id", operationID, "operation_encoding", "legacy")
+		} else {
+			attrs = append(attrs, "operation_parse_error", true)
 		}
-		attrs = append(attrs, "operation_id", operationID)
 	}
 	log.Info("retail LSG service request decrypted", attrs...)
 }
 
-func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, storageReply bool) {
+func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, session *lsgConnection) {
 	attrs := []any{
 		"step", step,
 		"message_type", messageType,
 		"payload_len", len(payload),
-		"payload_hex", hex.EncodeToString(payload),
-		"visible_strings", printableStrings(payload, 3),
+		"payload_sha256", digestHex(payload),
 	}
-	if summary, err := parseMW2StorageReplySummary(payload); storageReply && err == nil {
+	if session.lastServiceID == bdServiceStorage {
+		attrs = append(attrs, "type_checked", len(payload) > 0 && payload[0]&1 == 1)
+		summary, err := parseMW2StorageReplySummary(payload)
+		if err != nil {
+			attrs = append(attrs, "reply_parse_error", err.Error())
+		} else {
+			attrs = append(attrs,
+				"transaction_id", summary.transactionID,
+				"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
+				"operation_id", summary.operationID,
+				"result_count", summary.resultCount,
+				"file_size", summary.fileSize,
+			)
+			if summary.errorCode == bdErrorNone &&
+				(summary.operationID == bdStorageListFiles || summary.operationID == bdStorageGetFile) {
+				attrs = append(attrs,
+					"advertised_files", session.lastStorageFiles,
+					"advertised_file_ids", session.lastStorageFileIDs,
+					"requested_file", session.lastStorageGetFile,
+					"requested_file_id", session.lastStorageGetID,
+					"metadata_u32_1", 0,
+					"metadata_u32_2", 0,
+					"metadata_flag_1", false,
+					"metadata_flag_2", false,
+					"metadata_u64", 0,
+					"playlist_bytes", session.playlistBytes,
+					"playlist_sha256", session.playlistSHA256,
+				)
+			}
+		}
+	} else if session.lastServiceID == bdServiceBandwidth {
 		attrs = append(attrs,
-			"transaction_id", summary.transactionID,
-			"error_code", fmt.Sprintf("0x%08x", summary.errorCode),
-			"operation_id", summary.operationID,
-			"result_count", summary.resultCount,
+			"operation_id", session.lastOperationID,
+			"bandwidth_phase", session.lastBandwidthPhase,
+			"endpoint", fmt.Sprintf("%d.%d.%d.%d:%d",
+				session.bandwidthIPv4[0],
+				session.bandwidthIPv4[1],
+				session.bandwidthIPv4[2],
+				session.bandwidthIPv4[3],
+				session.bandwidthPort,
+			),
 		)
 	}
-	log.Info("retail LSG response plaintext prepared", attrs...)
+	log.Info("retail LSG response prepared", attrs...)
 }
 
-func logLSGEncryptedResponse(log *slog.Logger, step int, ivSeed uint32, messageType byte, payload, frame, sessionKey []byte) {
-	attrs := []any{
+func logLSGEncryptedResponse(log *slog.Logger, step int, messageType byte, frame []byte) {
+	log.Info("retail LSG response encrypted",
 		"step", step,
-		"iv_seed", fmt.Sprintf("0x%08x", ivSeed),
 		"message_type", messageType,
 		"frame_len", len(frame),
-		"frame_hex", hex.EncodeToString(frame),
-	}
-	decrypted, err := DecryptLSGRecord(frame, sessionKey)
-	if err != nil {
-		attrs = append(attrs, "roundtrip_error", err)
-	} else {
-		roundtripPayload := decrypted.Plaintext[5 : 5+len(payload)]
-		attrs = append(attrs,
-			"roundtrip_hmac", fmt.Sprintf("0x%08x", decrypted.HMAC),
-			"roundtrip_hmac_valid", decrypted.HMACValid,
-			"roundtrip_message_type", decrypted.MessageType,
-			"roundtrip_payload_match", bytes.Equal(roundtripPayload, payload),
-			"roundtrip_plaintext_hex", hex.EncodeToString(decrypted.Plaintext),
-		)
-	}
-	log.Info("retail LSG response encrypted", attrs...)
+		"frame_sha256", digestHex(frame),
+	)
 }
 
 func handleLSGMessage(session *lsgConnection, serviceID byte, payload []byte) (byte, []byte, bool, bool) {
@@ -361,6 +569,24 @@ func (s *RawServer) sessionStore() *lsgSessionStore {
 	return s.lsgSessions
 }
 
+func (s *RawServer) matchmakingStore() *mw2MatchmakingStore {
+	s.matchmakingOnce.Do(func() {
+		if s.matchmakingSessions == nil {
+			s.matchmakingSessions = newMW2MatchmakingStore()
+		}
+	})
+	return s.matchmakingSessions
+}
+
+func (s *RawServer) newLSGConnection(key, pendingKey [24]byte) (*lsgConnection, error) {
+	connection, err := newLSGConnectionWithPendingKey(key, pendingKey)
+	if err != nil {
+		return nil, err
+	}
+	connection.matchmakingSessions = s.matchmakingStore()
+	return connection, nil
+}
+
 func (s *RawServer) recordLSGFrame(log *slog.Logger, remote string, frame []byte) error {
 	s.lsgFrames.Add(1)
 	if err := s.recorder.Record("lsg", "in", remote, frame); err != nil {
@@ -368,8 +594,18 @@ func (s *RawServer) recordLSGFrame(log *slog.Logger, remote string, frame []byte
 		return err
 	}
 	summary := SummarizeRequest(frame)
-	log.Info("retail LSG record received", "bytes", len(frame), "sha256", summary.SHA256, "frame_hex", hex.EncodeToString(frame))
+	log.Info("retail LSG record received", "bytes", len(frame), "sha256", summary.SHA256)
+	s.logSensitiveEvent(log, "sensitive retail LSG record received",
+		"frame_hex", hex.EncodeToString(frame),
+	)
 	return nil
+}
+
+func (s *RawServer) logSensitiveEvent(log *slog.Logger, message string, attrs ...any) {
+	if !s.logSensitive {
+		return
+	}
+	log.Warn(message, append([]any{"sensitive", true}, attrs...)...)
 }
 
 func readLSGInitialRecord(reader io.Reader, prefix [4]byte, maxPayloadSize uint32) ([]byte, error) {
@@ -457,10 +693,8 @@ func isAllZero(data []byte) bool {
 	return true
 }
 
-// logTicketKeyDiagnostic records the raw authorization ticket, the extracted LSG
-// session key, and the file offsets of markers/non-zero windows. It helps locate
-// where the real 24-byte session key sits inside an RPCN ticket when the
-// configured offset yields zeros.
+// logTicketKeyDiagnostic records structural offsets only. Raw authorization
+// tickets and extracted session keys must never enter ordinary logs.
 func logTicketKeyDiagnostic(log *slog.Logger, ticket []byte, extractedKey [24]byte) {
 	rpcnOffset := -1
 	if idx := bytes.Index(ticket, []byte(ps3RPCNPlatformTicketMarker)); idx >= 0 {
@@ -487,8 +721,7 @@ func logTicketKeyDiagnostic(log *slog.Logger, ticket []byte, extractedKey [24]by
 	}
 	log.Info("LSG ticket key diagnostic",
 		"ticket_len", len(ticket),
-		"ticket_hex", hex.EncodeToString(ticket),
-		"extracted_key_hex", hex.EncodeToString(extractedKey[:]),
+		"ticket_sha256", digestHex(ticket),
 		"extracted_key_all_zero", isAllZero(extractedKey[:]),
 		"rpcn_marker_offset", rpcnOffset,
 		"rpcn_key_marker_delta", ps3RPCNKeyMarkerDelta,

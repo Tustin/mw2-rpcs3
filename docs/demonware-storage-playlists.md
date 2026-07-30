@@ -1,153 +1,411 @@
-# Storage service & playlist / MOTD file format
+# Demonware storage and playlist publisher files
 
-How the lobby bootstrap actually gets playlists and message-of-the-day. Derived
-from `default_mp.elf` (MW2 = IW4) strings and the `iw6_ds_ps3.pdb` symbols
-(Ghosts = IW6, same `bdStorage` design). **No packet decryption required** — the
-playlist payload is a plaintext Infinity Ward config that Demonware Storage
-merely hosts as an opaque file.
+This document describes the MW2 PS3 retail storage path confirmed from the TU0
+`default_mp.elf` and decrypted title-update executable, the current server
+implementation, and the bundled fixture.
+It separates statically proven wire behavior from behavior that still needs a
+live RPCS3 capture.
 
-## The core realization
+## Current verification state
 
-Demonware Storage is a dumb file host. `bdStorage` exposes:
+Confirmed statically and covered by repository tests:
 
-```
-bdStorage::getFile(const char* filename, bdFileData&, const bdUserAccountID&)   // per-user file
-bdStorage::getPublisherFile(const char* filename, bdFileData&)                  // title-global file
-bdStorage::listAllPublisherFiles(...)
-bdStorage::listFilesByOwner(...)
-bdStorage::removeFile(...)
-```
+- MW2 initializes `messageoftheday.info` publisher-download states before its
+  playlist state;
+- the TU0 executable requests `playlists.info`, while the vanilla title-update
+  executable requests `playlists.patch3`;
+- every received typed task payload starts with a one-bit type-checking marker
+  which the client consumes before any five-bit type tag;
+- storage is retail service `10`;
+- operation `8` lists publisher files;
+- operation `5` retrieves the selected file ID;
+- operation-8 results contain an outer result count and a per-file typed size;
+- the proven publisher directory contains `messageoftheday.info`, TU0
+  `playlists.info`, and title-update `playlists.patch3`; the speculative
+  `mp/mappack.info` entry has been removed pending direct retail proof;
+- operation `5` begins with a typed destination-buffer size and has no outer
+  result count on the wire;
+- both paths use the same seven-field `bdFileInfo` metadata serializer;
+- the file data is a tag-19 blob with a nested typed `u32` length;
+- the operation-8 completion loop selects a result by exact filename equality,
+  copies only that result's `u64` file ID, and immediately starts operation
+  `5`;
+- the downloaded byte count must be at most `0x20000`, after which the game
+  passes the raw buffer to the playlist-text parser;
+- the bundled `playlists.info` is a retail-parser-valid version-504
+  playlist whose only row is visible and solo-selectable.
 
-MW2 downloads its playlists and MOTD as **publisher files** (title-global,
-read-only to clients). The returned `bdFileData` is just:
+Still pending live verification:
 
-```
-bdFileData {
-  void*    m_fileData;   // raw file bytes
-  unsigned m_fileSize;
-}
-```
+- vanilla title-update selection and fetch of `playlists.patch3`;
+- successful download and client parsing of the bundled bytes.
 
-So the server's job for playlists is: return the **raw bytes of a text file**.
-The parsing/΅meaning is entirely client-side.
+The latest decrypted server trace already contains five operation-5 fetch
+requests. They alternated with operation-8 listings but were rejected before
+the operation ID could be retained because the parser omitted their typed zero
+selector.
 
-## bd struct layouts (from iw6 PDB, confirmed field order)
+Do not treat the current static proof and unit tests as full live completion.
 
-`bdFileInfo` (used by list operations / metadata):
+## Retail playlist flow
 
-| offset | member | type |
-|-------:|--------|------|
-| 8   | `m_fileID`       | u64 |
-| 16  | `m_createTime`   | u32 |
-| 20  | `m_modifedTime`  | u32 (sic) |
-| 24  | `m_visibility`   | enum (0=PUBLIC, 1=PRIVATE) |
-| 32  | `m_ownerID`      | u64 |
-| 40  | `m_fileName`     | char[128] |
-| 168 | `m_fileSize`     | u32 |
+The recovered MW2 call chain is:
 
-`bdFileData` (used by getFile / getPublisherFile — the download result):
+```text
+storage operation 8
+    -> find messageoftheday.info
+    -> storage operation 5 with its opaque ID
+    -> consume at most 0x100 bytes as MOTD text
 
-| offset | member | type |
-|-------:|--------|------|
-| 8  | `m_fileData` | void* (raw bytes) |
-| 16 | `m_fileSize` | u32 |
-
-The MW2 result wrapper is `bdGetFileResult` (`bdGetFileResult.cpp`), whose
-`handleResult` copies the downloaded bytes into a client-supplied buffer
-("Buffer for downloaded file must not be NULL"). On the wire the result is bd
-task-serialized (same tagged encoding as `internal/auth/lsg_protocol.go`
-`bdByteWriter`): the file bytes are delivered as a blob/string result field.
-
-## Which files the client requests
-
-Confirmed filename/token strings:
-
-- `playlists.info` (a.k.a. `playlistFilename`) — the playlist definition file.
-- MOTD — separate publisher file; errors `Error getting motd`,
-  `Motd was %i bytes`, `Unable to retreive MOTD`, `Insufficient space for motd`.
-- `%s_version.txt` — version gate file.
-- Profile / stats come through a different path (`bdStatsInfo`,
-  `LiveStorage_*`), not the storage file service.
-
-> The exact request order and filenames are best captured at runtime: when
-> RPCS3 hits the emulator, the storage request payload contains the requested
-> filename as a bd string. Logging the decrypted storage request in
-> `handleTask` (service 10) will confirm the precise sequence for this title
-> build.
-
-## playlists.info format (IW4 line-based grammar)
-
-The MW2 playlist parser is **line/token based**, not key=value. Errors like
-`Playlist error: line %i: found 'ranked' flag outside of playlist definition`
-reveal the grammar. Structure:
-
-```
-version <n>
-
-playlist <id>
-    name <playlistName>
-    description <language> <text>
-    maxparty <n>
-    minparty <n>
-    numrounds <n>
-    requiredDlcPack <n>
-    unlockxp <n>
-    lootgroup <name>
-    ranked            # flag (no arg)
-    nojip             # flag: no join-in-progress
-    noloop            # flag (a.k.a. nolooping)
-    partyteams        # flag
-
-    gametype <name>
-        hardcore      # flag, gametype-scoped
-        teambased     # flag, gametype-scoped
-        script <name>
-        <rule tokens...>   # arbitrary "field value" rules, added to rules buffer
+storage operation 8
+    -> receive publisher-file metadata
+    -> find exact filename "playlists.info" on TU0 or "playlists.patch3" on the title update
+    -> read its stable u64 file ID
+    -> storage operation 5 with that ID
+    -> receive metadata and raw text blob
+    -> parse the playlist locally
 ```
 
-Scope rules enforced by the parser (from the error strings):
+The TU0 operation-8 completion loop at `0x00322aa8..0x00322bfc` calls the
+filename getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested
+filename, then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on
+equality. The decrypted title-update executable contains the same state-machine
+shape at relocated addresses but its publisher state table points to
+`playlists.patch3`.
+The getters return `bdFileInfo + 0x28` and the `u64` at `+0x08`,
+respectively. The selected ID is stored at fetch-state offset `+0x10`; wrapper
+`0x00322cd8` then calls `0x00322848`, which starts operation `5` for that ID.
+Its lower request builder `0x003edf18` also serializes the required typed zero
+selector before the ID.
 
-- **playlist-scoped** flags/commands: `ranked`, `nojip`, `noloop`,
-  `partyteams`, `lootgroup`, `maxparty`, `minparty`, `numrounds`,
-  `requiredDlcPack`, `unlockxp`.
-- **gametype-scoped** flags/commands: `hardcore`, `teambased`, `script`.
-- **global / any scope**: `version`, `playlist`, `gametype`, `name`,
-  `description`.
-- Rule lines (`Adding '%s' to playlist %i rules` / `gametype %s rules` /
-  `global rules`) are `dvar value` pairs written into fixed-size rules buffers.
-  Unknown tokens → `ERROR: Unknown playlist field '%s'`; a non-string field
-  name → `Must use a string as the name of a playlist field`.
+No timestamp, owner, privacy flag, or other neutral metadata field is read in
+this transition. There is also no local cache/version comparison in this
+two-stage path. Exact filename equality plus a successful operation-8 result
+is the gate to operation `5`.
 
-Weighting: playlists carry per-entry weights (`selectedWeight`, "total weight
-for this playlist is %i"); the client randomly chooses map/gametype entries by
-weight (`Playlists: Choosing next playlist`, "pool of %i total weight").
+The same state machine is used for `messageoftheday.info`. Initializers
+`0x0030a748` and `0x0030a788` create MOTD states; `0x0030a7c8` creates the
+playlist state. The MOTD consumer at `0x0030b1f0` provides a `0x100`-byte
+buffer, trims CR/LF, and consumes the downloaded bytes as text. Consequently,
+the publisher listing must not contain only `playlists.info`.
 
-## Implementation path (server side)
+The payload is not JSON, a database, or a compressed container. The download
+contains raw playlist text bytes; the bundled fixture is ASCII.
 
-1. **Log the storage request** (service 10) in `handleTask` to capture the
-   real filename(s) and operation ID the client sends. Currently every storage
-   op returns `bdErrorNoFile` (`lsg_protocol.go:338`).
-2. **Serve `playlists.info`** as a publisher-file `getPublisherFile` result:
-   bd-serialize the raw text bytes as the file blob with `bdErrorNone`.
-3. **Author a minimal `playlists.info`**: one `version`, one `playlist` with a
-   `name`, a `gametype` (e.g. `war`/TDM), and a `maps`/rule line. A community
-   IW4/MW2 playlist file works verbatim since the format is identical.
-4. **Serve MOTD** similarly (small text blob) to clear `Unable to retreive
-   MOTD`.
-5. Verify against the client sequence, then move to profile/stats
-   (`bdStatsInfo`) which is a separate service path.
+## Bit-packed typed encoding
 
-## Tooling notes (for reproducing this analysis)
+Storage requests and replies use the LSB-first bit serializer. A five-bit type
+tag is immediately followed by its value, so most fields are not byte-aligned.
 
-- The system `objdump` (binutils 2.42) is **x86-only** and cannot disassemble
-  the PPC64 ELF (`can't disassemble for architecture UNKNOWN`). Use
-  `llvm-objdump-18 --triple=powerpc64-unknown-linux default_mp.elf`.
-- The Ghosts PDB is fully symbolized: inspect struct layouts with
-  `llvm-pdbutil-18 dump --types --type-index=<idx> --dependents iw6_ds_ps3.pdb`.
-  Resolve forward refs (`forward ref (-> 0xXXXX)`) to the real definition index.
+Relevant tags:
+
+|  Tag | Type                  |
+| ---: | --------------------- |
+|  `0` | terminator            |
+|  `1` | bool                  |
+|  `3` | `u8`                  |
+|  `6` | `u16`                 |
+|  `8` | `u32`                 |
+| `10` | `u64`                 |
+| `16` | NUL-terminated string |
+| `19` | blob                  |
+
+The common successful logical-reply prefix is:
+
+```text
+raw u8   message type = 1
+raw bit  type-checking-present = 1
+typed u64 transaction ID
+typed u32 error code = 0
+typed u8  operation ID
+```
+
+The raw message-type byte is added once. Do not prepend storage service `10` to
+a server task reply. The marker is the first bit of the task payload, not a
+second message byte.
+
+This marker is mandatory. Incoming lobby messages construct a type-checked
+`bdBitBuffer` at `0x003d2be8`; `0x003d2810` consumes the first payload bit into
+the buffer's type-checking flag. If it is omitted, the low zero bit of the
+first `u64` tag (`10`) is consumed instead. The generic task parser then skips
+type tags and reads every field one bit out of alignment.
+
+## Operation 8: list publisher files
+
+The observed no-filter request is logically:
+
+```text
+raw u8   service = 10
+raw bit  type-checking-present = 1
+typed u8 operation = 8
+typed u8 value = 0
+typed u32 offset = 0
+typed u16 maximum results = 100
+optional typed string filename filter
+raw 5-bit terminator = 0
+zero padding to the current byte
+```
+
+The corrected successful reply is:
+
+```text
+raw u8   message type = 1
+raw bit  type-checking-present = 1
+typed u64 transaction ID
+typed u32 error code = 0
+typed u8  operation = 8
+typed u32 result count = N
+repeat N times:
+    typed u32 file size
+    bdFileInfo
+```
+
+The first `u32` is the outer result count. The next `u32` is not
+`totalNumResults`: it is the byte size associated with that file.
+
+Static evidence:
+
+- dispatcher `0x003ecf18` reads the outer count for operations `7` and `8`;
+- result handler `0x003eb4a8` reads one typed `u32` before every metadata
+  object;
+- after `bdFileInfo` deserialization, `0x003eb4a8` calls setter `0x003ec8d8`;
+- that setter stores the value at object offset `0xa8`, the file-size field.
+
+The unfiltered publisher directory contains `messageoftheday.info` followed by
+`playlists.info`. Each result carries its own exact runtime byte size. Exact
+filename filters and offset/maximum pagination select a subset of this
+directory.
+
+## Operation 5: get publisher file
+
+The request is:
+
+```text
+raw u8   service = 10
+raw bit  type-checking-present = 1
+typed u8 operation = 5
+typed u8 value = 0
+typed u64 file ID
+raw 5-bit terminator = 0
+zero padding to the current byte
+```
+
+The zero value precedes the file ID. Builder `0x003edf18` writes typed tag `3`
+and eight zero value bits before typed tag `10` and the selected ID, then the
+task wrapper appends the terminator. The ID must be the stable ID returned with
+exact filename `playlists.info`.
+
+The corrected successful reply is:
+
+```text
+raw u8   message type = 1
+raw bit  type-checking-present = 1
+typed u64 transaction ID
+typed u32 error code = 0
+typed u8  operation = 5
+typed u32 destination-buffer size
+bdFileInfo
+typed blob:
+    typed u32 byte length
+    raw file bytes
+```
+
+Operation `5` has no outer result count on the wire. Dispatcher `0x003ecf18`
+passes an implicit result count of one to handler `0x003ea690`. That handler
+reads the leading typed `u32` and uses it to preallocate or grow the file-data
+buffer through `0x003ec290`.
+
+The blob's nested byte length is the authoritative count of raw bytes that
+follow. The leading value is a destination-buffer capacity hint, not an
+equality check. This implementation uses the canonical and safe encoding where
+both values are the payload length; for the current bundled fixture, both are
+`193`.
+
+An extra typed `u32` before `bdFileInfo` is fatal: the metadata parser expects a
+typed `u64` file ID next and rejects tag `8`.
+
+## `bdFileInfo` wire order
+
+Function `0x003eca78` consumes the metadata in this exact order:
+
+```text
+typed u64 file ID
+typed u32 value 1
+typed u32 value 2
+typed bool flag 1
+typed bool flag 2
+typed u64 value 3
+typed string filename
+```
+
+Neutral names are intentional where the exact MW2 semantic label is not needed.
+The corresponding recovered object storage is:
+
+| Object offset | Stored value                                       |
+| ------------: | -------------------------------------------------- |
+|        `0x08` | file ID                                            |
+|        `0x10` | first `u32`                                        |
+|        `0x14` | second `u32`                                       |
+|        `0x18` | first bool                                         |
+|        `0x1c` | second bool                                        |
+|        `0x20` | trailing `u64`                                     |
+|        `0x28` | filename buffer, 128 bytes                         |
+|        `0xa8` | file size injected by the operation result handler |
+
+The filename encoding is:
+
+```text
+5-bit tag 16
+raw 8-bit filename bytes
+raw NUL byte
+```
+
+There is no string-length field and no type tag per character. The client reads
+until NUL with a 128-byte destination limit. The current Go `writeString`
+implementation is correct for `playlists.info`.
+
+For playlist bootstrap:
+
+```text
+file ID  = 0x1122334455667788
+filename = "playlists.info"
+file size = len(served bytes)
+```
+
+The other metadata fields are currently serialized as neutral zero/false
+values. Static tracing proves they are not inspected by the
+operation-8-to-operation-5 selector. The exact filename and stable file ID are
+the fields that drive this transition.
+
+## Blob and file limits
+
+The blob layout is:
+
+```text
+5-bit tag 19
+5-bit tag 8
+32-bit byte length
+exactly that many raw bytes
+```
+
+The application buffer limit is `0x20000` bytes. The server rejects empty files
+and files larger than that limit.
+
+The blob is not compressed. It is not JSON and it is not another Demonware
+container. It is the literal playlist text.
+
+Application consumer `0x0030b1f0` configures a `0x20000`-byte destination,
+polls the two-stage fetch, rejects a returned size above `0x20000`, and calls
+playlist parser `0x00258bf0` with the downloaded buffer. Fetch failures are
+retried by `0x0030a5d8` with exponential delay capped at 60 seconds. A screen
+that remains on “Fetching Playlists” is therefore consistent with an operation
+that never reaches successful completion; it is not evidence that the text
+format itself is wrong.
+
+## Bundled `playlists.info`
+
+The repository fixture contains:
+
+- `version 504`;
+- gametype `dm`, with English name and script;
+- playlist `0`, with English name and description;
+- ranked party-size settings;
+- one weighted `mp_afghan,dm,100` entry.
+
+The structural validator reports:
+
+```text
+PASS: version=504, gametypes=1, playlists=1, entries=1, bytes=<loaded length>
+```
+
+The retail parser and feeder establish more than structural validity:
+
+- `FUN_00258bf0` accepts unsigned playlist IDs `0..23`;
+- `FUN_002583c8` and `FUN_00259fa0` enumerate populated slot `0`, so ID `0` is
+  not a sentinel;
+- the entry parser at `0x00259d64..0x00259e88` increments the slot count only
+  for a resolvable gametype alias and positive weight;
+- alias `dm`, script `dm`, and entry `mp_afghan,dm,100` satisfy those checks;
+- default unlock/DLC state plus `minparty 1` and `maxparty 1` passes
+  `FUN_0025aa28` for a solo player.
+
+Confidence that the fixture itself is valid for this retail client is 95%.
+Confidence in the exact operation-8 filename-selection and operation-5 handoff
+described above is greater than 99% from direct client control flow. This does
+not prove the game has downloaded or applied the file in a live session.
+
+## Current server implementation
+
+`internal/auth/lsg_storage.go` currently:
+
+- parses the observed operation-8 and operation-5 request fields;
+- advertises stable IDs for `messageoftheday.info`, TU0 `playlists.info`, and
+  title-update `playlists.patch3`, in that order;
+- writes operation `8` as count -> actual size -> `bdFileInfo`;
+- writes operation `5` as actual buffer size -> `bdFileInfo` -> blob;
+- uses each selected file's same ID and filename in list/get replies;
+- rejects unknown IDs, empty files, and files over `0x20000`.
+
+The request parser consumes and logs the operation-8 selector, offset, maximum,
+optional filename filter, and five-bit terminator. Offset/maximum pagination and
+exact filename filters are applied to the version-aware directory; a mismatched
+filter, zero maximum, or offset at/after the directory length returns a
+successful empty list. Full transport-block padding is left available for
+diagnostics instead of being treated as another task field. Operation 5
+consumes and validates its typed zero selector before the file ID and likewise
+requires its five-bit terminator to be zero.
+
+The final Docker image now:
+
+```dockerfile
+COPY --from=build /src/playlists.info /playlists.info
+ENV MW2_PLAYLISTS_FILE=/playlists.info
+```
+
+This fixes the previous deployment state in which the scratch image contained
+only the executable and operation `8` returned `bdErrorNoFile`.
+
+MOTD and playlist downloads are implemented on the retail storage path. No
+other publisher file is advertised without direct MW2 proof.
+
+## Live evidence versus pending work
+
+An older RPCS3 run received replies that encoded `1, 1` after the operation;
+static analysis proves those values meant result count `1` and the incorrect
+file size `1`. A later Linux run correctly returned one 193-byte canonical LF
+fixture. The newest decrypted trace advertised both proven files and contains
+five operation-5 requests interleaved with repeated operation-8 requests. Their
+payload lengths and parse failures match the typed `u8(0)` selector recovered
+from builder `0x003edf18`; the server parser has now been corrected.
+
+The next live checkpoint is:
+
+1. run the corrected parser against RPCS3;
+2. confirm each operation-5 request logs selector `0` and its advertised ID;
+3. send each actual buffer size, matching metadata, and raw-byte blob;
+4. confirm the client parses the playlist and advances.
+
+## Related retail services
+
+Storage progress must not be conflated with later bootstrap services:
+
+- stats is retail service `4`; the observed request is operation `4`, and only
+  an empty placeholder response exists;
+- retail matchmaking is service `5`;
+- create/update/delete and operation `5`'s exact zero/nonempty result objects
+  are implemented from direct client analysis against shared retail-LSG state;
+- operation `4`, exact search-filter comparisons, and live two-client
+  confirmation remain pending;
+- the experimental session directory is not the retail service-5 protocol.
+
+Reaching the connected LSG state is necessary, but it is not proof of profile,
+rank, playlist, matchmaking, lobby, or peer/NAT completion.
 
 ## Cross-references
 
-- LSG task channel + `bdByteWriter` encoding: `demonware-lsg.md`
+- Current project status: `../CURRENT_PROGRESS.md`
+- LSG transport: `demonware-lsg.md`
 - Overall flow: `demonware-flow.md`
-- Code: `internal/auth/lsg_protocol.go` (`handleTask`, `bdServiceStorage`)
+- Storage implementation: `../internal/auth/lsg_storage.go`
+- Storage tests: `../internal/auth/lsg_storage_test.go`
+- Retail matchmaking: `demonware-matchmaking.md`

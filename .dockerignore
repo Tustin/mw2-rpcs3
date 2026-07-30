@@ -1,0 +1,14 @@
+.git
+.gitignore
+.cursor
+.env
+.env.*
+bin
+captures
+coverage.out
+tools
+*.elf
+*.exe
+*.pcap
+*.pcapng
+*.pdb

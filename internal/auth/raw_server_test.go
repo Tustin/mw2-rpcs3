@@ -3,10 +3,12 @@ package auth
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +298,29 @@ func TestRawServerSendsDynamicLSGHello(t *testing.T) {
 	}
 }
 
+func TestRawServerInjectsSharedMatchmakingStore(t *testing.T) {
+	service := NewRawServer(
+		"",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		capture.New(false, "", RetailRequestSize),
+		time.Second,
+		time.Second,
+	)
+	first, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.matchmakingSessions == nil ||
+		first.matchmakingSessions != second.matchmakingSessions ||
+		first.matchmakingSessions != service.matchmakingSessions {
+		t.Fatal("LSG connections do not share the RawServer matchmaking directory")
+	}
+}
+
 func buildLSGInitialRecord(gameID, randomNumber uint32, ticket [legacyTicketLen]byte) []byte {
 	payload := newLSBBitWriter(1 + 5 + 32 + 5 + 32 + legacyTicketLen*8)
 	payload.writeBit(true)
@@ -395,5 +420,84 @@ func TestRawServerSendsDynamicSuccess(t *testing.T) {
 	<-done
 	if service.Requests() != 1 {
 		t.Fatalf("requests=%d", service.Requests())
+	}
+}
+
+func TestRetailDiagnosticLogsDoNotExposeRawSecrets(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	secret := []byte("TOP-SECRET-RPCN-MARKER")
+	ticket := make([]byte, 96)
+	copy(ticket[16:], secret)
+	var key [24]byte
+	copy(key[:], secret)
+
+	logTicketKeyDiagnostic(log, ticket, key)
+	logLSGRequest(log, 2, 0xfe, secret)
+	logLSGResponsePayload(log, 2, 1, secret, &lsgConnection{})
+	logLSGEncryptedResponse(log, 2, 1, secret)
+	frame, err := EncryptLSGRecord(0xfe, secret, 7, key[:])
+	if err != nil {
+		t.Fatalf("encrypt diagnostic frame: %v", err)
+	}
+	(&lsgConnection{key: key}).diagnoseRequest(log, 3, frame)
+
+	text := output.String()
+	for _, forbidden := range []string{
+		string(secret),
+		fmt.Sprintf("%x", secret),
+		"ticket_hex",
+		"extracted_key_hex",
+		"payload_hex",
+		"frame_hex",
+		"plaintext_hex",
+		"visible_strings",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("diagnostic log contains forbidden value %q: %s", forbidden, text)
+		}
+	}
+}
+
+func TestSensitiveLoggingIsExplicitAndIncludesRawEvidence(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	service := &RawServer{logSensitive: true}
+	secret := []byte("credential-bearing-test-data")
+
+	service.logSensitiveEvent(log, "sensitive test event",
+		"payload_hex", hex.EncodeToString(secret),
+	)
+
+	text := output.String()
+	if !strings.Contains(text, "sensitive=true") ||
+		!strings.Contains(text, hex.EncodeToString(secret)) {
+		t.Fatalf("sensitive evidence missing from explicit diagnostic log: %s", text)
+	}
+}
+
+func TestStorageResponseLogReportsTypeCheckingMarker(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	connection := &lsgConnection{}
+	_, payload, handled := connection.handleStorageTask(buildMW2StorageListRequestWith(0, 100, ""))
+	if !handled {
+		t.Fatal("storage list request was not handled")
+	}
+
+	logLSGResponsePayload(log, 4, lsgTaskReplyType, payload, connection)
+
+	text := output.String()
+	for _, expected := range []string{
+		"type_checked=true",
+		"operation_id=8",
+		"result_count=3",
+		fmt.Sprintf("file_size=%d", len(mw2DefaultMOTD)),
+		"advertised_files=\"[messageoftheday.info playlists.info playlists.patch3]\"",
+		"advertised_file_ids=\"[0x1122334455667789 0x1122334455667788 0x112233445566778a]\"",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("response log is missing %q: %s", expected, text)
+		}
 	}
 }

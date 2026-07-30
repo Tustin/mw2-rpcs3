@@ -95,27 +95,23 @@ connection nonce. Captured: `0b000000 00 0415989b836e3dfbe515` → 11-byte body.
 
 ## Post-hello messages
 
-After the hello-ack, the client sends its first **encrypted** record. In the
-current server (`handleLSGMessage`):
-
-- **type `0x12` (lobby connection-ID notification)** — payload is a bd-typed
-  u64. Server records `connectionID`, sets `loggedIn`, sends no reply.
-- **type `0x01` (task result / RPC)** — dispatched by service+operation id via
-  `handleTask`.
+After the hello-ack, the client sends **encrypted** records whose raw message
+type is the service ID. Observed examples are storage `10`, stats `4`, and
+bandwidth `18`. The connection ID itself is carried by the unencrypted
+hello-ack (type `4`), not by an encrypted service-18 packet.
 
 ### bd task encoding
 
-Task payloads use bd type-tagged values (`writeU8`/`writeU16`/`writeU32`/
-`writeU64`/`writeF32`/`writeString`). A task reply (`taskReply`) is:
+Storage and matchmaking payloads use LSB-first bit-packed, five-bit type tags.
+Values begin immediately after their tag and are not byte-aligned. Replies
+start with typed `u64` transaction and typed `u32` error fields, but the
+remaining successful layout is service/operation-specific.
 
-```
-u64  transaction id = 0
-u32  error_code
-u8   operation_id
-u32  result_count
-u32  result_count      (repeated)
-...  results
-```
+Do not import the two-count layout used by another Demonware generation. Direct
+MW2 consumers prove storage op `8` has count then per-result size, storage op
+`5` has an implicit one-result dispatch, and matchmaking op `5` has exactly one
+result count. The older title-utilities/DML stubs retain their pre-existing
+serializer and were not promoted to verified wire formats by this audit.
 
 ### Currently handled services (`handleTask`)
 
@@ -124,9 +120,13 @@ u32  result_count      (repeated)
 | Title Utilities | 12 | 6 | returns current unix time |
 | DML (geo) | 27 | 2 | returns `US` / `United States` + zero coords |
 | DML (geo) | 27 | 3 | as above + extra zero fields |
-| Bandwidth | 18 | 1 | returns "service not available" |
-| Storage | 10 | * | returns `bdErrorNoFile` (1000) |
+| Bandwidth | 18 | 1 | two-phase request/UDP-upload/finalize bootstrap; special type-5 replies |
+| Storage | 10 | 5, 7, 8 | serves playlist list metadata and file data |
+| Matchmaking | 5 | 1, 2, 3, 5 | shared create/update/delete and zero/nonempty find lifecycle |
 | default | — | — | returns `bdErrorServiceNotAvailable` (108) |
 
-These are stubs. The real retail server returns actual storage files (the
-63 kB bundle), which is the main gap for full lobby entry.
+Title, DML, and stats remain bootstrap stubs. Bandwidth now implements the
+PDB- and PCAP-proven upload-only flow. Storage has recovered operation-specific
+serializers. Matchmaking implements the statically proven
+create/update/delete/find lifecycle; operation `4`, exact retail filter
+comparisons, and live two-client confirmation remain pending.
