@@ -120,13 +120,12 @@ serializer and were not promoted to verified wire formats by this audit.
 | Title Utilities | 12 | 6 | returns current unix time |
 | DML (geo) | 27 | 2 | returns `US` / `United States` + zero coords |
 | DML (geo) | 27 | 3 | as above + extra zero fields |
-| Bandwidth | 18 | 1 | two-phase request/UDP-upload/finalize bootstrap; special type-5 replies |
+| Bandwidth | 18 | 1 | recognizes the captured raw op byte; returns "service not available" |
 | Storage | 10 | 5, 7, 8 | serves playlist list metadata and file data |
 | Matchmaking | 5 | 1, 2, 3, 5 | shared create/update/delete and zero/nonempty find lifecycle |
 | default | — | — | returns `bdErrorServiceNotAvailable` (108) |
 
-Title, DML, and stats remain bootstrap stubs. Bandwidth now implements the
-PDB- and PCAP-proven upload-only flow. Storage has recovered operation-specific
-serializers. Matchmaking implements the statically proven
+Title, DML, stats, and bandwidth remain bootstrap stubs. Storage has recovered
+operation-specific serializers. Matchmaking implements the statically proven
 create/update/delete/find lifecycle; operation `4`, exact retail filter
 comparisons, and live two-client confirmation remain pending.

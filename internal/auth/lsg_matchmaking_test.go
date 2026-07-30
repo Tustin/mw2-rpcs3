@@ -420,7 +420,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	}
 
 	updatedAddress := bytes.Repeat([]byte{0x55}, mw2MatchmakingCommonAddressSize)
-	updatedCounts := [4]int32{17, 2, 8, 4}
+	updatedCounts := [4]int32{17, 2, 3, 4}
 	updatedAttributes := [9]int32{90, 80, 70, 60, 50, 40, 30, 20, 10}
 	updater := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	updateRequest := buildMW2SessionObjectRequestWithValues(
@@ -496,24 +496,22 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	if !bytes.Equal(deleteReply, deleteGolden) {
 		t.Fatalf("delete reply=%x want=%x", deleteReply, deleteGolden)
 	}
-	if sessions := store.find(50, 0, false); len(sessions) != 0 {
+	if sessions := store.find(50, 0); len(sessions) != 0 {
 		t.Fatalf("session survived deletion: %+v", sessions)
 	}
 }
 
-func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
+func TestMW2FindSessionsFiltersOnlyByRequiredFreeSlots(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
-		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
-		openPublic:  2,
-		openPrivate: 4,
-		attributes:  [9]int32{11, 12, 13, 14, 15, 16, 17, 18, 19},
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic: 2,
+		attributes: [9]int32{11, 12, 13, 14, 15, 16, 17, 18, 19},
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
-		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
-		openPublic:  3,
-		openPrivate: 1,
-		attributes:  [9]int32{91, 92, 93, 94, 95, 96, 97, 98, 99},
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic: 3,
+		attributes: [9]int32{91, 92, 93, 94, 95, 96, 97, 98, 99},
 	}
 	connection := &lsgConnection{matchmakingSessions: store}
 
@@ -552,9 +550,11 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		performance:       106,
 	}
 	if count := resultCount(eligible); count != 1 {
-		t.Fatalf("count=%d, want one unranked session with at least three private slots", count)
+		t.Fatalf("count=%d, want one session with at least three public slots", count)
 	}
 
+	// Deliberately change every unproven query value. Only q5 may filter.
+	eligible.gameType = -201
 	eligible.gameMode = -202
 	eligible.netcodeVersion = -203
 	eligible.mapPackFlags = -204
@@ -562,17 +562,6 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	eligible.performance = -206
 	if count := resultCount(eligible); count != 1 {
 		t.Fatalf("unproven fields filtered sessions: count=%d", count)
-	}
-
-	eligible.requiredFreeSlots = 5
-	if count := resultCount(eligible); count != 0 {
-		t.Fatalf("insufficient private slots were returned: count=%d", count)
-	}
-
-	eligible.gameType = 0
-	eligible.requiredFreeSlots = 3
-	if count := resultCount(eligible); count != 1 {
-		t.Fatalf("count=%d, want one ranked session with at least three public slots", count)
 	}
 
 	eligible.requiredFreeSlots = 4

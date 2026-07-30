@@ -297,7 +297,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 		203, 0, 113, 7, 0x02, 0x0c,
 		2,
 	}
-	hostCounts := [4]int32{0, 1, 8, 0}
+	hostCounts := [4]int32{18, 1, 0, 0}
 	hostAttributes := [9]int32{0, 1, 2, 3, 4, 5, 6, 7, 504}
 	createReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,

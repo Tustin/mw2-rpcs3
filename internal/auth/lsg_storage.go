@@ -8,8 +8,6 @@ import (
 const (
 	mw2PlaylistFileID       = uint64(0x1122334455667788)
 	mw2PlaylistFilename     = "playlists.info"
-	mw2PlaylistPatch3FileID = uint64(0x112233445566778a)
-	mw2PlaylistPatch3Name   = "playlists.patch3"
 	mw2PlaylistMaxSize      = 0x20000
 	mw2MOTDFileID           = uint64(0x1122334455667789)
 	mw2MOTDFilename         = "messageoftheday.info"
@@ -267,13 +265,6 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 			return mw2StorageRequest{}, fmt.Errorf("unexpected storage list filter type %d", nextType)
 		}
 	case bdStorageGetFile:
-		request.value, err = reader.readU8()
-		if err != nil {
-			return mw2StorageRequest{}, fmt.Errorf("read storage get value: %w", err)
-		}
-		if request.value != 0 {
-			return mw2StorageRequest{}, fmt.Errorf("unexpected storage get value %d", request.value)
-		}
 		request.fileID, err = reader.readU64()
 		if err != nil {
 			return mw2StorageRequest{}, fmt.Errorf("read storage file ID: %w", err)
@@ -451,7 +442,6 @@ func loadMW2PublisherFiles() ([]mw2PublisherFile, error) {
 	return []mw2PublisherFile{
 		{id: mw2MOTDFileID, name: mw2MOTDFilename, data: motd},
 		{id: mw2PlaylistFileID, name: mw2PlaylistFilename, data: playlist},
-		{id: mw2PlaylistPatch3FileID, name: mw2PlaylistPatch3Name, data: playlist},
 	}, nil
 }
 
@@ -529,7 +519,7 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		}
 		c.lastStorageGetFile = file.name
 		c.lastStorageGetID = fmt.Sprintf("0x%016x", file.id)
-		if file.id == mw2PlaylistFileID || file.id == mw2PlaylistPatch3FileID {
+		if file.id == mw2PlaylistFileID {
 			c.playlistBytes = len(file.data)
 			c.playlistSHA256 = digestHex(file.data)
 		}

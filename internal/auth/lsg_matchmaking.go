@@ -288,10 +288,12 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 	case bdMatchmakingFindSessions:
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
+			// Only the public-slot availability comparison is established for
+			// this build. The remaining title-defined comparison rules lived
+			// server-side and are deliberately left non-filtering.
 			sessions := c.matchmakingStore().find(
 				request.maxResults,
 				request.search.requiredFreeSlots,
-				request.search.gameType != 0,
 			)
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}

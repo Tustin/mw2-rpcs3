@@ -532,39 +532,6 @@ func testNATTraversalRequest(destination *net.UDPAddr, version uint16) []byte {
 	return packet
 }
 
-func TestBandwidthUploadSequence(t *testing.T) {
-	packet := make([]byte, bandwidthUploadPacketSize)
-	binary.LittleEndian.PutUint32(packet[:4], 3)
-	copy(packet[4:12], []byte{0, 1, 2, 3, 4, 5, 6, 7})
-
-	sequence, ok := bandwidthUploadSequence(packet)
-	if !ok || sequence != 3 {
-		t.Fatalf("sequence=%d ok=%v", sequence, ok)
-	}
-
-	for _, test := range []struct {
-		name   string
-		mutate func([]byte) []byte
-	}{
-		{name: "short", mutate: func(value []byte) []byte { return value[:len(value)-1] }},
-		{name: "sequence out of range", mutate: func(value []byte) []byte {
-			binary.LittleEndian.PutUint32(value[:4], bandwidthUploadPackets)
-			return value
-		}},
-		{name: "wrong token", mutate: func(value []byte) []byte {
-			value[11] ^= 0xff
-			return value
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			candidate := append([]byte(nil), packet...)
-			if _, ok := bandwidthUploadSequence(test.mutate(candidate)); ok {
-				t.Fatal("accepted malformed bandwidth upload")
-			}
-		})
-	}
-}
-
 func mutateByte(packet []byte, offset int, value byte) []byte {
 	mutated := append([]byte(nil), packet...)
 	mutated[offset] = value
