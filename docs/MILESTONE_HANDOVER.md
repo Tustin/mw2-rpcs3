@@ -16,7 +16,7 @@ The implementation now covers:
 
 1. dynamic retail authentication and ticket generation;
 2. one-use LSG ticket consumption and encrypted LSG records;
-3. the exact storage operation-8/operation-5 playlist fetch;
+3. the exact storage operation-8/operation-5 MOTD and playlist fetches;
 4. a retail-parser-valid minimal `playlists.info`;
 5. service-5 create, update, delete, and find-sessions;
 6. a shared, concurrent matchmaking directory with exact result objects;
@@ -27,13 +27,19 @@ The implementation now covers:
     and the production TCP authentication path.
 
 The screenshot remaining on “Fetching Playlists” is not evidence that the
-playlist text is malformed. The 2026-07-28 live trace exposed the exact earlier
-failure: task replies omitted the leading one-bit type-checking marker, so MW2
-decoded every field one bit out of alignment and never reached the valid
-filename/file ID. The current Linux deployment correctly advertises the
-canonical LF fixture as 193 bytes; a Windows checkout can be 205 bytes due to
-CRLF expansion. No live run has yet reached operation `5`; the marker fix is
-covered by the full automated suite and awaits that decisive live retest.
+playlist text is malformed. The earlier trace exposed a missing one-bit
+type-checking marker. The latest trace confirms that marker is now deployed but
+still shows six operation-8 requests and no operation-5 request. Its replies
+advertise only `playlists.info`.
+
+Static analysis resolves that remaining stall: `0x0030a748` and `0x0030a788`
+initialize `messageoftheday.info` downloads before `0x0030a7c8` initializes the
+playlist download. The server now exposes both publisher files and can serve
+either opaque ID. The current Linux deployment advertises the canonical LF
+playlist fixture as 193 bytes; a Windows checkout can be 205 bytes due to CRLF
+expansion. No live emulator run has yet reached operation `5`; the complete
+MOTD-then-playlist flow is covered by the encrypted two-client harness and
+awaits the decisive live retest.
 
 ## Playlist resolution
 
@@ -96,6 +102,12 @@ decisive fetch trace is
 The neutral metadata values are not read in this transition. There is no
 cache-version or timestamp gate in this two-stage fetch path.
 
+The same state machine selects `messageoftheday.info`. Its consumer at
+`0x0030b1f0` supplies a `0x100`-byte buffer, trims trailing CR/LF, and consumes
+the blob as text. An unfiltered operation-8 response therefore advertises MOTD
+first and playlist second. `MW2_MOTD` optionally overrides the built-in welcome
+text.
+
 The bundled fixture is 205 bytes, version 504, with one visible slot:
 
 ```text
@@ -133,17 +145,19 @@ q1  raw selected playlist/game-mode ID
 q2  netcode/protocol version
 q3  owned map-pack flags
 q4  playlist version
-q5  required free public slots
+q5  required free slots in the q0-selected pool
 q6  performance/skill value
 ```
 
-Only the availability rule is implemented:
+Only the recovered slot-pool availability rule is implemented:
 
 ```text
-host.openPublic >= query.requiredFreeSlots
+query.unranked != 0
+    ? host.openPrivate >= query.requiredFreeSlots
+    : host.openPublic >= query.requiredFreeSlots
 ```
 
-The historical backend comparisons for `q0..q4` and `q6` are not in the client
+The historical backend comparisons for `q1..q4` and `q6` are not in the client
 binary. Equality, mask containment, playlist compatibility, or skill-distance
 rules would be guesses, so they remain deliberately non-filtering.
 

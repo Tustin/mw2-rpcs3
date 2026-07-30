@@ -99,7 +99,7 @@ func (c *fullFlowLSGClient) exchange(t *testing.T, serviceID byte, payload []byt
 	return responsePayload
 }
 
-func readFullFlowFileInfo(t *testing.T, reader *bdBitReader) uint64 {
+func readFullFlowFileInfo(t *testing.T, reader *bdBitReader, expectedName string) uint64 {
 	t.Helper()
 
 	fileID, err := reader.readU64()
@@ -122,7 +122,7 @@ func readFullFlowFileInfo(t *testing.T, reader *bdBitReader) uint64 {
 	if value, err := reader.readU64(); err != nil || value != 0 {
 		t.Fatalf("file info u64=%d err=%v", value, err)
 	}
-	if filename, err := readBDTestString(reader); err != nil || filename != mw2PlaylistFilename {
+	if filename, err := readBDTestString(reader); err != nil || filename != expectedName {
 		t.Fatalf("file info name=%q err=%v", filename, err)
 	}
 	return fileID
@@ -146,20 +146,59 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	if operationID, err := list.readU8(); err != nil || operationID != bdStorageListFiles {
 		t.Fatalf("op8 operation=%d err=%v", operationID, err)
 	}
-	if count, err := list.readU32(); err != nil || count != 1 {
+	if count, err := list.readU32(); err != nil || count != 3 {
 		t.Fatalf("op8 count=%d err=%v", count, err)
+	}
+	if size, err := list.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
+		t.Fatalf("op8 MOTD size=%d want=%d err=%v", size, len(mw2DefaultMOTD), err)
+	}
+	motdFileID := readFullFlowFileInfo(t, list, mw2MOTDFilename)
+	if motdFileID != mw2MOTDFileID {
+		t.Fatalf("op8 MOTD file ID=%x", motdFileID)
 	}
 	if size, err := list.readU32(); err != nil || size != uint32(len(playlist)) {
 		t.Fatalf("op8 size=%d want=%d err=%v", size, len(playlist), err)
 	}
-	fileID := readFullFlowFileInfo(t, list)
+	fileID := readFullFlowFileInfo(t, list, mw2PlaylistFilename)
 	if fileID != mw2PlaylistFileID {
 		t.Fatalf("op8 file ID=%x", fileID)
+	}
+	if size, err := list.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("op8 title-update size=%d want=%d err=%v", size, len(playlist), err)
+	}
+	patch3FileID := readFullFlowFileInfo(t, list, mw2PlaylistPatch3Name)
+	if patch3FileID != mw2PlaylistPatch3FileID {
+		t.Fatalf("op8 title-update file ID=%x", patch3FileID)
+	}
+
+	motdReply := client.exchange(t, bdServiceStorage, buildMW2StorageGetRequest(motdFileID))
+	motd := mustBDTaskReplyReader(t, motdReply)
+	if transaction, err := motd.readU64(); err != nil || transaction != 1 {
+		t.Fatalf("MOTD op5 transaction=%d err=%v", transaction, err)
+	}
+	if errorCode, err := motd.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("MOTD op5 error=%d err=%v", errorCode, err)
+	}
+	if operationID, err := motd.readU8(); err != nil || operationID != bdStorageGetFile {
+		t.Fatalf("MOTD op5 operation=%d err=%v", operationID, err)
+	}
+	if size, err := motd.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
+		t.Fatalf("MOTD op5 size=%d want=%d err=%v", size, len(mw2DefaultMOTD), err)
+	}
+	if returnedID := readFullFlowFileInfo(t, motd, mw2MOTDFilename); returnedID != motdFileID {
+		t.Fatalf("MOTD op5 file ID=%x want=%x", returnedID, motdFileID)
+	}
+	motdBlob, err := motd.readBlob(mw2MOTDMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(motdBlob) != mw2DefaultMOTD {
+		t.Fatalf("MOTD op5 blob=%q", motdBlob)
 	}
 
 	getReply := client.exchange(t, bdServiceStorage, buildMW2StorageGetRequest(fileID))
 	get := mustBDTaskReplyReader(t, getReply)
-	if transaction, err := get.readU64(); err != nil || transaction != 1 {
+	if transaction, err := get.readU64(); err != nil || transaction != 2 {
 		t.Fatalf("op5 transaction=%d err=%v", transaction, err)
 	}
 	if errorCode, err := get.readU32(); err != nil || errorCode != bdErrorNone {
@@ -171,7 +210,7 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	if size, err := get.readU32(); err != nil || size != uint32(len(playlist)) {
 		t.Fatalf("op5 size=%d want=%d err=%v", size, len(playlist), err)
 	}
-	if returnedID := readFullFlowFileInfo(t, get); returnedID != fileID {
+	if returnedID := readFullFlowFileInfo(t, get, mw2PlaylistFilename); returnedID != fileID {
 		t.Fatalf("op5 file ID=%x want=%x", returnedID, fileID)
 	}
 	if err := get.readType(bdTypeBlob); err != nil {
@@ -225,7 +264,7 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 	// With no further traffic, the finite authenticated-LSG idle limit must
 	// close the connection and reclaim the record.
 	deadline := time.Now().Add(2 * time.Second)
-	for len(service.matchmakingStore().find(1, 0)) != 0 {
+	for len(service.matchmakingStore().find(1, 0, false)) != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("owned matchmaking session survived LSG connection close")
 		}
@@ -375,7 +414,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		203, 0, 113, 7, 0x02, 0x0c,
 		2,
 	}
-	hostCounts := [4]int32{18, 1, 0, 0}
+	hostCounts := [4]int32{0, 1, 8, 0}
 	hostAttributes := [9]int32{0, 0, 0, 0, 0, 0, 0, 0, 504}
 	createReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,
@@ -385,7 +424,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		hostCounts,
 		hostAttributes,
 	))
-	sessionID, securityKey := readFullFlowCreateReply(t, createReply, 2)
+	sessionID, securityKey := readFullFlowCreateReply(t, createReply, 3)
 	if allZero(sessionID) || allZero(securityKey) {
 		t.Fatalf("create returned zero identity: session=%x key=%x", sessionID, securityKey)
 	}
@@ -399,7 +438,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	found := readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		2,
+		3,
 	)
 	if len(found) != 1 {
 		t.Fatalf("initial find count=%d", len(found))
@@ -417,7 +456,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	updatedAddress := append([]byte(nil), hostAddress...)
 	updatedAddress[21] = 8
 	updatedAddress[24] = 1
-	updatedCounts := [4]int32{17, 2, 1, 1}
+	updatedCounts := [4]int32{0, 2, 7, 1}
 	updatedAttributes := [9]int32{9, 8, 7, 6, 5, 4, 3, 2, 505}
 	updateReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingUpdateSession,
@@ -427,12 +466,12 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		updatedCounts,
 		updatedAttributes,
 	))
-	assertFullFlowMutationReply(t, updateReply, 3, bdMatchmakingUpdateSession)
+	assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
 
 	found = readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		3,
+		4,
 	)
 	if len(found) != 1 {
 		t.Fatalf("updated find count=%d", len(found))
@@ -452,11 +491,11 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		bdServiceMatchmaking,
 		buildMW2SessionIDRequestWithValue(bdMatchmakingDeleteSession, sessionID),
 	)
-	assertFullFlowMutationReply(t, deleteReply, 4, bdMatchmakingDeleteSession)
+	assertFullFlowMutationReply(t, deleteReply, 5, bdMatchmakingDeleteSession)
 	found = readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		4,
+		5,
 	)
 	if len(found) != 0 {
 		t.Fatalf("deleted session remained in find results: %+v", found)
@@ -465,7 +504,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	// A nonempty retail result hands this exact address/ID/key tuple to the
 	// client's peer router. Peer QoS and traversal begin after this boundary
 	// and are intentionally outside this central-service harness.
-	if service.LSGConnections() != 2 || service.LSGFrames() != 12 {
+	if service.LSGConnections() != 2 || service.LSGFrames() != 14 {
 		t.Fatalf(
 			"LSG connections=%d frames=%d",
 			service.LSGConnections(),

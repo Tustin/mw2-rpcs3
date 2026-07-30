@@ -3,5 +3,6 @@ coverage.out
 captures/*
 !captures/.gitkeep
 .env
+compose.override.yaml
 
 tools/*

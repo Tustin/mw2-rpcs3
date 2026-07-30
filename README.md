@@ -113,8 +113,9 @@ All configuration is environment-based:
 - `MW2_NAT_ALT_ADDR`, default `:3075` (alternate UDP reply-source socket; its
   port must differ from the primary port)
 - `MW2_NAT_ADVERTISED_IP`, default blank for native runs (canonical
-  client-reachable alternate/source-check IPv4 for `0x15` replies; otherwise
-  the alternate socket's specific bind or a route-derived IPv4)
+  client-reachable alternate/source-check IPv4 for `0x15` replies and the
+  service-18 bandwidth upload target; otherwise the alternate socket's
+  specific bind or a route-derived IPv4)
 - `MW2_NAT_RELAY_ENABLED`, default `false` (enables the exact unauthenticated
   introducer forwarder; use only in an isolated/trusted lab)
 - `MW2_HTTP_ADDR`, default `:8080`
@@ -176,9 +177,11 @@ MW2_LOG_LEVEL=debug MW2_LOG_SENSITIVE=true go run ./cmd/mw2-server
 
 This logs authentication tickets, platform/LSG/session keys, raw records,
 decrypted LSG request payloads, plaintext replies, and encrypted frames. It
-also emits structured playlist filename, file ID, metadata, byte length, and
-SHA-256 fields plus a warning when repeated operation-8 replies are not
-followed by operation 5. Treat the complete log as credential-bearing.
+also emits the complete advertised publisher-file set, selected operation-5
+filename, playlist metadata, byte length, and SHA-256 fields plus a warning
+when repeated operation-8 replies are not followed by operation 5. Set
+`MW2_MOTD` to override the built-in message-of-the-day text. Treat the complete
+log as credential-bearing.
 
 Inspect a raw stream encoded with this project's experimental frame envelope:
 
