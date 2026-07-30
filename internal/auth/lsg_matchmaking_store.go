@@ -167,7 +167,6 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 func (s *mw2MatchmakingStore) find(
 	maxResults int32,
 	requiredFreeSlots int32,
-	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
@@ -175,11 +174,7 @@ func (s *mw2MatchmakingStore) find(
 	s.mu.RLock()
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
-		openSlots := session.openPublic
-		if usePrivateSlots {
-			openSlots = session.openPrivate
-		}
-		if openSlots >= requiredFreeSlots {
+		if session.openPublic >= requiredFreeSlots {
 			result = append(result, session)
 		}
 	}

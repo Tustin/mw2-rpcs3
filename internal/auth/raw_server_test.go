@@ -491,10 +491,10 @@ func TestStorageResponseLogReportsTypeCheckingMarker(t *testing.T) {
 	for _, expected := range []string{
 		"type_checked=true",
 		"operation_id=8",
-		"result_count=3",
+		"result_count=2",
 		fmt.Sprintf("file_size=%d", len(mw2DefaultMOTD)),
-		"advertised_files=\"[messageoftheday.info playlists.info playlists.patch3]\"",
-		"advertised_file_ids=\"[0x1122334455667789 0x1122334455667788 0x112233445566778a]\"",
+		"advertised_files=\"[messageoftheday.info playlists.info]\"",
+		"advertised_file_ids=\"[0x1122334455667789 0x1122334455667788]\"",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("response log is missing %q: %s", expected, text)

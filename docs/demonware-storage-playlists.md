@@ -1,8 +1,7 @@
-# Demonware storage and playlist publisher files
+# Demonware storage and `playlists.info`
 
-This document describes the MW2 PS3 retail storage path confirmed from the TU0
-`default_mp.elf` and decrypted title-update executable, the current server
-implementation, and the bundled fixture.
+This document describes the MW2 PS3 retail storage path confirmed from
+`default_mp.elf`, the current server implementation, and the bundled fixture.
 It separates statically proven wire behavior from behavior that still needs a
 live RPCS3 capture.
 
@@ -10,19 +9,15 @@ live RPCS3 capture.
 
 Confirmed statically and covered by repository tests:
 
-- MW2 initializes `messageoftheday.info` publisher-download states before its
-  playlist state;
-- the TU0 executable requests `playlists.info`, while the vanilla title-update
-  executable requests `playlists.patch3`;
+- MW2 initializes `messageoftheday.info` publisher-download states before the
+  `playlists.info` state, so both files must be present in the publisher
+  directory;
 - every received typed task payload starts with a one-bit type-checking marker
   which the client consumes before any five-bit type tag;
 - storage is retail service `10`;
 - operation `8` lists publisher files;
 - operation `5` retrieves the selected file ID;
 - operation-8 results contain an outer result count and a per-file typed size;
-- the proven publisher directory contains `messageoftheday.info`, TU0
-  `playlists.info`, and title-update `playlists.patch3`; the speculative
-  `mp/mappack.info` entry has been removed pending direct retail proof;
 - operation `5` begins with a typed destination-buffer size and has no outer
   result count on the wire;
 - both paths use the same seven-field `bdFileInfo` metadata serializer;
@@ -37,13 +32,10 @@ Confirmed statically and covered by repository tests:
 
 Still pending live verification:
 
-- vanilla title-update selection and fetch of `playlists.patch3`;
+- the corrected operation-8 reply with both required publisher files;
+- an observed operation-5 request for `messageoftheday.info`;
+- an observed operation-5 request for `playlists.info`;
 - successful download and client parsing of the bundled bytes.
-
-The latest decrypted server trace already contains five operation-5 fetch
-requests. They alternated with operation-8 listings but were rejected before
-the operation ID could be retained because the parser omitted their typed zero
-selector.
 
 Do not treat the current static proof and unit tests as full live completion.
 
@@ -59,24 +51,20 @@ storage operation 8
 
 storage operation 8
     -> receive publisher-file metadata
-    -> find exact filename "playlists.info" on TU0 or "playlists.patch3" on the title update
+    -> find exact filename "playlists.info"
     -> read its stable u64 file ID
     -> storage operation 5 with that ID
     -> receive metadata and raw text blob
     -> parse the playlist locally
 ```
 
-The TU0 operation-8 completion loop at `0x00322aa8..0x00322bfc` calls the
-filename getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested
-filename, then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on
-equality. The decrypted title-update executable contains the same state-machine
-shape at relocated addresses but its publisher state table points to
-`playlists.patch3`.
+The operation-8 completion loop at `0x00322aa8..0x00322bfc` calls the filename
+getter (`0x004de420` -> `0x003ec8c0`), compares it with the requested filename,
+then calls the file-ID getter (`0x004de430` -> `0x003ec898`) only on equality.
 The getters return `bdFileInfo + 0x28` and the `u64` at `+0x08`,
 respectively. The selected ID is stored at fetch-state offset `+0x10`; wrapper
-`0x00322cd8` then calls `0x00322848`, which starts operation `5` for that ID.
-Its lower request builder `0x003edf18` also serializes the required typed zero
-selector before the ID.
+`0x00322cd8` then calls `0x00322848`, which starts operation `5` with only that
+ID.
 
 No timestamp, owner, privacy flag, or other neutral metadata field is read in
 this transition. There is also no local cache/version comparison in this
@@ -99,16 +87,16 @@ tag is immediately followed by its value, so most fields are not byte-aligned.
 
 Relevant tags:
 
-|  Tag | Type                  |
-| ---: | --------------------- |
-|  `0` | terminator            |
-|  `1` | bool                  |
-|  `3` | `u8`                  |
-|  `6` | `u16`                 |
-|  `8` | `u32`                 |
-| `10` | `u64`                 |
+| Tag | Type |
+|---:|---|
+| `0` | terminator |
+| `1` | bool |
+| `3` | `u8` |
+| `6` | `u16` |
+| `8` | `u32` |
+| `10` | `u64` |
 | `16` | NUL-terminated string |
-| `19` | blob                  |
+| `19` | blob |
 
 The common successful logical-reply prefix is:
 
@@ -184,16 +172,12 @@ The request is:
 raw u8   service = 10
 raw bit  type-checking-present = 1
 typed u8 operation = 5
-typed u8 value = 0
 typed u64 file ID
 raw 5-bit terminator = 0
 zero padding to the current byte
 ```
 
-The zero value precedes the file ID. Builder `0x003edf18` writes typed tag `3`
-and eight zero value bits before typed tag `10` and the selected ID, then the
-task wrapper appends the terminator. The ID must be the stable ID returned with
-exact filename `playlists.info`.
+The ID must be the stable ID returned with exact filename `playlists.info`.
 
 The corrected successful reply is:
 
@@ -218,8 +202,7 @@ buffer through `0x003ec290`.
 The blob's nested byte length is the authoritative count of raw bytes that
 follow. The leading value is a destination-buffer capacity hint, not an
 equality check. This implementation uses the canonical and safe encoding where
-both values are the payload length; for the current bundled fixture, both are
-`193`.
+both values are the payload length; for the bundled fixture, both are `205`.
 
 An extra typed `u32` before `bdFileInfo` is fatal: the metadata parser expects a
 typed `u64` file ID next and rejects tag `8`.
@@ -241,16 +224,16 @@ typed string filename
 Neutral names are intentional where the exact MW2 semantic label is not needed.
 The corresponding recovered object storage is:
 
-| Object offset | Stored value                                       |
-| ------------: | -------------------------------------------------- |
-|        `0x08` | file ID                                            |
-|        `0x10` | first `u32`                                        |
-|        `0x14` | second `u32`                                       |
-|        `0x18` | first bool                                         |
-|        `0x1c` | second bool                                        |
-|        `0x20` | trailing `u64`                                     |
-|        `0x28` | filename buffer, 128 bytes                         |
-|        `0xa8` | file size injected by the operation result handler |
+| Object offset | Stored value |
+|---:|---|
+| `0x08` | file ID |
+| `0x10` | first `u32` |
+| `0x14` | second `u32` |
+| `0x18` | first bool |
+| `0x1c` | second bool |
+| `0x20` | trailing `u64` |
+| `0x28` | filename buffer, 128 bytes |
+| `0xa8` | file size injected by the operation result handler |
 
 The filename encoding is:
 
@@ -339,21 +322,19 @@ not prove the game has downloaded or applied the file in a live session.
 `internal/auth/lsg_storage.go` currently:
 
 - parses the observed operation-8 and operation-5 request fields;
-- advertises stable IDs for `messageoftheday.info`, TU0 `playlists.info`, and
-  title-update `playlists.patch3`, in that order;
+- advertises one stable publisher-file ID;
 - writes operation `8` as count -> actual size -> `bdFileInfo`;
 - writes operation `5` as actual buffer size -> `bdFileInfo` -> blob;
-- uses each selected file's same ID and filename in list/get replies;
+- uses the same ID and filename in both replies;
 - rejects unknown IDs, empty files, and files over `0x20000`.
 
 The request parser consumes and logs the operation-8 selector, offset, maximum,
-optional filename filter, and five-bit terminator. Offset/maximum pagination and
-exact filename filters are applied to the version-aware directory; a mismatched
-filter, zero maximum, or offset at/after the directory length returns a
-successful empty list. Full transport-block padding is left available for
-diagnostics instead of being treated as another task field. Operation 5
-consumes and validates its typed zero selector before the file ID and likewise
-requires its five-bit terminator to be zero.
+optional filename filter, and five-bit terminator. Since this server advertises
+one file, offset `0` with a positive maximum can return it; a mismatched exact
+filename filter, zero maximum, or nonzero offset returns a successful empty
+list. Full transport-block padding is left available for diagnostics instead
+of being treated as another task field. Operation 5 likewise requires its
+five-bit terminator to be zero.
 
 The final Docker image now:
 
@@ -365,25 +346,24 @@ ENV MW2_PLAYLISTS_FILE=/playlists.info
 This fixes the previous deployment state in which the scratch image contained
 only the executable and operation `8` returned `bdErrorNoFile`.
 
-MOTD and playlist downloads are implemented on the retail storage path. No
-other publisher file is advertised without direct MW2 proof.
+MOTD and other publisher files are not yet implemented on the retail storage
+path.
 
 ## Live evidence versus pending work
 
 An older RPCS3 run received replies that encoded `1, 1` after the operation;
 static analysis proves those values meant result count `1` and the incorrect
-file size `1`. A later Linux run correctly returned one 193-byte canonical LF
-fixture. The newest decrypted trace advertised both proven files and contains
-five operation-5 requests interleaved with repeated operation-8 requests. Their
-payload lengths and parse failures match the typed `u8(0)` selector recovered
-from builder `0x003edf18`; the server parser has now been corrected.
+file size `1`. The latest Linux run correctly returned one 193-byte canonical
+LF fixture but still did not issue operation `5`. Sensitive structured logging
+is now required to isolate client deserialization from task-routing failure.
 
 The next live checkpoint is:
 
-1. run the corrected parser against RPCS3;
-2. confirm each operation-5 request logs selector `0` and its advertised ID;
-3. send each actual buffer size, matching metadata, and raw-byte blob;
-4. confirm the client parses the playlist and advances.
+1. send operation `8` with count `1` and the actual loaded file size;
+2. confirm the remote task completes;
+3. capture operation `5` using the advertised ID;
+4. send the actual buffer size, matching metadata, and the same raw-byte blob;
+5. confirm the client parses version 504 and advances.
 
 ## Related retail services
 

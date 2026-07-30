@@ -145,19 +145,17 @@ q1  raw selected playlist/game-mode ID
 q2  netcode/protocol version
 q3  owned map-pack flags
 q4  playlist version
-q5  required free slots in the q0-selected pool
+q5  required free public slots
 q6  performance/skill value
 ```
 
-Only the recovered slot-pool availability rule is implemented:
+Only the availability rule is implemented:
 
 ```text
-query.unranked != 0
-    ? host.openPrivate >= query.requiredFreeSlots
-    : host.openPublic >= query.requiredFreeSlots
+host.openPublic >= query.requiredFreeSlots
 ```
 
-The historical backend comparisons for `q1..q4` and `q6` are not in the client
+The historical backend comparisons for `q0..q4` and `q6` are not in the client
 binary. Equality, mask containment, playlist compatibility, or skill-distance
 rules would be guesses, so they remain deliberately non-filtering.
 
