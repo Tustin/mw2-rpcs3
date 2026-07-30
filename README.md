@@ -113,8 +113,9 @@ All configuration is environment-based:
 - `MW2_NAT_ALT_ADDR`, default `:3075` (alternate UDP reply-source socket; its
   port must differ from the primary port)
 - `MW2_NAT_ADVERTISED_IP`, default blank for native runs (canonical
-  client-reachable alternate/source-check IPv4 for `0x15` replies; otherwise
-  the alternate socket's specific bind or a route-derived IPv4)
+  client-reachable alternate/source-check IPv4 for `0x15` replies and the
+  service-18 bandwidth upload target; otherwise the alternate socket's
+  specific bind or a route-derived IPv4)
 - `MW2_NAT_RELAY_ENABLED`, default `false` (enables the exact unauthenticated
   introducer forwarder; use only in an isolated/trusted lab)
 - `MW2_HTTP_ADDR`, default `:8080`

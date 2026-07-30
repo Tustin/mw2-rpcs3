@@ -1,20 +1,17 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-28 after diagnosing the live publisher-directory stall,
-correcting the mandatory typed-task reply marker, adding the required
-message-of-the-day prerequisite, proving the complete playlist-fetch handoff,
-implementing the statically recovered retail matchmaking lifecycle, recovering
-the UDP public-address/NAT-classification exchanges, directly validating the
-legacy introducer relay, and recovering the post-find peer
-QoS/NAT-traversal/old-bdDTLS datagrams._
+_Last updated: 2026-07-29 after retrieving the retail `playlists.info`,
+completing the storage flow, and confirming that the game client accepts the
+emulated server's playlist. The active task is now solving the matchmaking lobby
+flow entered when the client searches for a match._
 
 ## Executive summary
 
 The project gets MW2 on RPCS3 through dynamic Demonware authentication, the
-encrypted Lobby Service Gateway (LSG) handshake, and a sustained post-login
-task session. A prior live run displayed "Connecting to Matchmaking Server
-Complete." and continued issuing service requests without an authentication
-restart or LSG reconnect.
+encrypted Lobby Service Gateway (LSG) handshake, storage, and playlist loading.
+The retail `playlists.info` has been retrieved, the storage flow works live, and
+the game client accepts the emulated server's playlist. The next task is the
+matchmaking lobby flow entered when finding a match.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -26,13 +23,22 @@ Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 - `messageoftheday.info` is fetched through the same list/get state machine
   before `playlists.info`; both must be present in the publisher directory.
 
-The newest sensitive trace confirms that the leading type-checking marker fix
-is deployed: every operation-8 reply logs `type_checked=true`. It also exposes
-the next blocker unambiguously: the client requests operation `8` six times,
-never requests operation `5`, and every reply advertises only
-`playlists.info`. Static analysis then found two `messageoftheday.info` state
-initializers (`0x0030a748`, `0x0030a788`) before the playlist initializer
-(`0x0030a7c8`). The server now lists and serves both publisher files.
+The vanilla and modified-client traces use identical operation-8 requests and
+receive identical replies, but only the modified TU0-derived client advances to
+operation 5. The reason is executable version, not the dump hook: the loaded IDA
+ELF is the TU0 build and requests `playlists.info`, while RPCS3 boots the
+9,038,448-byte NPDRM title-update SELF from `/dev_hdd0/game/BLUS30377`. After
+decrypting that exact SELF with content ID
+`UP0002-BLUS30377_00-MW2P000000000014`, its publisher state table proves the
+exact playlist filename is `playlists.patch3`. The server now advertises and
+serves both playlist names from the same bytes, with distinct stable IDs.
+
+A separate sensitive trace captures five service-10 operation-5 fetches. They
+were previously misreported as unknown tasks because the parser expected the
+`u64` file ID immediately after the operation and encountered type tag `3`.
+Builder `0x003edf18` proves the retail request writes typed `u8(0)` before typed
+`u64(file ID)`. The parser, tests, telemetry, and packet codec consume that
+selector.
 
 The Go serializers and focused tests have been updated to those layouts. Direct
 tracing of the retail playlist parser and Public Playlists feeder confirms that
@@ -42,9 +48,8 @@ player. The operation-8 completion loop is also now proven: it selects exact
 filename `playlists.info`, copies only its `u64` ID, starts operation `5`, and
 passes the downloaded buffer (up to `0x20000` bytes) directly to the playlist
 parser. The same filename/opaque-ID handoff serves a bounded plain-text MOTD
-first. Neutral metadata fields are not a fetch gate. The expanded publisher
-directory still requires a new live RPCS3 run; no preserved emulator run ever
-sent storage operation `5`.
+first. Neutral metadata fields are not a fetch gate. Live RPCS3 testing has now
+confirmed that storage completes and the client accepts the served playlist.
 
 The service-5 audit recovered operations `1` create, `2` update, `3` delete,
 `4` find by ID, and `5` find sessions. The server now implements the
@@ -54,6 +59,29 @@ ID/key material, and exact zero/nonempty find-result serializers. Operation
 `4` and the retail backend's seven-field search-filter policy remain
 unimplemented because their exact semantics are below the requested confidence
 threshold.
+
+The latest preserved RPCS3 trace did not reach either publisher-file parser.
+It repeatedly received service-18 error `108`, never sent the five UDP
+bandwidth uploads or the finalize request, and therefore never issued storage
+operation `5`. Current source and focused tests instead produce the recovered
+51-byte request success and 29-byte finalize success, and current logs add
+`bandwidth_phase` and `endpoint`; those fields are absent from the preserved
+trace. This is strong evidence that the captured run used a stale/pre-fix
+binary. No additional playlist serializer change is justified until a clean
+current-source deployment completes the bandwidth prerequisite.
+
+A newer fresh server diagnostic did complete the current bandwidth exchange
+but repeatedly requested unfiltered storage operation `8` after receiving a
+three-entry directory. The third entry, `mp/mappack.info`, had no direct MW2
+ELF or retail-capture proof and was absent from the previously recovered
+two-file state machine. It has been removed. The operation-8 and operation-5
+wire serializers were left unchanged because direct consumer analysis and
+golden tests continue to establish their existing field order. A subsequent
+live test showed no client progress and clarified that visible transaction IDs
+`0,0` were generated by an unsupported server-side compatibility experiment,
+not observed in a retail reply. That experiment has been removed: every
+separate storage task again receives its own monotonically increasing
+transaction ID.
 
 The ELF and packet capture also establish the UDP public-address and v2 NAT
 classification exchanges. Exact `1e 02 00` requests receive the nine-byte
@@ -71,32 +99,34 @@ anti-abuse policy remain unresolved.
 
 ## Current end-to-end state
 
-| Phase | Status | Evidence / notes |
-|---|---|---|
-| Listener startup | Working | Auth/LSG TCP and primary discovery UDP coexist on `3074`; alternate-source UDP `3075`, experimental lobby, and HTTP listeners also start. |
-| Dynamic authentication | Working in prior live runs | A fresh session key, game ticket, and LSG ticket are generated per connection. |
-| RPCN key extraction | Working in prior live runs | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset. |
-| Encrypted retail LSG | Working in prior live runs | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing. |
-| Storage operation `8` | Root cause corrected statically and covered by tests; live recheck pending | Returns leading type-checking bit `1`, then both required publisher results: `messageoftheday.info` and `playlists.info`, each with actual byte size and `bdFileInfo`. |
-| Storage operation `7` | Implemented; corrected live recheck pending | Returns a successful empty outer result count. |
-| Storage operation `5` | Corrected statically and covered by tests; not observed live | Resolves either advertised opaque ID and returns actual buffer size, matching `bdFileInfo`, then the raw typed blob. |
-| MOTD prerequisite | Implemented from static proof; live recheck pending | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text. |
-| Bundled `playlists.info` | Retail-parser valid; 95% confidence | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection. |
-| Docker playlist packaging | Fixed in the working tree | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`. |
-| Stats | Placeholder only | The observed retail request is service `4`, operation `4`; the server currently returns an empty success. |
-| Bandwidth | Captured request routing fixed | Service `18` uses a raw leading op `1`; the observed payload now reaches the special service-task reply path. |
-| Retail matchmaking op `5` | Implemented from static proof; live confirmation pending | Validates the exact type-2/max-50 query and all seven recovered field meanings. Only the proven required-free-slot condition is applied; unknown retail comparisons are not guessed. |
-| Retail matchmaking lifecycle | Implemented and covered by synthetic and real-auth two-client server harnesses; live RPCS3 confirmation pending | Two independent retail auth connections receive distinct dynamic tickets/keys, consume their issued one-use LSG tickets, complete storage `8`/`5`, and exercise create/find/update/delete with the exact candidate tuple. Ticket replay is rejected. |
-| UDP public-address/NAT discovery | Implemented from ELF/PCAP proof and covered by golden/integration tests | Exact v2 `0x1e` requests receive a nine-byte `0x1f` reply. Exact v2 `0x14` commands `0`, `3`, and `2` receive a 15-byte `0x15` reply from the required source socket; malformed/unsupported packets are ignored. |
-| Peer QoS packet codec | Recovered directly from the ELF; live confirmation pending | Request `0x28` is 17 bytes. Reply `0x29` is an 18-byte fixed header plus optional data. All multibyte values are little-endian. |
-| Peer NAT traversal and introducer | Codec recovered; current legacy relay implemented behind a safety flag; live two-client confirmation pending | Types `0x0a..0x0d` use one exact 29-byte structure and a 10-byte truncated HMAC-SHA1. With trusted-lab relay enabled, the server accepts type `0x0a`, version `>=2`, routes to the embedded destination, and changes only the type to `0x0b`. |
-| Peer DTLS codec | Recovered directly from the ELF; live confirmation pending | Canonical Init/InitAck/CookieEcho/CookieAck/Error packets are 16/38/177/114/15 bytes. Type-6 data uses an 8-byte HMAC-SHA1 tag, Blob8 XOR prefix transform, clear tail, and a 32-packet replay window. |
-| Playlist parsing / lobby population | Not live-verified | No corrected operation-5 download and client parse have been captured yet. |
-| Runtime discovery telemetry | Corrected in the working tree | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply. |
+| Phase                               | Status                                                                                                          | Evidence / notes                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listener startup                    | Working                                                                                                         | Auth/LSG TCP and primary discovery UDP coexist on `3074`; alternate-source UDP `3075`, experimental lobby, and HTTP listeners also start.                                                                                                                                                                                                                   |
+| Dynamic authentication              | Working in prior live runs                                                                                      | A fresh session key, game ticket, and LSG ticket are generated per connection.                                                                                                                                                                                                                                                                              |
+| RPCN key extraction                 | Working in prior live runs                                                                                      | The LSG key is found relative to the `RPCN` marker rather than a brittle absolute offset.                                                                                                                                                                                                                                                                   |
+| Encrypted retail LSG                | Working in prior live runs                                                                                      | Client requests decrypt and validate; replies use the observed 3DES-CBC record framing.                                                                                                                                                                                                                                                                     |
+| Storage operation `8`               | Working live                                                                                                    | Returns leading type-checking bit `1`, then the proven publisher results `messageoftheday.info`, TU0 `playlists.info`, and title-update `playlists.patch3`, each with actual byte size and `bdFileInfo`. A speculative `mp/mappack.info` entry remains removed.                                                                                           |
+| Storage operation `7`               | Implemented                                                                                                     | Returns a successful empty outer result count.                                                                                                                                                                                                                                                                                                              |
+| Storage operation `5`               | Working live                                                                                                    | Consumes typed `u8(0)` before the advertised opaque ID, then returns actual buffer size, matching `bdFileInfo`, and the raw typed blob. The client accepts the served playlist.                                                                                                                                                                                |
+| MOTD prerequisite                   | Implemented                                                                                                     | Two binary state initializers request `messageoftheday.info`; the consumer accepts at most `0x100` bytes of plain text. `MW2_MOTD` overrides the built-in welcome text.                                                                                                                                                                                         |
+| Bundled `playlists.info`            | Retail-parser valid; 95% confidence                                                                             | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection.                                                                                                                                                                                                                                          |
+| Docker playlist packaging           | Fixed in the working tree                                                                                       | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`.                                                                                                                                                                                                                                                                      |
+| Stats                               | Placeholder only                                                                                                | The observed retail request is service `4`, operation `4`; the server currently returns an empty success.                                                                                                                                                                                                                                                   |
+| Groups                              | Set-groups implemented; live recheck required                                                                   | Service `17`, operation `2` parses the recovered typed `u32 groupCount` plus repeated typed `u64 groupID` request and returns an empty success. The client serializer at `0x003e4758` proves the layout; neighboring operation `3` at `0x003e4638` is the distinct single-`u32` clear-groups call.                                                                  |
+| Bandwidth                           | Two-phase bootstrap implemented and focused tests pass; clean deployment/live recheck required                  | Service `18/1` returns the exact 51-byte request result (65-byte wire frame), accepts five 512-byte UDP uploads on the primary NAT socket, then returns the 29-byte finalize result (49-byte wire frame). The latest preserved run instead returned the old 11-byte error-108 rejection and lacked current bandwidth telemetry, indicating a stale runtime. |
+| Retail matchmaking op `5`           | Implemented; slot-pool fix awaiting live confirmation                                                           | Validates the exact type-2/max-50 query and all seven recovered field meanings. The recovered unranked flag selects the slot pool: nonzero uses private slots and zero uses public slots. Unknown retail comparisons are not guessed.                                                                                                                           |
+| Retail matchmaking lifecycle        | Implemented and covered by synthetic and real-auth two-client server harnesses; live RPCS3 confirmation pending | Two independent retail auth connections receive distinct dynamic tickets/keys, consume their issued one-use LSG tickets, complete storage `8`/`5`, and exercise create/find/update/delete with the exact candidate tuple. Ticket replay is rejected.                                                                                                        |
+| UDP public-address/NAT discovery    | Implemented from ELF/PCAP proof and covered by golden/integration tests                                         | Exact v2 `0x1e` requests receive a nine-byte `0x1f` reply. Exact v2 `0x14` commands `0`, `3`, and `2` receive a 15-byte `0x15` reply from the required source socket; malformed/unsupported packets are ignored.                                                                                                                                            |
+| Peer QoS packet codec               | Recovered directly from the ELF; live confirmation pending                                                      | Request `0x28` is 17 bytes. Reply `0x29` is an 18-byte fixed header plus optional data. All multibyte values are little-endian.                                                                                                                                                                                                                             |
+| Peer NAT traversal and introducer   | Codec recovered; current legacy relay implemented behind a safety flag; live two-client confirmation pending    | Types `0x0a..0x0d` use one exact 29-byte structure and a 10-byte truncated HMAC-SHA1. With trusted-lab relay enabled, the server accepts type `0x0a`, version `>=2`, routes to the embedded destination, and changes only the type to `0x0b`.                                                                                                               |
+| Peer DTLS codec                     | Recovered directly from the ELF; live confirmation pending                                                      | Canonical Init/InitAck/CookieEcho/CookieAck/Error packets are 16/38/177/114/15 bytes. Type-6 data uses an 8-byte HMAC-SHA1 tag, Blob8 XOR prefix transform, clear tail, and a 32-packet replay window.                                                                                                                                                      |
+| Playlist parsing / lobby population | Not live-verified                                                                                               | No corrected operation-5 download and client parse have been captured yet.                                                                                                                                                                                                                                                                                  |
+| Runtime discovery telemetry         | Corrected in the working tree                                                                                   | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply.                                                                                                                                                                                                            |
 
-Operation-8 request handling also honors the two-file directory's exact
-filename filter and pagination boundaries. Operation-5 requests must include
-the recovered zero five-bit terminator.
+Operation-8 request handling honors the version-aware publisher directory's
+exact filename filter and pagination boundaries. Operation-5 requests contain a typed
+zero selector before the file ID and must include the recovered zero five-bit
+terminator.
 
 ## Established protocol findings
 
@@ -115,6 +145,10 @@ the recovered zero five-bit terminator.
   service ID. Observed `0x12` is bandwidth service `18`, whose payload begins
   with an untyped raw operation byte.
 - Reply message type `1` is the normal retail task-reply path.
+- Bandwidth service `18` is the special reply-type-`5` path. The first
+  success body is transaction `u64`, success byte, seven `u32` parameters,
+  `u16` UDP port, IPv4, and an eight-byte token. Its finalize success body is
+  transaction `u64`, success byte, and five `u32` result fields.
 
 ### UDP public-address and NAT discovery
 
@@ -249,13 +283,13 @@ establish that RPCS3 has downloaded or applied it.
 
 MW2 uses retail service `5`:
 
-| Operation | Meaning | Current server behavior |
-|---:|---|---|
-| `1` | create session | stores exact host object; returns generated Blob[8] ID and Blob[16] key |
-| `2` | update session | replaces mutable object fields by embedded session ID while retaining ID/key |
-| `3` | delete session | removes the record by Blob[8] session ID |
-| `4` | find by session ID | exact request parser recovered; unsupported |
-| `5` | find sessions | exact type-2/max-50 query validated; returns capped zero/nonempty results |
+| Operation | Meaning            | Current server behavior                                                      |
+| --------: | ------------------ | ---------------------------------------------------------------------------- |
+|       `1` | create session     | stores exact host object; returns generated Blob[8] ID and Blob[16] key      |
+|       `2` | update session     | replaces mutable object fields by embedded session ID while retaining ID/key |
+|       `3` | delete session     | removes the record by Blob[8] session ID                                     |
+|       `4` | find by session ID | exact request parser recovered; unsupported                                  |
+|       `5` | find sessions      | exact type-2/max-50 query validated; returns capped zero/nonempty results    |
 
 Operation `5` contains typed `u8(0)`, typed `i32` query type `2`, typed `i32`
 maximum `50`, seven live positional `i32` values, two raw zero octets, and the
@@ -274,11 +308,15 @@ The result template at `0x004ef168` accepts zero without parsing an element.
 For each nonempty result, parser `0x00325c38` requires the stored base object
 plus all nine title-specific I32 values. The seven request fields are now
 recovered as unranked flag, selected playlist/game-mode ID, netcode version,
-owned map-pack flags, playlist version, required free public slots, and
-performance. The directory enforces only
-`openPublic >= requiredFreeSlots`. The historical comparisons for the other
-six fields remain server-side and are intentionally not guessed. Full schemas
-and confidence boundaries are in `docs/demonware-matchmaking.md`.
+owned map-pack flags, playlist version, required free slots, and
+performance. The directory uses the recovered unranked flag to select the slot pool:
+nonzero requires `openPrivate >= requiredFreeSlots`, while zero requires
+`openPublic >= requiredFreeSlots`. This is confirmed by the latest two-client
+trace: both searches carried `unranked=1`, both hosts advertised private slots,
+and the public-only filter incorrectly returned zero. The historical comparisons
+for the remaining five fields plus performance remain server-side and are
+intentionally not guessed. Full schemas and confidence boundaries are in
+`docs/demonware-matchmaking.md`.
 
 An active host forces operation `2` every 180 seconds. Dirty create/join/leave
 state is coalesced for at least three seconds, and an update failure re-dirties
@@ -316,6 +354,8 @@ payload correctly identifies stats service `4`, operation `4`.
 
 - Storage is retail service `10`.
 - Stats is retail service `4`; only an empty operation-4 placeholder exists.
+- Groups is retail service `17`; typed operation `2` set-groups is implemented as
+  an empty success, while operation `3` clear-groups remains unimplemented.
 - Retail matchmaking is service `5`; create/update/delete and zero/nonempty
   operation-5 search are implemented from direct static evidence.
 - The custom session directory on the experimental listener is not the retail
@@ -385,6 +425,13 @@ Static proof:
 Repository verification:
 
 - focused Go tests assert the corrected operation-8 and operation-5 layouts;
+- storage/full-flow/logging tests assert that the unfiltered publisher
+  directory contains `messageoftheday.info`, TU0 `playlists.info`, and
+  title-update `playlists.patch3`, with no speculative mappack result;
+- focused Go tests also assert that the captured RPCN service-18 request reaches
+  the raw handler, receives reply type `5` with the exact request/finalize
+  success bodies, and that only exact 512-byte sequence-`0..4` UDP uploads are
+  accepted;
 - matchmaking tests assert exact create/update/delete/find golden vectors,
   nonempty result decoding, an encrypted two-client storage-to-candidate
   lifecycle, deterministic capping, deep-copy behavior, and concurrency safety;
@@ -400,23 +447,98 @@ Repository verification:
   type byte changes;
 - Docker packaging now includes the fixture.
 
-Pending live verification:
+## Completed live storage verification
 
-1. Run RPCS3 against an operation-8 reply containing the actual loaded file
-   size and SHA-256.
-2. Confirm the remote task completes and observe the statically proven exact
-   `playlists.info` selection.
-3. Capture operation `5` with the advertised file ID.
-4. Confirm the operation-5 reply downloads the advertised bytes and the client
-   parses version 504.
-5. Confirm the exact service-5 operation-5 request and zero/nonempty responses
-   live.
-6. Run two distinct clients through create -> find -> update -> delete and
-   capture the recovered type-`0x28`/`0x29` QoS and type-`0x0d`/`0x0c`
-   direct-traversal transition.
-7. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
-   public-address reply plus primary/alternate-source NAT-classification
-   replies.
+The retail `playlists.info` was retrieved successfully. The emulator's storage
+flow now completes live, and the game client accepts the served playlist.
+
+## Current task: matchmaking lobby
+
+The retail Find Match sequence has now been compared with the preserved
+one-client RPCS3 trace and the latest simultaneous physical-PS3/RPCS3 trace. The
+preserved trace reaches storage op `5`, creates a service-5 session, sends the
+exact operation-5 query, accepts repeated zero-result replies, updates the
+session, and deletes it. Its first divergence from the retail ingame trace is
+after directory lookup: retail sends a candidate-directed type-`0x28` QoS
+probe, while the emulated run has no eligible candidate because its hosted
+record advertises `openPublic = 0` and `openPrivate = 8` against
+`requiredFreeSlots = 1`.
+
+The latest two-client trace exposed an earlier playlist-side regression. Both
+clients selected playlist `1`, created and refreshed private service-5 sessions,
+but neither sent operation `5`. Static analysis confirms that
+`party_minplayers = 1` makes a one-player party immediately satisfy the
+playlist and returns before the `dwFindSessions` call. The fixture now uses
+`party_minplayers = 2`, the minimal value that makes each solo client enter the
+public-search path. `maxparty = 1`, `party_maxplayers = 8`, and
+`party_matchedplayercount = 1` are not this gate.
+
+Service `17`, operation `2` is the post-lobby `bdGroup::setGroups` membership
+update. Error `108` is not the cause of the missing search: a preserved trace
+sends service `5`, operation `5` before the group update and continues after the
+same error. A success stub may still be added later, but it is not the active
+matchmaking blocker.
+
+The fresh two-client run confirms that both solo clients now send operation `5`.
+Both queries carry `unranked=1`, while both hosts advertise eight private slots
+and zero public slots. The implementation had already recovered but not yet
+documented the corresponding slot-pool rule: unranked searches use private
+slots, ranked searches use public slots. The current server now applies that
+rule. The active live-debugging target is a retest proving a nonempty candidate
+is accepted and tracing lobby/peer handoff. The retail PS3 captures remain the
+source of truth.
+
+## Prior playlist dump diagnostic
+
+The diagnostic was reduced to a playlist-only raw dump. The MOTD hook at
+`0x0030b598` has been removed and its original `lwz r8, dword_1F91128`
+instruction restored. At `0x0030b530`, only the original `bl sub_258BF0` parser
+call is replaced with a direct `bl` to the dump wrapper; all surrounding
+playlist state writes remain original.
+
+On 2026-07-29 the wrapper was relocated out of the live function at
+`0x0034d958` into a newly mapped executable tail at `0x00709160..0x00709280` in
+`/mnt/d/Reversing/PS3/self resigner/self/default_mp.elf`. The first executable
+LOAD segment's `p_filesz`/`p_memsz` now end at `0x00709280`, before the RW LOAD
+at `0x00710000`. The wrapper saves volatile parser arguments plus
+LR/TOC/CR/XER/CTR, loads the exact received length from `dword_1F91128`, calls
+`cellFsOpen`/`cellFsWrite`/`cellFsClose` at the verified executable stubs, restores
+state, and tail-branches to `sub_258BF0`. Its output path is
+`/dev_hdd0/tmp/playlists.info`; the immediate pre-relocation backup is
+`default_mp.elf.pre_playlist_dump_relocate`.
+
+The retail crash had two concrete causes in the prior IDA patch. The original
+call targeted `0x00548a9c`, which is in an ELF segment with read permission but
+no execute permission, and its branch targets resolved to non-filesystem stubs.
+The later `0x0034d958` workaround called the correct filesystem stubs but
+overwrote a real game function, causing a later jump into the dump wrapper with
+unrelated register state. The relocated wrapper calls the actual `cellFsOpen`
+(`0x00526274`), `cellFsWrite` (`0x00526334`), and `cellFsClose` (`0x005261f4`)
+stubs, then tail-branches to the original parser at `0x00258bf0`, preserving the
+original LR so parser return resumes at `0x0030b538`.
+
+The relocated branch words and segment bounds were recomputed from their actual
+addresses and verified in the patched ELF. The ELF is ready to be resigned and
+tested on RPCS3/hardware.
+
+The dump was captured on a retail PS3 connected to the real Demonware service,
+and the retrieved raw `playlists.info` is now the emulator fixture. The patched
+multiplayer executable was correctly deployed as `default_mp.self`.
+
+Current matchmaking-lobby work:
+
+1. Retest the corrected slot-pool rule with two clients. The latest trace proves
+   both queries are unranked and both hosts advertise private slots, so operation
+   `5` must return candidates from `openPrivate` rather than require `openPublic`.
+   Confirm the nonempty candidate tuple is accepted and compare the transition
+   against retail's type-`0x28` candidate QoS probe.
+2. Trace the accepted candidate through create -> find -> update -> delete and
+   into the matchmaking lobby. The preserved `mw2 rpcs3.pcapng` predates the
+   current server/RPCS3 logs and cannot be packet-correlated with this run.
+3. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
+   type-`0x0d`/`0x0c` direct-traversal transition required for lobby/peer handoff.
+4. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
+   public-address reply plus primary/alternate-source NAT-classification replies.
 
 ## Current implementation areas
 

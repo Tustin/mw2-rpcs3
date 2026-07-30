@@ -146,7 +146,7 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	if operationID, err := list.readU8(); err != nil || operationID != bdStorageListFiles {
 		t.Fatalf("op8 operation=%d err=%v", operationID, err)
 	}
-	if count, err := list.readU32(); err != nil || count != 2 {
+	if count, err := list.readU32(); err != nil || count != 3 {
 		t.Fatalf("op8 count=%d err=%v", count, err)
 	}
 	if size, err := list.readU32(); err != nil || size != uint32(len(mw2DefaultMOTD)) {
@@ -162,6 +162,13 @@ func assertFullFlowStorage(t *testing.T, client *fullFlowLSGClient, playlist []b
 	fileID := readFullFlowFileInfo(t, list, mw2PlaylistFilename)
 	if fileID != mw2PlaylistFileID {
 		t.Fatalf("op8 file ID=%x", fileID)
+	}
+	if size, err := list.readU32(); err != nil || size != uint32(len(playlist)) {
+		t.Fatalf("op8 title-update size=%d want=%d err=%v", size, len(playlist), err)
+	}
+	patch3FileID := readFullFlowFileInfo(t, list, mw2PlaylistPatch3Name)
+	if patch3FileID != mw2PlaylistPatch3FileID {
+		t.Fatalf("op8 title-update file ID=%x", patch3FileID)
 	}
 
 	motdReply := client.exchange(t, bdServiceStorage, buildMW2StorageGetRequest(motdFileID))
@@ -257,7 +264,7 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 	// With no further traffic, the finite authenticated-LSG idle limit must
 	// close the connection and reclaim the record.
 	deadline := time.Now().Add(2 * time.Second)
-	for len(service.matchmakingStore().find(1, 0)) != 0 {
+	for len(service.matchmakingStore().find(1, 0, false)) != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("owned matchmaking session survived LSG connection close")
 		}
@@ -407,7 +414,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		203, 0, 113, 7, 0x02, 0x0c,
 		2,
 	}
-	hostCounts := [4]int32{18, 1, 0, 0}
+	hostCounts := [4]int32{0, 1, 8, 0}
 	hostAttributes := [9]int32{0, 0, 0, 0, 0, 0, 0, 0, 504}
 	createReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,
@@ -449,7 +456,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	updatedAddress := append([]byte(nil), hostAddress...)
 	updatedAddress[21] = 8
 	updatedAddress[24] = 1
-	updatedCounts := [4]int32{17, 2, 1, 1}
+	updatedCounts := [4]int32{0, 2, 7, 1}
 	updatedAttributes := [9]int32{9, 8, 7, 6, 5, 4, 3, 2, 505}
 	updateReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingUpdateSession,

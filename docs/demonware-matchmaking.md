@@ -21,15 +21,20 @@ wire layouts are not imported where the MW2 ELF differs.
 | op-1/op-2 nine-I32 extension and nonempty-result echo | >99% |
 | meanings and order of all seven op-5 query I32s | >95% |
 | literal backend comparisons for query fields 0..4 and 6 | below 80%; intentionally not implemented |
-| required-free-slot condition (`openPublic >= requiredFreeSlots`) | >90% |
+| unranked/ranked slot-pool condition (`openPrivate`/`openPublic >= requiredFreeSlots`) | >95% |
 | 25-byte common-address layout and create-to-result echo | >95% |
 | encrypted two-client storage-to-candidate server lifecycle | >95%; automated |
+| live RPCS3 op-1/op-2/op-3/op-5 request parsing | confirmed on 2026-07-29 |
+| live RPCS3 zero-result op-5 response acceptance | confirmed on 2026-07-29 |
+| live RPCS3 private-slot candidate search | request confirmed; corrected nonempty result awaiting retest |
 | live RPCS3 two-client join/gameplay | not yet established |
 
 The retail PCAP confirms record framing but cannot decrypt the lobby payload
-without the unavailable production session secret. No preserved emulated run
-ever reached storage op `5` or matchmaking service `5`, so the schemas below
-are static-analysis results pending live confirmation.
+without the unavailable production session secret. The 2026-07-29 emulated run
+reached storage op `5` and matchmaking operations `1`, `5`, `2`, and `3`,
+confirming the request layouts and zero-result operation-5 reply live. That run
+advertised only private slots (`openPublic = 0`, `openPrivate = 8`), so it did
+not establish a nonempty candidate result or the peer handoff.
 
 ## Common request encoding
 
@@ -131,7 +136,7 @@ typed I32  selected playlist/game-mode ID
 typed I32  netcode/protocol version
 typed I32  owned map-pack flags
 typed I32  playlist version
-typed I32  required free public slots
+typed I32  required free slots in the selected pool
 typed I32  performance/skill value
 raw U8     0
 raw U8     0
@@ -162,18 +167,20 @@ The direct producer-to-wire trace establishes this order:
 | `q2` | `+0x18` | netcode/protocol version | producer `0x002854b0`, store at `0x00319f00` |
 | `q3` | `+0x1c` | owned map-pack flags/mask | producer `0x000cf938`, store at `0x00319f04` |
 | `q4` | `+0x20` | playlist version | producer `0x00258410`, store at `0x00319f08` |
-| `q5` | `+0x24` | required free public slots | party counters `0x000c3ce0` / `0x000c3d28`, store at `0x00319f0c` |
+| `q5` | `+0x24` | required free slots in the `q0`-selected pool | party counters `0x000c3ce0` / `0x000c3d28`, store at `0x00319f0c` |
 | `q6` | `+0x28` | performance/skill value | global load `0x00305e90`, store at `0x00319f10` |
 
 The first two values are easy to reverse accidentally: the wrapper stores
 caller `r5` (`!ranked`) in `q0`, then caller `r4` (playlist) in `q1`.
 
-The client proves that `q5` requests enough currently open public slots for
-the searching party, so the compatibility directory can safely enforce
-`openPublic >= requiredFreeSlots`. The literal historical comparison rules
-for `q0..q4` and `q6` lived server-side and remain below 80% confidence.
-Plausible equality, mask-containment, or skill-proximity rules are therefore
-not imported.
+The client and the 2026-07-30 two-client trace prove that `q0` selects the slot
+pool used by `q5`: nonzero (`!ranked`, an unranked search) requires enough
+`openPrivate` slots, while zero (ranked) requires enough `openPublic` slots.
+Both live searches carried `q0=1`; their hosts advertised `openPrivate=8` and
+`openPublic=0`, exposing the previous public-only filter. The literal historical
+comparison rules for `q1..q4` and `q6` lived server-side and remain below 80%
+confidence. Plausible equality, mask-containment, or skill-proximity rules are
+therefore not imported.
 
 Primary functions are common builder `0x003e16a0`, base query serializer
 `0x003de268`, and derived query serializer `0x00325850`.
@@ -329,12 +336,13 @@ continues through the no-sessions path.
 - shares one mutex-protected directory across retail LSG connections; and
 - emits exact zero/nonempty operation-5 results in deterministic ID order.
 
-The query meanings are recovered, but the retail backend's comparison rules
-for unranked, playlist, netcode, map packs, playlist version, and performance
-remain below the confidence threshold. The compatibility policy applies only
-the directly justified free-slot requirement and otherwise returns the capped
-directory without inventing comparisons. This is deliberately broader than
-the historical backend.
+The query meanings are recovered. The compatibility policy uses the recovered
+unranked flag to choose private or public slots and applies the directly
+justified free-slot requirement. The retail backend's comparison rules for
+playlist, netcode, map packs, playlist version, and performance remain below
+the confidence threshold, so the directory otherwise returns capped results
+without inventing comparisons. This is deliberately broader than the historical
+backend.
 
 Operation 4 remains unsupported until its exact result template and live use
 are established.
@@ -395,11 +403,29 @@ intervening central service-5 join RPC. The host client answers the peer
 QoS/title handshake; later host state changes produce operation `2` slot-count
 updates.
 
-The supplied 62.655-second retail PCAP contains no traffic to a candidate
-LAN/residential peer and no QoS request/reply pair. Direct MW2 serializers and
-parsers nevertheless establish the exact peer QoS and NAT-traversal datagrams,
-HMAC input, and retry state above the implementation threshold; see
-`demonware-peer-qos.md`. Their live endpoint selection, the central introducer
-contract, and live peer-DTLS confirmation remain pending. The canonical
-peer-DTLS handshake itself is statically recovered in
+The supplied 62.655-second retail startup/lobby PCAP contains no traffic to a
+candidate LAN/residential peer and no QoS request/reply pair. The separate
+90.964-second `mw2 ps3 ingame.pcapng` trace does contain the post-find peer
+phase: the first candidate-directed UDP packet is a type-`0x28` QoS probe at
+frame 1782 (`57.466207`, `192.168.0.199:3074 -> 94.7.20.216:3074`), followed
+by traversal traffic. This packet sequence corroborates the statically recovered
+handoff and confirms that retail proceeds from the central directory result to
+direct peer traffic without another central service-5 join RPC. The production
+LSG payload remains encrypted and the ingame capture has TCP sequence gaps, so
+the returned candidate tuple itself is not recoverable from these PCAPs.
+
+The 2026-07-29 emulated trace reaches the same central request boundary but
+returns zero candidates. The 2026-07-30 two-client trace clarifies why that was
+incorrect: both queries carry `unranked = 1`, and both hosts advertise
+`openPrivate = 8` with `openPublic = 0`. For this query the server must test the
+private slot pool. The public-only filter suppressed otherwise eligible
+candidates, so no candidate-directed `0x28`/`0x29` QoS or `0x0a`..`0x0d`
+traversal datagram was sent. A fresh two-client run against the corrected
+slot-pool selection is the next required live comparison.
+
+Direct MW2 serializers and parsers establish the exact peer QoS and
+NAT-traversal datagrams, HMAC input, and retry state above the implementation
+threshold; see `demonware-peer-qos.md`. The complete live endpoint selection,
+central introducer contract, and peer-DTLS confirmation remain pending. The
+canonical peer-DTLS handshake itself is statically recovered in
 `demonware-peer-dtls.md`.
