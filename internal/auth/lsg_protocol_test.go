@@ -142,50 +142,74 @@ func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
 	}
 }
 
-func buildSetGroupsRequest(groupIDs ...uint64) []byte {
+func buildPerformanceValuesRequest(entityIDs ...uint64) []byte {
 	writer := newBDBitWriter()
 	writer.writeU8(2)
-	writer.writeU32(uint32(len(groupIDs)))
-	for _, groupID := range groupIDs {
-		writer.writeU64(groupID)
+	writer.writeU32(uint32(len(entityIDs)))
+	for _, entityID := range entityIDs {
+		writer.writeU64(entityID)
 	}
 	return writer.bytes()
 }
 
-func TestHandleSetGroupsReturnsEmptySuccess(t *testing.T) {
+func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := buildSetGroupsRequest(0x100000001)
-	responseType, result, ok, reply := handleLSGMessage(session, bdServiceGroup, payload)
+	entityIDs := []uint64{0xb804d13e5ee3dafa, 0x1cef2987c7049084}
+	payload := buildPerformanceValuesRequest(entityIDs...)
+	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
-		t.Fatalf("group response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+		t.Fatalf("performance response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
 	}
-	if !session.lastTaskSupported || session.lastServiceID != bdServiceGroup || session.lastOperationID != 2 {
+	if !session.lastTaskSupported || session.lastServiceID != bdServicePerformance || session.lastOperationID != 2 {
 		t.Fatalf("supported=%v service=%d operation=%d", session.lastTaskSupported, session.lastServiceID, session.lastOperationID)
 	}
-	if len(result) != 26 || binary.LittleEndian.Uint32(result[10:14]) != bdErrorNone || result[15] != 2 {
-		t.Fatalf("malformed group reply=%x", result)
+	reader, err := newBDTaskReplyReader(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transactionID, err := reader.readU64(); err != nil || transactionID != 0 {
+		t.Fatalf("transaction=%d err=%v", transactionID, err)
+	}
+	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operationID, err := reader.readU8(); err != nil || operationID != 2 {
+		t.Fatalf("operation=%d err=%v", operationID, err)
+	}
+	for _, want := range []uint32{2, 2} {
+		if count, err := reader.readU32(); err != nil || count != want {
+			t.Fatalf("count=%d want=%d err=%v", count, want, err)
+		}
+	}
+	for _, entityID := range entityIDs {
+		if got, err := reader.readU64(); err != nil || got != entityID {
+			t.Fatalf("entity=%016x want=%016x err=%v", got, entityID, err)
+		}
+		if value, err := reader.readU64(); err != nil || value != 0 {
+			t.Fatalf("performance=%d err=%v", value, err)
+		}
 	}
 }
 
-func TestHandleMalformedSetGroupsReturnsServiceError(t *testing.T) {
+func TestHandleMalformedPerformanceValuesReturnsServiceError(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := buildSetGroupsRequest(0x100000001)
+	payload := buildPerformanceValuesRequest(0xb804d13e5ee3dafa)
 	payload = payload[:len(payload)-1]
-	responseType, result, ok, reply := handleLSGMessage(session, bdServiceGroup, payload)
+	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
-		t.Fatalf("group response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+		t.Fatalf("performance response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
 	}
 	if session.lastTaskSupported {
-		t.Fatal("malformed group task was marked supported")
+		t.Fatal("malformed performance task was marked supported")
 	}
 	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorServiceNotAvailable {
-		t.Fatalf("group error=%d payload=%x", errorCode, result)
+		t.Fatalf("performance error=%d payload=%x", errorCode, result)
 	}
 }
 

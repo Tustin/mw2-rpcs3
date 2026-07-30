@@ -1,9 +1,9 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-29 after retrieving the retail `playlists.info`,
-completing the storage flow, and confirming that the game client accepts the
-emulated server's playlist. The active task is now solving the matchmaking lobby
-flow entered when the client searches for a match._
+_Last updated: 2026-07-30 after a simultaneous RPCS3/physical-PS3 test reached
+candidate discovery and direct peer QoS. The immediate post-QoS failure was
+isolated to service `17`, operation `2`, now identified and implemented as
+`bdMatchMaking::getPerformanceValues`._
 
 ## Executive summary
 
@@ -473,11 +473,27 @@ playlist and returns before the `dwFindSessions` call. The fixture now uses
 public-search path. `maxparty = 1`, `party_maxplayers = 8`, and
 `party_matchedplayercount = 1` are not this gate.
 
-Service `17`, operation `2` is the post-lobby `bdGroup::setGroups` membership
-update. Error `108` is not the cause of the missing search: a preserved trace
-sends service `5`, operation `5` before the group update and continues after the
-same error. A success stub may still be added later, but it is not the active
-matchmaking blocker.
+The simultaneous RPCS3/physical-PS3 run supersedes the earlier service-17
+classification. Both clients received two service-5 candidates, displayed one
+potential game after excluding their own session, and completed direct peer QoS.
+Immediately afterward each sent service `17`, operation `2`; the old handler
+misidentified this as `bdGroup::setGroups` and returned success with zero result
+objects. Both clients then reported `DW fetch performance values error 1024` and
+deleted their sessions.
+
+The request is now identified as `bdMatchMaking::getPerformanceValues`. The live
+body contains operation `2`, a typed entity count, and one typed U64 entity ID.
+The trailing repeated bytes are only 3DES padding. The symbol-rich Ghosts PDB
+confirms the method signature accepts entity IDs, count, a second U32 argument,
+and `bdPerformanceValue*`; it also proves each result serializes exactly a U64
+`m_entityID` followed by an I64 `m_performanceValue`. MW2's own ELF contains the
+matching `bdPerformanceValue` type names and fetch-error paths.
+
+The server now returns one typed performance result per requested entity,
+preserving the entity ID and using neutral value `0`. Focused tests decode the
+complete reply and reject truncated requests. This requires a fresh two-client
+live test; the exact retail service-17 reply remains unavailable because the
+retail LSG capture is encrypted and its session key is not known.
 
 The fresh two-client run confirms that both solo clients now send operation `5`.
 Both queries carry `unranked=1`, while both hosts advertise eight private slots
@@ -527,16 +543,14 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Retest the corrected slot-pool rule with two clients. The latest trace proves
-   both queries are unranked and both hosts advertise private slots, so operation
-   `5` must return candidates from `openPrivate` rather than require `openPublic`.
-   Confirm the nonempty candidate tuple is accepted and compare the transition
-   against retail's type-`0x28` candidate QoS probe.
-2. Trace the accepted candidate through create -> find -> update -> delete and
-   into the matchmaking lobby. The preserved `mw2 rpcs3.pcapng` predates the
-   current server/RPCS3 logs and cannot be packet-correlated with this run.
-3. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
-   type-`0x0d`/`0x0c` direct-traversal transition required for lobby/peer handoff.
+1. Deploy and retest the service-17 performance-value reply with RPCS3 and a
+   physical PS3. Confirm the `DW fetch performance values error 1024` message is
+   gone and preserve both server/client logs if the next state fails.
+2. Trace the accepted candidate beyond successful direct peer QoS into lobby
+   joining. The latest run proves create -> find -> candidate QoS works, but both
+   clients deleted their sessions after the malformed performance reply.
+3. Compare the next live transition with retail's recovered type-`0x28`/`0x29`
+   QoS and type-`0x0d`/`0x0c` direct-traversal sequence.
 4. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
    public-address reply plus primary/alternate-source NAT-classification replies.
 

@@ -285,7 +285,7 @@ const (
 	bdServiceMatchmaking    = 5
 	bdServiceStorage        = 10
 	bdServiceTitleUtilities = 12
-	bdServiceGroup          = 17
+	bdServicePerformance    = 17
 	bdServiceBandwidth      = 18
 	bdServiceDML            = 27
 
@@ -393,26 +393,42 @@ func decodeLegacyLSGTaskOperation(payload []byte) (byte, bool) {
 	return payload[1], true
 }
 
-func validSetGroupsRequest(payload []byte) bool {
+func parsePerformanceValuesRequest(payload []byte) ([]uint64, bool) {
 	reader := newBDBitReader(payload)
 	typeChecked, err := reader.bits.readBits(1)
 	if err != nil || typeChecked != 1 {
-		return false
+		return nil, false
 	}
 	operationID, err := reader.readU8()
 	if err != nil || operationID != 2 {
-		return false
+		return nil, false
 	}
-	groupCount, err := reader.readU32()
-	if err != nil || groupCount > 64 {
-		return false
+	entityCount, err := reader.readU32()
+	if err != nil || entityCount > 64 {
+		return nil, false
 	}
-	for range groupCount {
-		if _, err := reader.readU64(); err != nil {
-			return false
+	entityIDs := make([]uint64, entityCount)
+	for index := range entityIDs {
+		entityIDs[index], err = reader.readU64()
+		if err != nil {
+			return nil, false
 		}
 	}
-	return true
+	return entityIDs, true
+}
+
+func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uint64) []byte {
+	writer := newBDBitWriter()
+	writer.writeU64(c.nextTransactionID())
+	writer.writeU32(bdErrorNone)
+	writer.writeU8(operationID)
+	writer.writeU32(uint32(len(entityIDs)))
+	writer.writeU32(uint32(len(entityIDs)))
+	for _, entityID := range entityIDs {
+		writer.writeU64(entityID)
+		writer.writeU64(0)
+	}
+	return writer.bytes()
 }
 
 func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte, bool) {
@@ -473,12 +489,13 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 	case serviceID == bdServiceStats && operationID == 4:
 		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
-	case serviceID == bdServiceGroup && operationID == 2:
-		if !validSetGroupsRequest(payload) {
+	case serviceID == bdServicePerformance && operationID == 2:
+		entityIDs, valid := parsePerformanceValuesRequest(payload)
+		if !valid {
 			return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 		}
 		c.lastTaskSupported = true
-		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
+		return lsgTaskReplyType, c.performanceValuesReply(operationID, entityIDs), true
 	default:
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 	}
