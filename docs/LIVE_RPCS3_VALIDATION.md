@@ -155,13 +155,14 @@ q1=selected playlist/game-mode ID
 q2=netcode version
 q3=owned map-pack flags
 q4=playlist version
-q5=required free public slots
+q5=required free slots in the q0-selected pool
 q6=performance
 ```
 
 Confirm first that a zero-result reply completes without a remote-task error.
-Do not infer equality, mask, or skill comparisons from the seven values; only
-`host.openPublic >= q5` is currently justified.
+For `q0 != 0` require `host.openPrivate >= q5`; for `q0 == 0` require
+`host.openPublic >= q5`. Do not infer equality, mask, or skill comparisons from
+`q1..q4` or `q6`.
 
 ## 6. Two-client host/find gate
 

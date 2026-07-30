@@ -285,6 +285,7 @@ const (
 	bdServiceMatchmaking    = 5
 	bdServiceStorage        = 10
 	bdServiceTitleUtilities = 12
+	bdServiceGroup          = 17
 	bdServiceBandwidth      = 18
 	bdServiceDML            = 27
 
@@ -384,15 +385,38 @@ func decodeLegacyLSGTaskOperation(payload []byte) (byte, bool) {
 	if len(payload) < 2 || payload[0] != bdTypeU8 {
 		return 0, false
 	}
-	for _, padding := range payload[2:] {
-		if padding != 0 {
+	for _, value := range payload[2:] {
+		if value != 0 {
 			return 0, false
 		}
 	}
 	return payload[1], true
 }
 
+func validSetGroupsRequest(payload []byte) bool {
+	reader := newBDBitReader(payload)
+	typeChecked, err := reader.bits.readBits(1)
+	if err != nil || typeChecked != 1 {
+		return false
+	}
+	operationID, err := reader.readU8()
+	if err != nil || operationID != 2 {
+		return false
+	}
+	groupCount, err := reader.readU32()
+	if err != nil || groupCount > 64 {
+		return false
+	}
+	for range groupCount {
+		if _, err := reader.readU64(); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte, bool) {
+
 	c.lastTaskSupported = false
 	if len(payload) == 0 {
 		return 0, nil, false
@@ -447,6 +471,12 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeU32(0)
 		}), true
 	case serviceID == bdServiceStats && operationID == 4:
+		c.lastTaskSupported = true
+		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
+	case serviceID == bdServiceGroup && operationID == 2:
+		if !validSetGroupsRequest(payload) {
+			return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
+		}
 		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
 	default:

@@ -112,8 +112,9 @@ anti-abuse policy remain unresolved.
 | Bundled `playlists.info`            | Retail-parser valid; 95% confidence                                                                             | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection.                                                                                                                                                                                                                                          |
 | Docker playlist packaging           | Fixed in the working tree                                                                                       | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`.                                                                                                                                                                                                                                                                      |
 | Stats                               | Placeholder only                                                                                                | The observed retail request is service `4`, operation `4`; the server currently returns an empty success.                                                                                                                                                                                                                                                   |
+| Groups                              | Set-groups implemented; live recheck required                                                                   | Service `17`, operation `2` parses the recovered typed `u32 groupCount` plus repeated typed `u64 groupID` request and returns an empty success. The client serializer at `0x003e4758` proves the layout; neighboring operation `3` at `0x003e4638` is the distinct single-`u32` clear-groups call.                                                                  |
 | Bandwidth                           | Two-phase bootstrap implemented and focused tests pass; clean deployment/live recheck required                  | Service `18/1` returns the exact 51-byte request result (65-byte wire frame), accepts five 512-byte UDP uploads on the primary NAT socket, then returns the 29-byte finalize result (49-byte wire frame). The latest preserved run instead returned the old 11-byte error-108 rejection and lacked current bandwidth telemetry, indicating a stale runtime. |
-| Retail matchmaking op `5`           | Implemented from static proof; live confirmation pending                                                        | Validates the exact type-2/max-50 query and all seven recovered field meanings. Only the proven required-free-slot condition is applied; unknown retail comparisons are not guessed.                                                                                                                                                                        |
+| Retail matchmaking op `5`           | Implemented; slot-pool fix awaiting live confirmation                                                           | Validates the exact type-2/max-50 query and all seven recovered field meanings. The recovered unranked flag selects the slot pool: nonzero uses private slots and zero uses public slots. Unknown retail comparisons are not guessed.                                                                                                                           |
 | Retail matchmaking lifecycle        | Implemented and covered by synthetic and real-auth two-client server harnesses; live RPCS3 confirmation pending | Two independent retail auth connections receive distinct dynamic tickets/keys, consume their issued one-use LSG tickets, complete storage `8`/`5`, and exercise create/find/update/delete with the exact candidate tuple. Ticket replay is rejected.                                                                                                        |
 | UDP public-address/NAT discovery    | Implemented from ELF/PCAP proof and covered by golden/integration tests                                         | Exact v2 `0x1e` requests receive a nine-byte `0x1f` reply. Exact v2 `0x14` commands `0`, `3`, and `2` receive a 15-byte `0x15` reply from the required source socket; malformed/unsupported packets are ignored.                                                                                                                                            |
 | Peer QoS packet codec               | Recovered directly from the ELF; live confirmation pending                                                      | Request `0x28` is 17 bytes. Reply `0x29` is an 18-byte fixed header plus optional data. All multibyte values are little-endian.                                                                                                                                                                                                                             |
@@ -307,11 +308,15 @@ The result template at `0x004ef168` accepts zero without parsing an element.
 For each nonempty result, parser `0x00325c38` requires the stored base object
 plus all nine title-specific I32 values. The seven request fields are now
 recovered as unranked flag, selected playlist/game-mode ID, netcode version,
-owned map-pack flags, playlist version, required free public slots, and
-performance. The directory enforces only
-`openPublic >= requiredFreeSlots`. The historical comparisons for the other
-six fields remain server-side and are intentionally not guessed. Full schemas
-and confidence boundaries are in `docs/demonware-matchmaking.md`.
+owned map-pack flags, playlist version, required free slots, and
+performance. The directory uses the recovered unranked flag to select the slot pool:
+nonzero requires `openPrivate >= requiredFreeSlots`, while zero requires
+`openPublic >= requiredFreeSlots`. This is confirmed by the latest two-client
+trace: both searches carried `unranked=1`, both hosts advertised private slots,
+and the public-only filter incorrectly returned zero. The historical comparisons
+for the remaining five fields plus performance remain server-side and are
+intentionally not guessed. Full schemas and confidence boundaries are in
+`docs/demonware-matchmaking.md`.
 
 An active host forces operation `2` every 180 seconds. Dirty create/join/leave
 state is coalesced for at least three seconds, and an update failure re-dirties
@@ -349,6 +354,8 @@ payload correctly identifies stats service `4`, operation `4`.
 
 - Storage is retail service `10`.
 - Stats is retail service `4`; only an empty operation-4 placeholder exists.
+- Groups is retail service `17`; typed operation `2` set-groups is implemented as
+  an empty success, while operation `3` clear-groups remains unimplemented.
 - Retail matchmaking is service `5`; create/update/delete and zero/nonempty
   operation-5 search are implemented from direct static evidence.
 - The custom session directory on the experimental listener is not the retail
@@ -447,18 +454,38 @@ flow now completes live, and the game client accepts the served playlist.
 
 ## Current task: matchmaking lobby
 
-The retail Find Match sequence has now been compared with the latest preserved
-RPCS3/server trace. The emulated client reaches storage op `5`, creates a
-service-5 session, sends the exact operation-5 query, accepts repeated
-zero-result replies, updates the session, and deletes it. The first divergence
-from the retail ingame trace is after directory lookup: retail sends a
-candidate-directed type-`0x28` QoS probe, while the emulated run has no eligible
-candidate because its hosted record advertises `openPublic = 0` and
-`openPrivate = 8` against `requiredFreeSlots = 1`.
+The retail Find Match sequence has now been compared with the preserved
+one-client RPCS3 trace and the latest simultaneous physical-PS3/RPCS3 trace. The
+preserved trace reaches storage op `5`, creates a service-5 session, sends the
+exact operation-5 query, accepts repeated zero-result replies, updates the
+session, and deletes it. Its first divergence from the retail ingame trace is
+after directory lookup: retail sends a candidate-directed type-`0x28` QoS
+probe, while the emulated run has no eligible candidate because its hosted
+record advertises `openPublic = 0` and `openPrivate = 8` against
+`requiredFreeSlots = 1`.
 
-The active implementation and live-debugging target is therefore a fresh
-two-client run whose host advertises at least one public slot, followed by
-candidate acceptance and lobby/peer handoff. The retail PS3 captures remain the
+The latest two-client trace exposed an earlier playlist-side regression. Both
+clients selected playlist `1`, created and refreshed private service-5 sessions,
+but neither sent operation `5`. Static analysis confirms that
+`party_minplayers = 1` makes a one-player party immediately satisfy the
+playlist and returns before the `dwFindSessions` call. The fixture now uses
+`party_minplayers = 2`, the minimal value that makes each solo client enter the
+public-search path. `maxparty = 1`, `party_maxplayers = 8`, and
+`party_matchedplayercount = 1` are not this gate.
+
+Service `17`, operation `2` is the post-lobby `bdGroup::setGroups` membership
+update. Error `108` is not the cause of the missing search: a preserved trace
+sends service `5`, operation `5` before the group update and continues after the
+same error. A success stub may still be added later, but it is not the active
+matchmaking blocker.
+
+The fresh two-client run confirms that both solo clients now send operation `5`.
+Both queries carry `unranked=1`, while both hosts advertise eight private slots
+and zero public slots. The implementation had already recovered but not yet
+documented the corresponding slot-pool rule: unranked searches use private
+slots, ranked searches use public slots. The current server now applies that
+rule. The active live-debugging target is a retest proving a nonempty candidate
+is accepted and tracing lobby/peer handoff. The retail PS3 captures remain the
 source of truth.
 
 ## Prior playlist dump diagnostic
@@ -500,15 +527,14 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Completed: compared retail Find Match with the latest preserved
-   RPCS3/server trace. Retail reaches a type-`0x28` candidate QoS probe; the
-   emulated run reaches service-5 op `5` but correctly returns zero because the
-   hosted session has no open public slot. The preserved `mw2 rpcs3.pcapng` is
-   older than the 2026-07-29 server/RPCS3 logs and cannot be packet-correlated
-   with that run.
-2. Run two distinct clients with `openPublic >= 1` through create -> find ->
-   update -> delete; confirm the nonempty operation-5 candidate tuple is
-   accepted and trace the transition into the matchmaking lobby.
+1. Retest the corrected slot-pool rule with two clients. The latest trace proves
+   both queries are unranked and both hosts advertise private slots, so operation
+   `5` must return candidates from `openPrivate` rather than require `openPublic`.
+   Confirm the nonempty candidate tuple is accepted and compare the transition
+   against retail's type-`0x28` candidate QoS probe.
+2. Trace the accepted candidate through create -> find -> update -> delete and
+   into the matchmaking lobby. The preserved `mw2 rpcs3.pcapng` predates the
+   current server/RPCS3 logs and cannot be packet-correlated with this run.
 3. Capture and reproduce the recovered type-`0x28`/`0x29` QoS and
    type-`0x0d`/`0x0c` direct-traversal transition required for lobby/peer handoff.
 4. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2

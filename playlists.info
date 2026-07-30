@@ -22,7 +22,7 @@ name japanese "�t���[�E�t�H�[�E�I�[��"
 script dm
 
 playlist 1 // ffa gametype
-name english "Free-for-all"
+name english "Testing"
 name french "M�l�e g�n�rale"
 name italian "Tutti contro tutti"
 name german "Frei f�r alle"
@@ -41,7 +41,7 @@ description russian "�������� ������� ����
 description japanese "�^���������̃f�X�}�b�`�B\n�����ȊO�͂��ׂēG�B�G�͂��ׂĎE���B\n\n__________\n�v���C���[���F4�`8"
 unlockxp 0
 maxparty 1
-rule party_minplayers 1
+rule party_minplayers 2
 rule party_maxplayers 8
 rule party_matchedplayercount 1
 rule scr_dm_scorelimit 1500

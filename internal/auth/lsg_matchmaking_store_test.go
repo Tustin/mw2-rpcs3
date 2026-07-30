@@ -27,7 +27,7 @@ func TestMW2MatchmakingStoreDeepCopiesSessionData(t *testing.T) {
 	sessionID[0] = 0xff
 	securityKey[0] = 0xff
 
-	found := store.find(1, 0)
+	found := store.find(1, 0, false)
 	if len(found) != 1 || found[0].commonAddress[0] != 0x11 {
 		t.Fatalf("stored data aliases request buffers: %+v", found)
 	}
@@ -39,7 +39,7 @@ func TestMW2MatchmakingStoreDeepCopiesSessionData(t *testing.T) {
 	exported.commonAddress[0] = 0xee
 	exported.sessionID[0] = 0xee
 	exported.securityKey[0] = 0xee
-	again := store.find(1, 0)
+	again := store.find(1, 0, false)
 	if again[0].commonAddress[0] != 0x11 ||
 		again[0].sessionID != created.sessionID ||
 		again[0].securityKey != created.securityKey {
@@ -58,7 +58,7 @@ func TestMW2MatchmakingStoreSortsAndCapsBySessionID(t *testing.T) {
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
 		sessionID: [mw2MatchmakingSessionIDSize]byte{2},
 	}
-	found := store.find(2, 0)
+	found := store.find(2, 0, false)
 	if len(found) != 2 || found[0].sessionID[0] != 1 || found[1].sessionID[0] != 2 {
 		t.Fatalf("find order/cap=%+v", found)
 	}
@@ -79,9 +79,28 @@ func TestMW2MatchmakingStoreRequiresEnoughOpenPublicSlots(t *testing.T) {
 		openPublic: 3,
 	}
 
-	found := store.find(50, 2)
+	found := store.find(50, 2, false)
 	if len(found) != 2 || found[0].sessionID[0] != 2 || found[1].sessionID[0] != 3 {
 		t.Fatalf("slot-filtered sessions=%+v", found)
+	}
+}
+
+func TestMW2MatchmakingStoreCanSearchOpenPrivateSlots(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic: 8,
+		openPrivate: 1,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic:  1,
+		openPrivate: 3,
+	}
+
+	found := store.find(50, 2, true)
+	if len(found) != 1 || found[0].sessionID[0] != 2 {
+		t.Fatalf("private-slot-filtered sessions=%+v", found)
 	}
 }
 
@@ -142,7 +161,7 @@ func TestMW2MatchmakingStoreReclaimsOnlyClosedConnectionOwner(t *testing.T) {
 	if removed := store.deleteOwner(1); removed != 1 {
 		t.Fatalf("removed=%d, want 1", removed)
 	}
-	found := store.find(2, 0)
+	found := store.find(2, 0, false)
 	if len(found) != 1 || found[0].sessionID != second.sessionID {
 		t.Fatalf("owner cleanup removed the wrong sessions: %+v", found)
 	}
@@ -194,14 +213,14 @@ func TestMW2MatchmakingStoreConcurrentLifecycle(t *testing.T) {
 			if _, ok := store.update(updated, ownerID); !ok {
 				t.Errorf("update %x failed", created.sessionID)
 			}
-			_ = store.find(10, 0)
+			_ = store.find(10, 0, false)
 			if !store.delete(created.sessionID[:], ownerID) {
 				t.Errorf("delete %x failed", created.sessionID)
 			}
 		}(byte(worker + 1))
 	}
 	wait.Wait()
-	if found := store.find(50, 0); len(found) != 0 {
+	if found := store.find(50, 0, false); len(found) != 0 {
 		t.Fatalf("%d sessions remained after concurrent lifecycle", len(found))
 	}
 }

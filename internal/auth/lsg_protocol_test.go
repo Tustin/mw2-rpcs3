@@ -142,6 +142,53 @@ func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
 	}
 }
 
+func buildSetGroupsRequest(groupIDs ...uint64) []byte {
+	writer := newBDBitWriter()
+	writer.writeU8(2)
+	writer.writeU32(uint32(len(groupIDs)))
+	for _, groupID := range groupIDs {
+		writer.writeU64(groupID)
+	}
+	return writer.bytes()
+}
+
+func TestHandleSetGroupsReturnsEmptySuccess(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := buildSetGroupsRequest(0x100000001)
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceGroup, payload)
+	if !ok || !reply || responseType != lsgTaskReplyType {
+		t.Fatalf("group response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if !session.lastTaskSupported || session.lastServiceID != bdServiceGroup || session.lastOperationID != 2 {
+		t.Fatalf("supported=%v service=%d operation=%d", session.lastTaskSupported, session.lastServiceID, session.lastOperationID)
+	}
+	if len(result) != 26 || binary.LittleEndian.Uint32(result[10:14]) != bdErrorNone || result[15] != 2 {
+		t.Fatalf("malformed group reply=%x", result)
+	}
+}
+
+func TestHandleMalformedSetGroupsReturnsServiceError(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := buildSetGroupsRequest(0x100000001)
+	payload = payload[:len(payload)-1]
+	responseType, result, ok, reply := handleLSGMessage(session, bdServiceGroup, payload)
+	if !ok || !reply || responseType != lsgTaskReplyType {
+		t.Fatalf("group response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
+	}
+	if session.lastTaskSupported {
+		t.Fatal("malformed group task was marked supported")
+	}
+	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorServiceNotAvailable {
+		t.Fatalf("group error=%d payload=%x", errorCode, result)
+	}
+}
+
 func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
