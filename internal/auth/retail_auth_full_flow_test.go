@@ -297,7 +297,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 		203, 0, 113, 7, 0x02, 0x0c,
 		2,
 	}
-	hostCounts := [4]int32{18, 1, 0, 0}
+	hostCounts := [4]int32{0, 1, 8, 0}
 	hostAttributes := [9]int32{0, 1, 2, 3, 4, 5, 6, 7, 504}
 	createReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,
@@ -307,7 +307,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 		hostCounts,
 		hostAttributes,
 	))
-	sessionID, securityKey := readFullFlowCreateReply(t, createReply, 2)
+	sessionID, securityKey := readFullFlowCreateReply(t, createReply, 3)
 	if allZero(sessionID) || allZero(securityKey) {
 		t.Fatalf("create returned zero identity: session=%x key=%x", sessionID, securityKey)
 	}
@@ -318,7 +318,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 		[6]int32{101, 102, 103, 104, 105, 1},
 		504,
 	))
-	found := readFullFlowFindReply(t, findReply, 2)
+	found := readFullFlowFindReply(t, findReply, 3)
 	if len(found) != 1 {
 		t.Fatalf("find count=%d, want one exact host candidate", len(found))
 	}
@@ -341,7 +341,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 	if got, want := service.LSGConnections(), uint64(4); got != want {
 		t.Fatalf("LSG connections=%d want=%d", got, want)
 	}
-	if got, want := service.LSGFrames(), uint64(10); got != want {
+	if got, want := service.LSGFrames(), uint64(12); got != want {
 		t.Fatalf("LSG frames=%d want=%d", got, want)
 	}
 

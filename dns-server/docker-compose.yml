@@ -1,0 +1,10 @@
+services:
+  ps3-dns:
+    image: jpillora/dnsmasq
+    container_name: ps3-dns-server
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./dnsmasq.conf:/etc/dnsmasq.conf:ro

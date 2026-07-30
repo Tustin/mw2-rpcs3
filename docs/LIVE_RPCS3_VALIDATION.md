@@ -110,8 +110,9 @@ The run passes this gate only when all of the following are observed in order:
 2. its one-use LSG ticket is consumed;
 3. the LSG hello completes;
 4. storage service `10`, operation `8` is received;
-5. operation `8` returns one `playlists.info` record with the exact byte size
-   and SHA-256 loaded by the server;
+5. operation `8` returns a task payload whose first bit is the required
+   type-checking marker (`1`), followed by one `playlists.info` record with
+   the exact byte size and SHA-256 loaded by the server;
 6. the client sends operation `5` using the advertised 64-bit file ID;
 7. operation `5` returns the same metadata and the exact advertised Blob;
 8. **Fetching Playlists** completes; and
@@ -120,8 +121,8 @@ The run passes this gate only when all of the following are observed in order:
 The decisive server-side shape is:
 
 ```text
-op8: count=1, size=N, filename="playlists.info", fileID=X, sha256=H
-op5: capacityHint=N, same fileID=X, BlobLength=N, same N raw bytes
+op8: typeChecked=1, count=1, size=N, filename="playlists.info", fileID=X, sha256=H
+op5: typeChecked=1, capacityHint=N, same fileID=X, BlobLength=N, same N raw bytes
 ```
 
 The leading operation-5 size is a capacity hint. The nested Blob length is the
@@ -133,6 +134,12 @@ Blob length match the bytes actually served.
 Stop and preserve evidence if operation `5` is not sent. Do not alter neutral
 `bdFileInfo` metadata speculatively: the client fetch transition reads only the
 exact filename and then the file ID.
+
+The 2026-07-28 trace repeatedly received operation `8` but never operation `5`.
+Its decrypted replies began directly with typed `u64`; they omitted the
+type-checking marker. That exact failure is fixed by the
+type-checked-task-replies milestone. On the first retest, operation `5` is the
+decisive confirmation that the client accepted operation `8`.
 
 ## 5. One-client public-search gate
 
@@ -148,13 +155,14 @@ q1=selected playlist/game-mode ID
 q2=netcode version
 q3=owned map-pack flags
 q4=playlist version
-q5=required free public slots
+q5=required free slots in the q0-selected pool
 q6=performance
 ```
 
 Confirm first that a zero-result reply completes without a remote-task error.
-Do not infer equality, mask, or skill comparisons from the seven values; only
-`host.openPublic >= q5` is currently justified.
+For `q0 != 0` require `host.openPrivate >= q5`; for `q0 == 0` require
+`host.openPublic >= q5`. Do not infer equality, mask, or skill comparisons from
+`q1..q4` or `q6`.
 
 ## 6. Two-client host/find gate
 
