@@ -17,6 +17,7 @@ type Config struct {
 	NATRelayEnabled  bool
 	HTTPAddr         string
 	LogLevel         string
+	LogSensitive     bool
 	CaptureEnabled   bool
 	CaptureDir       string
 	MaxFrameBytes    uint32
@@ -44,6 +45,9 @@ func Load() (Config, error) {
 	}
 
 	var err error
+	if cfg.LogSensitive, err = envBool("MW2_LOG_SENSITIVE", false); err != nil {
+		return Config{}, err
+	}
 	if cfg.CaptureEnabled, err = envBool("MW2_CAPTURE_ENABLED", false); err != nil {
 		return Config{}, err
 	}

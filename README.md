@@ -13,11 +13,12 @@ two deliberately separate paths:
 Prior RPCS3 runs have completed dynamic authentication, the LSG hello, and
 encrypted service requests. The server implements minimal title-utilities, DML,
 bandwidth, stats, and retail storage handlers. The corrected storage path
-advertises and serves the bundled 205-byte `playlists.info`; its operation-8 and
-operation-5 layouts are backed by client-disassembly evidence and golden tests.
+advertises and serves the bundled `playlists.info` using the exact bytes loaded
+at runtime; its operation-8 and operation-5 layouts are backed by
+client-disassembly evidence and golden tests.
 The retail parser also confirms that playlist ID `0`, the gametype alias, the
 weighted map entry, and the solo party bounds produce a visible, selectable
-row. A new live RPCS3 download is still required.
+row. A new live RPCS3 recheck with sensitive diagnostics is still required.
 
 Retail matchmaking is service `5`. The exact request schemas for operations
 `1` through `5` are recovered. The retail `3074` path now implements
@@ -112,12 +113,15 @@ All configuration is environment-based:
 - `MW2_NAT_ALT_ADDR`, default `:3075` (alternate UDP reply-source socket; its
   port must differ from the primary port)
 - `MW2_NAT_ADVERTISED_IP`, default blank for native runs (canonical
-  client-reachable alternate/source-check IPv4 for `0x15` replies; otherwise
-  the alternate socket's specific bind or a route-derived IPv4)
+  client-reachable alternate/source-check IPv4 for `0x15` replies and the
+  service-18 bandwidth upload target; otherwise the alternate socket's
+  specific bind or a route-derived IPv4)
 - `MW2_NAT_RELAY_ENABLED`, default `false` (enables the exact unauthenticated
   introducer forwarder; use only in an isolated/trusted lab)
 - `MW2_HTTP_ADDR`, default `:8080`
 - `MW2_LOG_LEVEL`, one of `debug`, `info`, `warn`, or `error`
+- `MW2_LOG_SENSITIVE`, default `false` (development-only credential, key, raw
+  frame, and decrypted payload logging; never publish its output unredacted)
 - `MW2_MAX_FRAME_BYTES`, default 1 MiB, valid range 64 bytes to 16 MiB
 - `MW2_READ_TIMEOUT`, default `30s`
 - `MW2_WRITE_TIMEOUT`, default `10s`
@@ -164,6 +168,20 @@ Capture records are JSON Lines with timestamp, listener, direction, remote addre
 Ordinary server logs intentionally omit raw authorization tickets, session
 keys, decrypted payload bytes, and frame hex. Enable packet capture only for a
 controlled debugging session and treat its output as secret material.
+
+For an isolated development run, enable complete protocol diagnostics:
+
+```bash
+MW2_LOG_LEVEL=debug MW2_LOG_SENSITIVE=true go run ./cmd/mw2-server
+```
+
+This logs authentication tickets, platform/LSG/session keys, raw records,
+decrypted LSG request payloads, plaintext replies, and encrypted frames. It
+also emits the complete advertised publisher-file set, selected operation-5
+filename, playlist metadata, byte length, and SHA-256 fields plus a warning
+when repeated operation-8 replies are not followed by operation 5. Set
+`MW2_MOTD` to override the built-in message-of-the-day text. Treat the complete
+log as credential-bearing.
 
 Inspect a raw stream encoded with this project's experimental frame envelope:
 
@@ -247,8 +265,10 @@ Experimental services are:
 
 ## Validation gates
 
-1. Live-confirm corrected storage operation `8` with file size `205`.
-2. Capture operation `5` and confirm the client parses the 205-byte playlist.
+1. Live-confirm corrected storage operation `8` with the exact loaded byte
+   length and SHA-256.
+2. Capture operation `5` and confirm the client parses the exact byte sequence
+   advertised by operation `8`.
 3. Confirm the client issues the recovered service-5 operation-5 query and
    accepts both zero- and nonempty-result replies.
 4. Run two distinct RPCN accounts through simultaneous LSG sessions and record
