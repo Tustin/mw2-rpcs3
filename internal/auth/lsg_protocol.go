@@ -429,6 +429,7 @@ func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uin
 	writer.writeU8(operationID)
 	writer.writeU32(uint32(len(entityIDs)))
 	for _, entityID := range entityIDs {
+		writer.writeRawU32(0)
 		writer.writeU64(entityID)
 		writer.writeI64(0)
 	}

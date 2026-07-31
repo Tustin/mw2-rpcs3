@@ -515,11 +515,22 @@ pass. A live two-client test is still required.
 
 The absence of `DW fetch performance values error 1024` in the latest run only
 proved that an empty success task no longer triggered the status popup. It did
-not prove the client received a usable performance record. Session updates from
-`openPrivate=8, filledPrivate=0` to `openPrivate=7, filledPrivate=1` occurred in
-that run, but both clients continued candidate evaluation rather than beginning
-peer DTLS. The exact retail service-17 reply remains unavailable because the
-retail LSG capture is encrypted and its session key is not known.
+not prove the client received a usable performance record. That run logged
+`Fetched performance value 0 for b804d13e5ee3dafa` followed by `Unable to
+retreive performance value`, then issued another operation-2 request. Follow-up
+ELF analysis identified another result-object framing field:
+`bdMatchMakingReadPerformanceValuesTaskResult` reads a raw, untyped 32-bit
+status/discriminator before the typed U64 entity ID and optional typed I64
+performance value. The reply was four bytes short per result, so the client
+consumed the U64 tag and low entity-ID bits as a nonzero status, skipped the
+entity/value fields, and left the zero-initialized output entry unchanged. The
+server now writes raw U32 status `0` before each result; the regression test
+verifies the raw-status, typed-U64, typed-I64 sequence. This correction still
+requires a fresh RPCS3 validation. Session updates from `openPrivate=8,
+filledPrivate=0` to `openPrivate=7, filledPrivate=1` occurred in the prior run,
+but both clients continued candidate evaluation rather than beginning peer
+DTLS. The exact retail service-17 reply remains unavailable because the retail
+LSG capture is encrypted and its session key is not known.
 
 The same run confirms that both solo clients send operation `5`. Both queries
 carry `unranked=1`, while both hosts advertise eight private slots and zero

@@ -69,6 +69,10 @@ func (w *bdBitWriter) writeU32(value uint32) {
 	w.bits.writeBits(uint64(value), 32)
 }
 
+func (w *bdBitWriter) writeRawU32(value uint32) {
+	w.bits.writeBits(uint64(value), 32)
+}
+
 func (w *bdBitWriter) writeI64(value int64) {
 	w.writeType(bdTypeI64)
 	w.bits.writeBits(uint64(value), 64)

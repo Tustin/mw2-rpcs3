@@ -191,6 +191,10 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 		t.Fatalf("count=%d want=%d err=%v", count, len(entityIDs), err)
 	}
 	for _, entityID := range entityIDs {
+		status, err := reader.bits.readBits(32)
+		if err != nil || status != 0 {
+			t.Fatalf("status=%d err=%v", status, err)
+		}
 		if got, err := reader.readU64(); err != nil || got != entityID {
 			t.Fatalf("entity=%016x want=%016x err=%v", got, entityID, err)
 		}
