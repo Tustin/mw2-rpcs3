@@ -1,10 +1,10 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-30 after a simultaneous RPCS3/physical-PS3 test proved
-candidate discovery, direct `0x0d`/`0x0c` NAT traversal, and bidirectional
-`0x28`/`0x29` QoS. The remaining server-side defect was isolated to the
-service-17 performance request/result schema and corrected for the next live
-test._
+_Last updated: 2026-07-31 after preparing a surgical RPCS3 diagnostic ELF that
+records the type-1 QoS teardown object immediately before `sub_320048`. The
+corrected service-17 response still requires a live two-client retest; if the
+search restarts, `/dev_hdd0/tmp/mw2_qos.bin` now distinguishes the abort and
+accepted completion paths and preserves the full 36-byte QoS result object._
 
 ## Executive summary
 
@@ -548,10 +548,30 @@ result afterward, and only the accepted branch additionally calls `sub_CFF28`
 to advance matchmaking. Therefore the observed operation-5 restart is no longer
 an unknown post-performance decision: at least one candidate remains unaccounted
 for, or none is promoted into the accepted-candidate count, at the type-1 QoS
-completion boundary. The next live diagnostic should capture
-`candidateCount`, `completedQoS`, `failedQoS`, `acceptedCandidates`, and the
-result of `sub_31FDD0` immediately before teardown. The retail PS3 captures
-remain the source of truth.
+completion boundary.
+
+A surgical RPCS3 diagnostic ELF is now available at
+`/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf`; its
+reproducible patcher is `cmd/mw2-qos-patcher`. It replaces only the two direct
+calls to `sub_320048` in the type-1 flow, at `0x2FA390` and `0x2FA7A0`, with a
+branch to a wrapper in verified zero padding at `0x709280`. The executable LOAD
+is extended to include the wrapper without shifting existing file data.
+
+The wrapper appends 52-byte big-endian records to
+`/dev_hdd0/tmp/mw2_qos.bin`, restores the volatile integer state and special
+registers, calls the original `sub_320048`, and returns through the untouched
+continuation. Each record is `"QOS1"`, version `0x0001`, tag byte (`1` = abort
+call at `0x2FA390`, `2` = accepted-candidate call at `0x2FA7A0`), seven zero
+bytes, and the full 36-byte QoS result object. The object contains the accepted
+candidate slot at offset `0x00`, `candidateCount` at `0x10`, `completedQoS` at
+`0x14`, `failedQoS` at `0x18`, and `acceptedCandidates` at `0x1C`; a nonzero
+accepted slot is also the practical `sub_31FDD0` result.
+
+The patcher requires the exact TU0 input SHA-256
+`16523486aa1c148eb7e19c40ae98763ec2c85b660dabd46131adb34f815495fb`, validates
+both call-site instruction windows and the zero-padding cave, and refuses to
+overwrite an existing output. The retail PS3 captures remain the source of
+truth.
 
 ## Prior playlist dump diagnostic
 
@@ -595,10 +615,11 @@ Current matchmaking-lobby work:
 1. Deploy and retest the corrected single-count service-17 reply with RPCS3 and
    a physical PS3. Confirm replies log `entity_count=1`, no popup returns, and
    one client advances beyond candidate evaluation.
-2. If matchmaking still restarts, add minimum telemetry at the type-1 completion
-   path in `sub_2FA008` to log `candidateCount`, `completedQoS`, `failedQoS`,
-   `acceptedCandidates`, and the `sub_31FDD0` result before `sub_320048` clears
-   the QoS result.
+2. If matchmaking still restarts, run the RPCS3 client with
+   `default_mp.qos-telemetry.elf`, retrieve `/dev_hdd0/tmp/mw2_qos.bin`, and
+   decode the 52-byte `QOS1` records to compare the abort/accepted path,
+   `candidateCount`, `completedQoS`, `failedQoS`, `acceptedCandidates`, and the
+   accepted candidate slot immediately before `sub_320048` clears the result.
 3. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
 4. Preserve the current run as the baseline: repeated direct `0x0d`/`0x0c` and
