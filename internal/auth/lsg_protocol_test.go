@@ -187,10 +187,8 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 	if operationID, err := reader.readU8(); err != nil || operationID != 2 {
 		t.Fatalf("operation=%d err=%v", operationID, err)
 	}
-	for _, want := range []uint32{2, 2} {
-		if count, err := reader.readU32(); err != nil || count != want {
-			t.Fatalf("count=%d want=%d err=%v", count, want, err)
-		}
+	if count, err := reader.readU32(); err != nil || count != uint32(len(entityIDs)) {
+		t.Fatalf("count=%d want=%d err=%v", count, len(entityIDs), err)
 	}
 	for _, entityID := range entityIDs {
 		if got, err := reader.readU64(); err != nil || got != entityID {
@@ -216,8 +214,18 @@ func TestHandleMalformedPerformanceValuesReturnsServiceError(t *testing.T) {
 	if session.lastTaskSupported {
 		t.Fatal("malformed performance task was marked supported")
 	}
-	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorServiceNotAvailable {
-		t.Fatalf("performance error=%d payload=%x", errorCode, result)
+	reader, err := newBDTaskReplyReader(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transactionID, err := reader.readU64(); err != nil || transactionID != 0 {
+		t.Fatalf("transaction=%d err=%v", transactionID, err)
+	}
+	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorServiceNotAvailable {
+		t.Fatalf("performance error=%d err=%v payload=%x", errorCode, err, result)
+	}
+	if operationID, err := reader.readU8(); err != nil || operationID != 2 {
+		t.Fatalf("operation=%d err=%v", operationID, err)
 	}
 }
 

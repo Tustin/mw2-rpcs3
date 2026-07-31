@@ -428,11 +428,18 @@ func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uin
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(operationID)
 	writer.writeU32(uint32(len(entityIDs)))
-	writer.writeU32(uint32(len(entityIDs)))
 	for _, entityID := range entityIDs {
 		writer.writeU64(entityID)
 		writer.writeI64(0)
 	}
+	return writer.bytes()
+}
+
+func (c *lsgConnection) performanceValuesErrorReply(operationID byte, errorCode uint32) []byte {
+	writer := newBDBitWriter()
+	writer.writeU64(c.nextTransactionID())
+	writer.writeU32(errorCode)
+	writer.writeU8(operationID)
 	return writer.bytes()
 }
 
@@ -497,7 +504,7 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 	case serviceID == bdServicePerformance && operationID == 2:
 		_, entityIDs, valid := parsePerformanceValuesRequest(payload)
 		if !valid {
-			return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
+			return lsgTaskReplyType, c.performanceValuesErrorReply(operationID, bdErrorServiceNotAvailable), true
 		}
 		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.performanceValuesReply(operationID, entityIDs), true

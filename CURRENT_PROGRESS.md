@@ -498,9 +498,20 @@ selection. The symbol-rich Ghosts PDB confirms the method signature accepts an
 entity-ID array, count, a separate U32 argument, and `bdPerformanceValue*`; it
 also proves each result serializes a U64 `m_entityID` followed by a signed I64
 `m_performanceValue`. The server had also emitted that second field with a U64
-type tag. Both issues are now corrected: the parser consumes the U32 performance
+type tag. Those issues are corrected: the parser consumes the U32 performance
 type, reads the remaining typed U64 IDs, and returns one U64/I64 result pair per
 ID with neutral value `0`. A captured live request is covered by a golden test.
+
+Further MW2 client analysis on 2026-07-30 exposed a reply-framing error in that
+correction. The generic remote-task layer consumes one typed U32 result count,
+then `bdMatchMakingReadPerformanceValuesTaskResult` begins directly with the
+first result object's U64 entity ID. The server was writing the count twice, so
+the callback saw the second U32 count where it required a U64 entity ID. The
+success reply now writes exactly one result count before the U64/I64 objects.
+Malformed operation-2 requests also now use the same bit-packed, type-checked
+reply framing rather than the older byte-aligned generic serializer. Unit tests
+independently decode both layouts, and the full test, race, vet, and build checks
+pass. A live two-client test is still required.
 
 The absence of `DW fetch performance values error 1024` in the latest run only
 proved that an empty success task no longer triggered the status popup. It did
@@ -581,9 +592,9 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Deploy and retest the corrected service-17 parser/result schema with RPCS3
-   and a physical PS3. Confirm replies log `entity_count=1`, no popup returns,
-   and one client advances beyond candidate evaluation.
+1. Deploy and retest the corrected single-count service-17 reply with RPCS3 and
+   a physical PS3. Confirm replies log `entity_count=1`, no popup returns, and
+   one client advances beyond candidate evaluation.
 2. If matchmaking still restarts, add minimum telemetry at the type-1 completion
    path in `sub_2FA008` to log `candidateCount`, `completedQoS`, `failedQoS`,
    `acceptedCandidates`, and the `sub_31FDD0` result before `sub_320048` clears
