@@ -501,7 +501,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsExcludesRequestersOwnedSession(t *testing.T) {
+func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	requester := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	peer := &lsgConnection{connectionID: 2, matchmakingSessions: store}
@@ -539,7 +539,7 @@ func TestMW2FindSessionsExcludesRequestersOwnedSession(t *testing.T) {
 	requesterSessionID := readCreatedSessionID(requesterCreateReply)
 	peerSessionID := readCreatedSessionID(peerCreateReply)
 
-	findSessionID := func(connection *lsgConnection) []byte {
+	findSessionID := func(connection *lsgConnection, expectedCount uint32) []byte {
 		t.Helper()
 		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
 			2,
@@ -559,8 +559,11 @@ func TestMW2FindSessionsExcludesRequestersOwnedSession(t *testing.T) {
 		if _, err := reader.readU8(); err != nil {
 			t.Fatal(err)
 		}
-		if count, err := reader.readU32(); err != nil || count != 1 {
-			t.Fatalf("count=%d err=%v reply=%x", count, err, reply)
+		if count, err := reader.readU32(); err != nil || count != expectedCount {
+			t.Fatalf("count=%d want=%d err=%v reply=%x", count, expectedCount, err, reply)
+		}
+		if expectedCount == 0 {
+			return nil
 		}
 		if _, err := reader.readBlob(mw2MatchmakingCommonAddressSize); err != nil {
 			t.Fatal(err)
@@ -572,11 +575,11 @@ func TestMW2FindSessionsExcludesRequestersOwnedSession(t *testing.T) {
 		return sessionID
 	}
 
-	if found := findSessionID(requester); !bytes.Equal(found, peerSessionID) {
-		t.Fatalf("requester found=%x want peer=%x own=%x", found, peerSessionID, requesterSessionID)
+	if found := findSessionID(requester, 0); found != nil {
+		t.Fatalf("first creator found=%x want no candidates own=%x peer=%x", found, requesterSessionID, peerSessionID)
 	}
-	if found := findSessionID(peer); !bytes.Equal(found, requesterSessionID) {
-		t.Fatalf("peer found=%x want requester=%x own=%x", found, requesterSessionID, peerSessionID)
+	if found := findSessionID(peer, 1); !bytes.Equal(found, requesterSessionID) {
+		t.Fatalf("later creator found=%x want first creator=%x own=%x", found, requesterSessionID, peerSessionID)
 	}
 
 	store.deleteOwner(peer.connectionID)

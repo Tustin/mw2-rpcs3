@@ -20,12 +20,14 @@ type mw2StoredMatchmakingSession struct {
 	filledPrivate int32
 	attributes    [9]int32
 	ownerID       uint64
+	creationOrder uint64
 }
 
 type mw2MatchmakingStore struct {
-	mu          sync.RWMutex
-	maxSessions int
-	sessions    map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
+	mu                sync.RWMutex
+	maxSessions       int
+	nextCreationOrder uint64
+	sessions          map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
 }
 
 func newMW2MatchmakingStore() *mw2MatchmakingStore {
@@ -100,6 +102,8 @@ func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (m
 			)
 		}
 		if _, exists := s.sessions[session.sessionID]; !exists {
+			s.nextCreationOrder++
+			session.creationOrder = s.nextCreationOrder
 			s.sessions[session.sessionID] = session
 			s.mu.Unlock()
 			return session, nil
@@ -169,7 +173,7 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false, false)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -178,7 +182,16 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 	usePrivateSlots bool,
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true, false)
+}
+
+func (s *mw2MatchmakingStore) findEarlierThanOwner(
+	maxResults int32,
+	requiredFreeSlots int32,
+	usePrivateSlots bool,
+	ownerID uint64,
+) []mw2StoredMatchmakingSession {
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true, true)
 }
 
 func (s *mw2MatchmakingStore) findMatching(
@@ -187,14 +200,30 @@ func (s *mw2MatchmakingStore) findMatching(
 	usePrivateSlots bool,
 	excludedOwnerID uint64,
 	excludeOwner bool,
+	earlierThanOwner bool,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
 	}
 	s.mu.RLock()
+	ownerCreationOrder := uint64(0)
+	if earlierThanOwner {
+		for _, session := range s.sessions {
+			if session.ownerID == excludedOwnerID &&
+				(ownerCreationOrder == 0 || session.creationOrder < ownerCreationOrder) {
+				ownerCreationOrder = session.creationOrder
+			}
+		}
+		if ownerCreationOrder == 0 {
+			earlierThanOwner = false
+		}
+	}
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
+			continue
+		}
+		if earlierThanOwner && session.creationOrder >= ownerCreationOrder {
 			continue
 		}
 		openSlots := session.openPublic

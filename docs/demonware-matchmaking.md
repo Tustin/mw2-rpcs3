@@ -334,7 +334,16 @@ continues through the no-sessions path.
 - binds mutation rights to the LSG connection that created the record;
 - caps the process-wide directory at 4096 sessions;
 - shares one mutex-protected directory across retail LSG connections; and
-- emits exact zero/nonempty operation-5 results in deterministic ID order.
+- emits exact zero/nonempty operation-5 results in deterministic ID order; and
+- uses creation order for deterministic host election: a requester's session is
+  excluded, the first creator receives zero candidates, and each later creator
+  receives only compatible sessions created before its own.
+
+The creation-order filter is a compatibility policy, not a recovered wire field.
+It prevents symmetric two-client searches from electing one another while
+preserving the exact result object and leaving peer QoS/traversal responsible for
+validating the selected host. Connections without an owned session retain the
+broader directory-search behavior used by non-host callers and tests.
 
 The query meanings are recovered. The compatibility policy uses the recovered
 unranked flag to choose private or public slots and applies the directly
@@ -389,7 +398,8 @@ concurrency, and race detection.
 3. Observe an actual service-5 op-5 payload and record its seven live values.
 4. Confirm the client accepts both zero-result and nonempty-result responses.
 5. Run two clients through create -> find -> update -> delete against the
-   shared directory.
+   shared directory and confirm creation-order host election: first creator gets
+   zero candidates, later creator gets the first creator.
 6. Capture the post-find peer QoS/traversal and secure-association flows
    described in `demonware-peer-qos.md` and `demonware-peer-dtls.md`, then
    complete a joined match.

@@ -431,6 +431,20 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	if allZero(sessionID) || allZero(securityKey) {
 		t.Fatalf("create returned zero identity: session=%x key=%x", sessionID, securityKey)
 	}
+	seekerAddress := append([]byte(nil), hostAddress...)
+	seekerAddress[3] = 4
+	seekerCreateReply := seeker.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingCreateSession,
+		seekerAddress,
+		make([]byte, mw2MatchmakingSessionIDSize),
+		make([]byte, mw2MatchmakingSecurityKeySize),
+		hostCounts,
+		hostAttributes,
+	))
+	seekerSessionID, seekerSecurityKey := readFullFlowCreateReply(t, seekerCreateReply, 3)
+	if allZero(seekerSessionID) || allZero(seekerSecurityKey) {
+		t.Fatalf("seeker create returned zero identity: session=%x key=%x", seekerSessionID, seekerSecurityKey)
+	}
 
 	findRequest := buildMW2FindSessionsRequestWithValues(
 		2,
@@ -438,10 +452,17 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		[6]int32{101, 102, 103, 104, 105, 1},
 		504,
 	)
+	if found := readFullFlowFindReply(
+		t,
+		host.exchange(t, bdServiceMatchmaking, findRequest),
+		4,
+	); len(found) != 0 {
+		t.Fatalf("first creator received candidates: %+v", found)
+	}
 	found := readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		3,
+		4,
 	)
 	if len(found) != 1 {
 		t.Fatalf("initial find count=%d", len(found))
@@ -469,12 +490,12 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		updatedCounts,
 		updatedAttributes,
 	))
-	assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
+	assertFullFlowMutationReply(t, updateReply, 5, bdMatchmakingUpdateSession)
 
 	found = readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		4,
+		5,
 	)
 	if len(found) != 1 {
 		t.Fatalf("updated find count=%d", len(found))
@@ -494,11 +515,11 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		bdServiceMatchmaking,
 		buildMW2SessionIDRequestWithValue(bdMatchmakingDeleteSession, sessionID),
 	)
-	assertFullFlowMutationReply(t, deleteReply, 5, bdMatchmakingDeleteSession)
+	assertFullFlowMutationReply(t, deleteReply, 6, bdMatchmakingDeleteSession)
 	found = readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		5,
+		6,
 	)
 	if len(found) != 0 {
 		t.Fatalf("deleted session remained in find results: %+v", found)
@@ -507,7 +528,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	// A nonempty retail result hands this exact address/ID/key tuple to the
 	// client's peer router. Peer QoS and traversal begin after this boundary
 	// and are intentionally outside this central-service harness.
-	if service.LSGConnections() != 2 || service.LSGFrames() != 14 {
+	if service.LSGConnections() != 2 || service.LSGFrames() != 16 {
 		t.Fatalf(
 			"LSG connections=%d frames=%d",
 			service.LSGConnections(),

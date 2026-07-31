@@ -613,12 +613,18 @@ operation `5` every roughly two seconds. After RPCS3 disconnected, its session
 was reclaimed and the PS3's next find reply dropped from two results to its own
 single result before it deleted that session. Combined with every accepted-path
 telemetry record carrying the local client's own session ID and security key,
-this makes self-results the strongest testable cause of the post-`sub_CFF28`
-loop. Operation `5` now excludes every session owned by the requesting LSG
-connection before sorting and applying `maxResults`; two hosts therefore receive
-only one another, while a lone host receives zero results. Store, handler, and
-full-flow regressions cover this behavior. A live RPCS3/physical-PS3 retest is
-still required to establish whether this reaches peer DTLS.
+this made self-results the strongest testable cause of the post-`sub_CFF28`
+loop. Owner exclusion alone still leaves a symmetric two-client result: each
+client receives the other and can independently select itself as host after peer
+QoS. Operation `5` now records a monotonic creation order and returns only
+compatible non-owned sessions created before the requester's own session. The
+first creator therefore receives zero candidates and remains host; the later
+creator receives the first creator and becomes the joiner. The existing result
+object, address/session/key tuple, slot filtering, sorting, and peer QoS path are
+unchanged. Connections with no owned session retain the broad directory search
+used by non-host callers. Store, handler, and encrypted full-flow regressions
+cover the asymmetric policy. A live RPCS3/physical-PS3 retest is still required
+to establish whether this reaches peer DTLS and a lobby join.
 
 The first telemetry ELF did reach both hook sites: RPCS3 opened
 `/dev_hdd0/tmp/mw2_qos.bin` at the abort hook and later at the accepted hook.
@@ -680,14 +686,15 @@ state consumed by `sub_31FDD0` / `0x2FA758..0x2FA7A0`. It should also capture
 state immediately before and after `sub_CFF28`, where the confirmed loop now
 begins.
 
-1. Live-retest the owner-excluding operation-5 replies with RPCS3 and the
-   physical PS3. Each two-client reply should contain only the peer; a solo
-   search should contain zero results. Check whether peer DTLS begins.
+1. Live-retest the creation-ordered operation-5 replies with RPCS3 and the
+   physical PS3. The first session creator should receive zero candidates and
+   the later creator should receive only the first creator. Confirm that the
+   later client enters peer QoS/DTLS and joins the first client's lobby.
 2. If matchmaking still restarts, correct or replace the telemetry wrapper so it
    records the actual type-1 counters and the pre/post-`sub_CFF28` state, while
    retaining the abort versus accepted path tag.
 3. Reverse the remaining candidate/host-selection path after `sub_CFF28` if the
-   owner-exclusion retest does not advance matchmaking.
+   creation-order retest does not advance matchmaking.
 4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
 5. Preserve the prior run as the baseline: corrected service-17 replies,
