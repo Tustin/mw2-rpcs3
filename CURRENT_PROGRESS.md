@@ -1,9 +1,9 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-31 after the nonempty QoS telemetry proved both clients
-reach the accepted type-1 path while retaining their own session identity in the
-captured state. Matchmaking operation `5` now excludes sessions owned by the
-requesting LSG connection before result capping; a live two-client retest is
+_Last updated: 2026-07-31 after extending the QoS telemetry to capture the
+outer `sub_2FA008` counters, selected candidate addresses, and the next
+`sub_CFF28` matchmaking phases. Matchmaking operation `5` now uses asymmetric
+owner exclusion; a live two-client retest with the version-2 diagnostic ELF is
 required to confirm whether peer DTLS begins._
 
 ## Executive summary
@@ -636,6 +636,29 @@ regression test that resolves the emitted branch targets and checks their
 preceding descriptor loads. The rebuilt diagnostic ELF at the same path has
 SHA-256 `f5731e1dcf393186d836da62a5b7d9c49718db049d1573a2048ee16f27b67c6b` and
 still changes no matchmaking decision.
+
+The diagnostic patcher has now been extended to version-2 fixed records. It
+still hooks the abort and accepted `sub_320048` calls, but it saves the outer
+matchmaking object from incoming `r27` before the original call clobbers
+nonvolatile state. Each 96-byte big-endian record contains magic `"QOS1"`,
+version `2`, tag, phase, the captured inner-object address, `r27`,
+`candidateCount` (`r27+0x5B0`), `completedQoS` (`r27+0xE4C`), `failedQoS`
+(`r27+0xE50`), all four selected-candidate addresses from
+`r21+0x2110..0x211C`, the QoS address at selected candidate `+0x0C`, the final
+QoS/peer address at selected candidate `+0x38`, the QoS port at `+0x3C`, the
+inner matched address at `+0x44`, and the first 36 bytes of the inner state.
+
+A third hook at `0x2FA7B8` wraps the accepted path's `sub_CFF28` call. Phase `1`
+is emitted immediately before the original call and phase `2` immediately after
+it, both with tag `2`; phase `0` remains the accepted `sub_320048` snapshot. This
+will show whether `sub_CFF28` returns, how the selected slot/address state
+changes across it, and whether the loop occurs after that transition. The
+patcher validates the original `sub_CFF28` call target and instruction window,
+extends the executable LOAD only into verified zero padding, and preserves the
+original call return value and saved state. A verified local build from the
+exact TU0 input produced `/tmp/opencode/default_mp.qos-v2.elf` with SHA-256
+`038095b972c559f73f112cc01ae7bc8629835f47e9224495e25f0ee3cc0c034f`;
+it has not yet been copied/resigned or run in RPCS3.
 
 ## Prior playlist dump diagnostic
 
