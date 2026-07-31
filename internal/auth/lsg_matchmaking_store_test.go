@@ -64,6 +64,27 @@ func TestMW2MatchmakingStoreSortsAndCapsBySessionID(t *testing.T) {
 	}
 }
 
+func TestMW2MatchmakingStoreExcludesOwnerBeforeCapping(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID: [mw2MatchmakingSessionIDSize]byte{1},
+		ownerID:   7,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID: [mw2MatchmakingSessionIDSize]byte{2},
+		ownerID:   8,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{3}] = mw2StoredMatchmakingSession{
+		sessionID: [mw2MatchmakingSessionIDSize]byte{3},
+		ownerID:   9,
+	}
+
+	found := store.findExcludingOwner(1, 0, false, 7)
+	if len(found) != 1 || found[0].sessionID[0] != 2 {
+		t.Fatalf("owner-filtered sessions=%+v", found)
+	}
+}
+
 func TestMW2MatchmakingStoreRequiresEnoughOpenPublicSlots(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
@@ -88,8 +109,8 @@ func TestMW2MatchmakingStoreRequiresEnoughOpenPublicSlots(t *testing.T) {
 func TestMW2MatchmakingStoreCanSearchOpenPrivateSlots(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
-		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
-		openPublic: 8,
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic:  8,
 		openPrivate: 1,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{

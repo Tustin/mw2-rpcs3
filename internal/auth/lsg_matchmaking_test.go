@@ -501,6 +501,108 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	}
 }
 
+func TestMW2FindSessionsExcludesRequestersOwnedSession(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	requester := &lsgConnection{connectionID: 1, matchmakingSessions: store}
+	peer := &lsgConnection{connectionID: 2, matchmakingSessions: store}
+
+	_, requesterCreateReply, handled := requester.handleMatchmakingTask(buildMW2SessionObjectRequest(bdMatchmakingCreateSession))
+	if !handled || !requester.lastTaskSupported {
+		t.Fatalf("requester create handled=%v supported=%v reply=%x", handled, requester.lastTaskSupported, requesterCreateReply)
+	}
+	_, peerCreateReply, handled := peer.handleMatchmakingTask(buildMW2SessionObjectRequest(bdMatchmakingCreateSession))
+	if !handled || !peer.lastTaskSupported {
+		t.Fatalf("peer create handled=%v supported=%v reply=%x", handled, peer.lastTaskSupported, peerCreateReply)
+	}
+
+	readCreatedSessionID := func(reply []byte) []byte {
+		t.Helper()
+		reader := mustBDTaskReplyReader(t, reply)
+		if _, err := reader.readU64(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU32(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU8(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU32(); err != nil {
+			t.Fatal(err)
+		}
+		sessionID, err := reader.readBlob(mw2MatchmakingSessionIDSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sessionID
+	}
+	requesterSessionID := readCreatedSessionID(requesterCreateReply)
+	peerSessionID := readCreatedSessionID(peerCreateReply)
+
+	findSessionID := func(connection *lsgConnection) []byte {
+		t.Helper()
+		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
+			2,
+			50,
+			mw2MatchmakingSearch{},
+		))
+		if !handled || !connection.lastTaskSupported {
+			t.Fatalf("find handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
+		}
+		reader := mustBDTaskReplyReader(t, reply)
+		if _, err := reader.readU64(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU32(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU8(); err != nil {
+			t.Fatal(err)
+		}
+		if count, err := reader.readU32(); err != nil || count != 1 {
+			t.Fatalf("count=%d err=%v reply=%x", count, err, reply)
+		}
+		if _, err := reader.readBlob(mw2MatchmakingCommonAddressSize); err != nil {
+			t.Fatal(err)
+		}
+		sessionID, err := reader.readBlob(mw2MatchmakingSessionIDSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sessionID
+	}
+
+	if found := findSessionID(requester); !bytes.Equal(found, peerSessionID) {
+		t.Fatalf("requester found=%x want peer=%x own=%x", found, peerSessionID, requesterSessionID)
+	}
+	if found := findSessionID(peer); !bytes.Equal(found, requesterSessionID) {
+		t.Fatalf("peer found=%x want requester=%x own=%x", found, requesterSessionID, peerSessionID)
+	}
+
+	store.deleteOwner(peer.connectionID)
+	_, reply, handled := requester.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
+		2,
+		50,
+		mw2MatchmakingSearch{},
+	))
+	if !handled || !requester.lastTaskSupported {
+		t.Fatalf("solo find handled=%v supported=%v reply=%x", handled, requester.lastTaskSupported, reply)
+	}
+	reader := mustBDTaskReplyReader(t, reply)
+	if _, err := reader.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU32(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU8(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := reader.readU32(); err != nil || count != 0 {
+		t.Fatalf("solo count=%d err=%v reply=%x", count, err, reply)
+	}
+}
+
 func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
@@ -508,14 +610,16 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		openPublic:  2,
 		openPrivate: 4,
 		attributes:  [9]int32{11, 12, 13, 14, 15, 16, 17, 18, 19},
+		ownerID:     1,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
 		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
 		openPublic:  3,
 		openPrivate: 1,
 		attributes:  [9]int32{91, 92, 93, 94, 95, 96, 97, 98, 99},
+		ownerID:     2,
 	}
-	connection := &lsgConnection{matchmakingSessions: store}
+	connection := &lsgConnection{connectionID: 3, matchmakingSessions: store}
 
 	resultCount := func(search mw2MatchmakingSearch) uint32 {
 		t.Helper()

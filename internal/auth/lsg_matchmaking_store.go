@@ -169,12 +169,34 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false)
+}
+
+func (s *mw2MatchmakingStore) findExcludingOwner(
+	maxResults int32,
+	requiredFreeSlots int32,
+	usePrivateSlots bool,
+	ownerID uint64,
+) []mw2StoredMatchmakingSession {
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true)
+}
+
+func (s *mw2MatchmakingStore) findMatching(
+	maxResults int32,
+	requiredFreeSlots int32,
+	usePrivateSlots bool,
+	excludedOwnerID uint64,
+	excludeOwner bool,
+) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
 	}
 	s.mu.RLock()
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
+		if excludeOwner && session.ownerID == excludedOwnerID {
+			continue
+		}
 		openSlots := session.openPublic
 		if usePrivateSlots {
 			openSlots = session.openPrivate

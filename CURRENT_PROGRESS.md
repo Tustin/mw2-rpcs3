@@ -1,10 +1,10 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-31 after preparing a surgical RPCS3 diagnostic ELF that
-records the type-1 QoS teardown object immediately before `sub_320048`. The
-corrected service-17 response still requires a live two-client retest; if the
-search restarts, `/dev_hdd0/tmp/mw2_qos.bin` now distinguishes the abort and
-accepted completion paths and preserves the full 36-byte QoS result object._
+_Last updated: 2026-07-31 after the nonempty QoS telemetry proved both clients
+reach the accepted type-1 path while retaining their own session identity in the
+captured state. Matchmaking operation `5` now excludes sessions owned by the
+requesting LSG connection before result capping; a live two-client retest is
+required to confirm whether peer DTLS begins._
 
 ## Executive summary
 
@@ -12,10 +12,12 @@ The project gets MW2 on RPCS3 through dynamic Demonware authentication, the
 encrypted Lobby Service Gateway (LSG) handshake, storage, and playlist loading.
 The retail `playlists.info` has been retrieved, the storage flow works live, and
 the game client accepts the emulated server's playlist. Two live clients now
-find one another and complete direct traversal and QoS, but the latest server
-returned zero performance records because it decoded the request's performance
-type as an entity count. That schema is now corrected; the next task is a live
-retest of candidate acceptance and the transition into peer DTLS.
+find one another and complete direct traversal and QoS. Corrected performance
+replies are accepted, and telemetry proves both clients pass the type-1 QoS gate,
+but the self-inclusive operation-5 results leave each accepted state carrying
+its own session identity and matchmaking restarts before peer DTLS. The server
+now excludes the requesting connection's sessions from operation-5 replies; the
+next task is a live two-client retest.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -602,18 +604,21 @@ record (`672d64d80a1923fc` / `5c052b8242998ead43affe55ef28f279` on RPCS3;
 `60befeffeedb9896` / `aee0dc660b3ae996e5bb19b3ac19bd18` on PS3).
 
 The server-side timeline further localizes the loop after acceptance. Operation
-`5` responses are self-inclusive: one solo session produces one result, and two
-connected sessions produce two results in session-ID sort order. Both clients
-send operation `2` updates from `openPrivate=8, filledPrivate=0` to
-`openPrivate=7, filledPrivate=1`; both send correctly framed service-17
-operation `2` requests for their own account entity ID; then both continue
-operation `5` every roughly two seconds. After RPCS3 disconnects, its session is
-reclaimed and the PS3's next find reply drops from two results to its own single
-result before it deletes that session. This rules out a missing/hidden candidate,
-a broken store update, or the previously suspected accepted-count gate as the
-immediate cause. The remaining boundary is after `sub_CFF28` is called from the
-accepted path, before peer DTLS starts; self-result handling and the subsequent
-candidate/host-selection state machine are now the primary suspects.
+`5` responses were self-inclusive: one solo session produced one result, and two
+connected sessions produced two results in session-ID sort order. Both clients
+sent operation `2` updates from `openPrivate=8, filledPrivate=0` to
+`openPrivate=7, filledPrivate=1`; both sent correctly framed service-17
+operation `2` requests for their own account entity ID; then both continued
+operation `5` every roughly two seconds. After RPCS3 disconnected, its session
+was reclaimed and the PS3's next find reply dropped from two results to its own
+single result before it deleted that session. Combined with every accepted-path
+telemetry record carrying the local client's own session ID and security key,
+this makes self-results the strongest testable cause of the post-`sub_CFF28`
+loop. Operation `5` now excludes every session owned by the requesting LSG
+connection before sorting and applying `maxResults`; two hosts therefore receive
+only one another, while a lone host receives zero results. Store, handler, and
+full-flow regressions cover this behavior. A live RPCS3/physical-PS3 retest is
+still required to establish whether this reaches peer DTLS.
 
 The first telemetry ELF did reach both hook sites: RPCS3 opened
 `/dev_hdd0/tmp/mw2_qos.bin` at the abort hook and later at the accepted hook.
@@ -675,18 +680,20 @@ state consumed by `sub_31FDD0` / `0x2FA758..0x2FA7A0`. It should also capture
 state immediately before and after `sub_CFF28`, where the confirmed loop now
 begins.
 
-1. Correct or replace the telemetry wrapper so it records the actual type-1
-   counters and the pre/post-`sub_CFF28` state, while retaining the abort versus
-   accepted path tag.
-2. Reverse the self-result/candidate-selection path after `sub_CFF28`; operation
-   `5` replies deliberately contain self plus peer, and both clients accept the
-   QoS boundary but still restart the search.
-3. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
+1. Live-retest the owner-excluding operation-5 replies with RPCS3 and the
+   physical PS3. Each two-client reply should contain only the peer; a solo
+   search should contain zero results. Check whether peer DTLS begins.
+2. If matchmaking still restarts, correct or replace the telemetry wrapper so it
+   records the actual type-1 counters and the pre/post-`sub_CFF28` state, while
+   retaining the abort versus accepted path tag.
+3. Reverse the remaining candidate/host-selection path after `sub_CFF28` if the
+   owner-exclusion retest does not advance matchmaking.
+4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-4. Preserve the current run as the baseline: corrected service-17 replies,
+5. Preserve the prior run as the baseline: corrected service-17 replies,
    two-result self-inclusive finds, session updates, and repeated direct
-   `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeed in both directions, but no
-   peer DTLS starts.
+   `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeeded in both directions, but
+   no peer DTLS started.
 
 ## Current implementation areas
 

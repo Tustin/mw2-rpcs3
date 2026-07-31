@@ -257,8 +257,11 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 		bdServiceMatchmaking,
 		buildMW2FindSessionsRequestWithSearch(2, 50, mw2MatchmakingSearch{}),
 	)
-	if found := readFullFlowFindReply(t, findReply, 1); len(found) != 1 {
-		t.Fatalf("session disappeared across read deadlines: %+v", found)
+	if found := readFullFlowFindReply(t, findReply, 1); len(found) != 0 {
+		t.Fatalf("owner received its own session across read deadlines: %+v", found)
+	}
+	if sessions := service.matchmakingStore().find(1, 0, false); len(sessions) != 1 {
+		t.Fatalf("session disappeared across read deadlines: %+v", sessions)
 	}
 
 	// With no further traffic, the finite authenticated-LSG idle limit must
