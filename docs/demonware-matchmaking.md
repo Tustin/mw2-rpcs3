@@ -407,8 +407,10 @@ The supplied 62.655-second retail startup/lobby PCAP contains no traffic to a
 candidate LAN/residential peer and no QoS request/reply pair. The separate
 90.964-second `mw2 ps3 ingame.pcapng` trace does contain the post-find peer
 phase: the first candidate-directed UDP packet is a type-`0x28` QoS probe at
-frame 1782 (`57.466207`, `192.168.0.199:3074 -> 94.7.20.216:3074`), followed
-by traversal traffic. This packet sequence corroborates the statically recovered
+frame 709 (`58.2509763`, `192.168.0.199:3074 -> 68.82.57.194:3074`), with
+retries at frames 710-712 and a second probe transaction at frames 739-742.
+Frame 1782 is instead a type-`0x0c` traversal acknowledgement. This packet
+sequence corroborates the statically recovered
 handoff and confirms that retail proceeds from the central directory result to
 direct peer traffic without another central service-5 join RPC. The production
 LSG payload remains encrypted and the ingame capture has TCP sequence gaps, so

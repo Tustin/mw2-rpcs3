@@ -198,7 +198,8 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 		if got, err := reader.readU64(); err != nil || got != entityID {
 			t.Fatalf("entity=%016x want=%016x err=%v", got, entityID, err)
 		}
-		if value, err := reader.readI64(); err != nil || value != 0 {
+		value, err := reader.bits.readBits(32)
+		if err != nil || value != 1 {
 			t.Fatalf("performance=%d err=%v", value, err)
 		}
 	}

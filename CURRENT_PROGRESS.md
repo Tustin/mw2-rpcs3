@@ -495,42 +495,43 @@ The earlier handler incorrectly treated the performance type as a count. Since
 it is zero, every reply was a successful task with zero result objects. This
 removed the popup but did not provide a `bdPerformanceValue` to candidate
 selection. The symbol-rich Ghosts PDB confirms the method signature accepts an
-entity-ID array, count, a separate U32 argument, and `bdPerformanceValue*`; it
-also proves each result serializes a U64 `m_entityID` followed by a signed I64
-`m_performanceValue`. The server had also emitted that second field with a U64
-type tag. Those issues are corrected: the parser consumes the U32 performance
-type, reads the remaining typed U64 IDs, and returns one U64/I64 result pair per
-ID with neutral value `0`. A captured live request is covered by a golden test.
+entity-ID array, count, a separate U32 argument, and `bdPerformanceValue*`.
+Initial response work used the newer title's U64/I64 result layout, but the MW2
+ELF analysis below supersedes that assumption. The parser correctly consumes the
+U32 performance type and all remaining typed U64 entity IDs. A captured live
+request is covered by a golden test.
 
 Further MW2 client analysis on 2026-07-30 exposed a reply-framing error in that
 correction. The generic remote-task layer consumes one typed U32 result count,
 then `bdMatchMakingReadPerformanceValuesTaskResult` begins directly with the
-first result object's U64 entity ID. The server was writing the count twice, so
-the callback saw the second U32 count where it required a U64 entity ID. The
-success reply now writes exactly one result count before the U64/I64 objects.
-Malformed operation-2 requests also now use the same bit-packed, type-checked
-reply framing rather than the older byte-aligned generic serializer. Unit tests
-independently decode both layouts, and the full test, race, vet, and build checks
-pass. A live two-client test is still required.
+first result object. The server was writing the count twice, so the callback saw
+the second U32 count where it required result data. The success reply now writes
+exactly one result count. Malformed operation-2 requests also now use the same
+bit-packed, type-checked reply framing rather than the older byte-aligned generic
+serializer. Unit tests independently decode both layouts. A live two-client test
+is still required.
 
 The absence of `DW fetch performance values error 1024` in the latest run only
 proved that an empty success task no longer triggered the status popup. It did
 not prove the client received a usable performance record. That run logged
 `Fetched performance value 0 for b804d13e5ee3dafa` followed by `Unable to
-retreive performance value`, then issued another operation-2 request. Follow-up
-ELF analysis identified another result-object framing field:
-`bdMatchMakingReadPerformanceValuesTaskResult` reads a raw, untyped 32-bit
-status/discriminator before the typed U64 entity ID and optional typed I64
-performance value. The reply was four bytes short per result, so the client
-consumed the U64 tag and low entity-ID bits as a nonzero status, skipped the
-entity/value fields, and left the zero-initialized output entry unchanged. The
-server now writes raw U32 status `0` before each result; the regression test
-verifies the raw-status, typed-U64, typed-I64 sequence. This correction still
-requires a fresh RPCS3 validation. Session updates from `openPrivate=8,
-filledPrivate=0` to `openPrivate=7, filledPrivate=1` occurred in the prior run,
-but both clients continued candidate evaluation rather than beginning peer
-DTLS. The exact retail service-17 reply remains unavailable because the retail
-LSG capture is encrypted and its session key is not known.
+retreive performance value`, then issued another operation-2 request.
+
+Completed MW2-specific IDA analysis on 2026-07-31 now establishes the complete
+result-object wire layout. `bdMatchMakingReadPerformanceValuesTaskResult` reads a
+raw, untyped big-endian U32 status first. Status `0` is the success path; only
+then does it read the typed U64 entity ID followed by another raw, untyped
+big-endian U32 performance value. The consumer copies that final value directly
+into the candidate's 32-bit performance field, and zero is rejected by the
+client as unusable. This supersedes the earlier Ghosts-derived typed-I64
+assumption. The server now emits `raw status 0`, `typed U64 entity ID`, and `raw
+performance 1` per result. The regression test decodes that exact sequence and
+requires the nonzero value. This correction still requires a fresh RPCS3
+validation. Session updates from `openPrivate=8, filledPrivate=0` to
+`openPrivate=7, filledPrivate=1` occurred in the prior run, but both clients
+continued candidate evaluation rather than beginning peer DTLS. The exact retail
+service-17 reply remains unavailable because the retail LSG capture is encrypted
+and its session key is not known.
 
 The same run confirms that both solo clients send operation `5`. Both queries
 carry `unranked=1`, while both hosts advertise eight private slots and zero
@@ -588,6 +589,32 @@ The 2026-07-31 RPCS3/physical-PS3 retest confirmed the corrected service-17
 reply framing. Both clients repeatedly requested one entity ID, the server
 logged `entity_count=1`, no fetch-performance popup returned, and matchmaking
 still restarted after successful direct peer QoS without beginning peer DTLS.
+The subsequent nonempty telemetry captures are
+`captures/mw2_qos_rpcs3.bin` (42 records) and `captures/mw2_qos_ps3.bin` (41
+records). Every record has tag `2`, so both clients reached the accepted call at
+`0x2FA7A0`; neither reached the abort call at `0x2FA390`. The earlier conclusion
+that the type-1 boundary rejected or failed to account for a candidate is
+therefore disproved. The first 36 object bytes are also not the counters claimed
+below: static instructions load `candidateCount` from `+0x5B0`, `completedQoS`
+from `+0xE4C`, and `failedQoS` from `+0xE50`. The copied bytes instead contain
+the local client's own session ID at object `+0x08` and key at `+0x10` in every
+record (`672d64d80a1923fc` / `5c052b8242998ead43affe55ef28f279` on RPCS3;
+`60befeffeedb9896` / `aee0dc660b3ae996e5bb19b3ac19bd18` on PS3).
+
+The server-side timeline further localizes the loop after acceptance. Operation
+`5` responses are self-inclusive: one solo session produces one result, and two
+connected sessions produce two results in session-ID sort order. Both clients
+send operation `2` updates from `openPrivate=8, filledPrivate=0` to
+`openPrivate=7, filledPrivate=1`; both send correctly framed service-17
+operation `2` requests for their own account entity ID; then both continue
+operation `5` every roughly two seconds. After RPCS3 disconnects, its session is
+reclaimed and the PS3's next find reply drops from two results to its own single
+result before it deletes that session. This rules out a missing/hidden candidate,
+a broken store update, or the previously suspected accepted-count gate as the
+immediate cause. The remaining boundary is after `sub_CFF28` is called from the
+accepted path, before peer DTLS starts; self-result handling and the subsequent
+candidate/host-selection state machine are now the primary suspects.
+
 The first telemetry ELF did reach both hook sites: RPCS3 opened
 `/dev_hdd0/tmp/mw2_qos.bin` at the abort hook and later at the accepted hook.
 However, the file remained zero bytes because the wrapper loaded stack offset
@@ -638,17 +665,28 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Resign/deploy the rebuilt `default_mp.qos-telemetry.elf`, remove the old
-   `/dev_hdd0/tmp/mw2_qos.bin`, reproduce one two-client search, and retrieve the
-   nonempty telemetry file.
-2. Decode the 52-byte `QOS1` records to compare the abort/accepted path,
-   `candidateCount`, `completedQoS`, `failedQoS`, `acceptedCandidates`, and the
-   accepted candidate slot immediately before `sub_320048` clears the result.
+The rebuilt patcher was deployed successfully and produced nonempty telemetry,
+but its assumed object layout was wrong. The useful result is the hook tag:
+all 83 records are tag `2`, proving that both clients pass the type-1 acceptance
+branch and call `sub_CFF28`. A follow-up diagnostic must read the actual outer
+state fields rather than the first 36 bytes: `candidateCount` at `+0x5B0`,
+`completedQoS` at `+0xE4C`, `failedQoS` at `+0xE50`, plus the counters and veto
+state consumed by `sub_31FDD0` / `0x2FA758..0x2FA7A0`. It should also capture
+state immediately before and after `sub_CFF28`, where the confirmed loop now
+begins.
+
+1. Correct or replace the telemetry wrapper so it records the actual type-1
+   counters and the pre/post-`sub_CFF28` state, while retaining the abort versus
+   accepted path tag.
+2. Reverse the self-result/candidate-selection path after `sub_CFF28`; operation
+   `5` replies deliberately contain self plus peer, and both clients accept the
+   QoS boundary but still restart the search.
 3. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-4. Preserve the current run as the baseline: corrected service-17 replies and
-   repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeed in both
-   directions, but matchmaking restarts and no peer DTLS starts.
+4. Preserve the current run as the baseline: corrected service-17 replies,
+   two-result self-inclusive finds, session updates, and repeated direct
+   `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeed in both directions, but no
+   peer DTLS starts.
 
 ## Current implementation areas
 
