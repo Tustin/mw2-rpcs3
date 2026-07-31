@@ -584,6 +584,21 @@ both call-site instruction windows and the zero-padding cave, and refuses to
 overwrite an existing output. The retail PS3 captures remain the source of
 truth.
 
+The 2026-07-31 RPCS3/physical-PS3 retest confirmed the corrected service-17
+reply framing. Both clients repeatedly requested one entity ID, the server
+logged `entity_count=1`, no fetch-performance popup returned, and matchmaking
+still restarted after successful direct peer QoS without beginning peer DTLS.
+The first telemetry ELF did reach both hook sites: RPCS3 opened
+`/dev_hdd0/tmp/mw2_qos.bin` at the abort hook and later at the accepted hook.
+However, the file remained zero bytes because the wrapper loaded stack offset
+`0xA8` (the tag byte) as the descriptor for `cellFsWrite` and `cellFsClose`
+instead of the descriptor returned by `cellFsOpen` at `0xD4`; RPCS3 logged
+`CELL_EBADF` writes. The patcher now uses `0xD4` for both calls and has a
+regression test that resolves the emitted branch targets and checks their
+preceding descriptor loads. The rebuilt diagnostic ELF at the same path has
+SHA-256 `f5731e1dcf393186d836da62a5b7d9c49718db049d1573a2048ee16f27b67c6b` and
+still changes no matchmaking decision.
+
 ## Prior playlist dump diagnostic
 
 The diagnostic was reduced to a playlist-only raw dump. The MOTD hook at
@@ -623,18 +638,17 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Deploy and retest the corrected single-count service-17 reply with RPCS3 and
-   a physical PS3. Confirm replies log `entity_count=1`, no popup returns, and
-   one client advances beyond candidate evaluation.
-2. If matchmaking still restarts, run the RPCS3 client with
-   `default_mp.qos-telemetry.elf`, retrieve `/dev_hdd0/tmp/mw2_qos.bin`, and
-   decode the 52-byte `QOS1` records to compare the abort/accepted path,
+1. Resign/deploy the rebuilt `default_mp.qos-telemetry.elf`, remove the old
+   `/dev_hdd0/tmp/mw2_qos.bin`, reproduce one two-client search, and retrieve the
+   nonempty telemetry file.
+2. Decode the 52-byte `QOS1` records to compare the abort/accepted path,
    `candidateCount`, `completedQoS`, `failedQoS`, `acceptedCandidates`, and the
    accepted candidate slot immediately before `sub_320048` clears the result.
 3. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-4. Preserve the current run as the baseline: repeated direct `0x0d`/`0x0c` and
-   `0x28`/`0x29` exchanges succeed in both directions, and no peer DTLS starts.
+4. Preserve the current run as the baseline: corrected service-17 replies and
+   repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeed in both
+   directions, but matchmaking restarts and no peer DTLS starts.
 
 ## Current implementation areas
 
