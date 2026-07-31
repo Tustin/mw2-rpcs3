@@ -1,17 +1,21 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-30 after a simultaneous RPCS3/physical-PS3 test reached
-candidate discovery and direct peer QoS. The immediate post-QoS failure was
-isolated to service `17`, operation `2`, now identified and implemented as
-`bdMatchMaking::getPerformanceValues`._
+_Last updated: 2026-07-30 after a simultaneous RPCS3/physical-PS3 test proved
+candidate discovery, direct `0x0d`/`0x0c` NAT traversal, and bidirectional
+`0x28`/`0x29` QoS. The remaining server-side defect was isolated to the
+service-17 performance request/result schema and corrected for the next live
+test._
 
 ## Executive summary
 
 The project gets MW2 on RPCS3 through dynamic Demonware authentication, the
 encrypted Lobby Service Gateway (LSG) handshake, storage, and playlist loading.
 The retail `playlists.info` has been retrieved, the storage flow works live, and
-the game client accepts the emulated server's playlist. The next task is the
-matchmaking lobby flow entered when finding a match.
+the game client accepts the emulated server's playlist. Two live clients now
+find one another and complete direct traversal and QoS, but the latest server
+returned zero performance records because it decoded the request's performance
+type as an entity count. That schema is now corrected; the next task is a live
+retest of candidate acceptance and the transition into peer DTLS.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -112,15 +116,15 @@ anti-abuse policy remain unresolved.
 | Bundled `playlists.info`            | Retail-parser valid; 95% confidence                                                                             | ID `0` is feeder-visible, alias/script `dm` resolves, the weight-100 entry counts, and solo bounds pass selection.                                                                                                                                                                                                                                          |
 | Docker playlist packaging           | Fixed in the working tree                                                                                       | The final image copies the fixture to `/playlists.info` and sets `MW2_PLAYLISTS_FILE`.                                                                                                                                                                                                                                                                      |
 | Stats                               | Placeholder only                                                                                                | The observed retail request is service `4`, operation `4`; the server currently returns an empty success.                                                                                                                                                                                                                                                   |
-| Groups                              | Set-groups implemented; live recheck required                                                                   | Service `17`, operation `2` parses the recovered typed `u32 groupCount` plus repeated typed `u64 groupID` request and returns an empty success. The client serializer at `0x003e4758` proves the layout; neighboring operation `3` at `0x003e4638` is the distinct single-`u32` clear-groups call.                                                                  |
-| Bandwidth                           | Two-phase bootstrap implemented and focused tests pass; clean deployment/live recheck required                  | Service `18/1` returns the exact 51-byte request result (65-byte wire frame), accepts five 512-byte UDP uploads on the primary NAT socket, then returns the 29-byte finalize result (49-byte wire frame). The latest preserved run instead returned the old 11-byte error-108 rejection and lacked current bandwidth telemetry, indicating a stale runtime. |
-| Retail matchmaking op `5`           | Implemented; slot-pool fix awaiting live confirmation                                                           | Validates the exact type-2/max-50 query and all seven recovered field meanings. The recovered unranked flag selects the slot pool: nonzero uses private slots and zero uses public slots. Unknown retail comparisons are not guessed.                                                                                                                           |
-| Retail matchmaking lifecycle        | Implemented and covered by synthetic and real-auth two-client server harnesses; live RPCS3 confirmation pending | Two independent retail auth connections receive distinct dynamic tickets/keys, consume their issued one-use LSG tickets, complete storage `8`/`5`, and exercise create/find/update/delete with the exact candidate tuple. Ticket replay is rejected.                                                                                                        |
-| UDP public-address/NAT discovery    | Implemented from ELF/PCAP proof and covered by golden/integration tests                                         | Exact v2 `0x1e` requests receive a nine-byte `0x1f` reply. Exact v2 `0x14` commands `0`, `3`, and `2` receive a 15-byte `0x15` reply from the required source socket; malformed/unsupported packets are ignored.                                                                                                                                            |
-| Peer QoS packet codec               | Recovered directly from the ELF; live confirmation pending                                                      | Request `0x28` is 17 bytes. Reply `0x29` is an 18-byte fixed header plus optional data. All multibyte values are little-endian.                                                                                                                                                                                                                             |
-| Peer NAT traversal and introducer   | Codec recovered; current legacy relay implemented behind a safety flag; live two-client confirmation pending    | Types `0x0a..0x0d` use one exact 29-byte structure and a 10-byte truncated HMAC-SHA1. With trusted-lab relay enabled, the server accepts type `0x0a`, version `>=2`, routes to the embedded destination, and changes only the type to `0x0b`.                                                                                                               |
-| Peer DTLS codec                     | Recovered directly from the ELF; live confirmation pending                                                      | Canonical Init/InitAck/CookieEcho/CookieAck/Error packets are 16/38/177/114/15 bytes. Type-6 data uses an 8-byte HMAC-SHA1 tag, Blob8 XOR prefix transform, clear tail, and a 32-packet replay window.                                                                                                                                                      |
-| Playlist parsing / lobby population | Not live-verified                                                                                               | No corrected operation-5 download and client parse have been captured yet.                                                                                                                                                                                                                                                                                  |
+| Groups                              | Set/clear serializers recovered; matchmaking performance call was previously misclassified                     | Service `17`, operation `2` in the live matchmaking path is `bdMatchMaking::getPerformanceValues`, not set-groups. The actual group serializers remain identified at `0x003e4758` and `0x003e4638`.                                                                                                                                                           |
+| Bandwidth                           | Two-phase bootstrap working live                                                                                | Service `18/1` returns the exact 51-byte request result, accepts five 512-byte UDP uploads on the primary NAT socket, then returns the 29-byte finalize result. The current two-client run completed this phase on both clients.                                                                                                                             |
+| Retail matchmaking op `5`           | Working live                                                                                                    | Both clients repeatedly receive the other client's candidate. The recovered unranked flag correctly selects private slots; nonzero uses private slots and zero uses public slots. Unknown retail comparisons are not guessed.                                                                                                                             |
+| Retail matchmaking lifecycle        | Working through candidate QoS and performance/session update; lobby handoff unresolved                          | Two live clients create/find candidates, complete direct NAT/QoS, accept one performance result, and update their sessions from private `8/0` to `7/1`. They then restart searching rather than beginning peer DTLS.                                                                                                                                       |
+| UDP public-address/NAT discovery    | Working live                                                                                                    | Exact v2 public-address and NAT-classification exchanges complete, including primary/alternate-source replies.                                                                                                                                                                                                                                              |
+| Peer QoS packet codec               | Working live                                                                                                    | Live clients exchange 17-byte `0x28` requests and 18-byte zero-payload `0x29` replies. All multibyte values are little-endian; the reply data length is a little-endian `u32`.                                                                                                                                                                               |
+| Peer NAT traversal and introducer   | Direct `0x0d`/`0x0c` traversal working live; legacy `0x0a` relay remains safety-gated                           | Both clients exchange exact 29-byte type-`0x0d` requests and type-`0x0c` acknowledgements over LAN and the advertised external route. The trusted-lab introducer relay still accepts only strict type `0x0a` packets and changes only the type to `0x0b`.                                                                                              |
+| Peer DTLS codec                     | Recovered directly from the ELF; not reached live                                                               | No peer-DTLS packet follows the successful traversal/QoS/performance sequence. Canonical Init/InitAck/CookieEcho/CookieAck/Error packets remain 16/38/177/114/15 bytes.                                                                                                                                                                                     |
+| Playlist parsing / lobby population | Playlist accepted; lobby population unresolved                                                                  | Both clients select playlist `1`, advertise sessions, and search successfully, but return to candidate search after QoS instead of joining/populating a shared lobby.                                                                                                                                                                                        |
 | Runtime discovery telemetry         | Corrected in the working tree                                                                                   | Packed operation IDs are decoded before logging; unsupported service/operation pairs are explicitly warned while still receiving an error reply.                                                                                                                                                                                                            |
 
 Operation-8 request handling honors the version-aware publisher directory's
@@ -482,27 +486,61 @@ objects. Both clients then reported `DW fetch performance values error 1024` and
 deleted their sessions.
 
 The request is now identified as `bdMatchMaking::getPerformanceValues`. The live
-body contains operation `2`, a typed entity count, and one typed U64 entity ID.
-The trailing repeated bytes are only 3DES padding. The symbol-rich Ghosts PDB
-confirms the method signature accepts entity IDs, count, a second U32 argument,
-and `bdPerformanceValue*`; it also proves each result serializes exactly a U64
-`m_entityID` followed by an I64 `m_performanceValue`. MW2's own ELF contains the
-matching `bdPerformanceValue` type names and fetch-error paths.
+body contains operation `2`, a typed U32 performance type (`0` in every observed
+request), and one or more typed U64 entity IDs. It does not carry an entity
+count. The trailing repeated bytes are only 3DES padding. Four requests from
+both clients decode identically apart from the entity ID.
 
-The server now returns one typed performance result per requested entity,
-preserving the entity ID and using neutral value `0`. Focused tests decode the
-complete reply and reject truncated requests. This requires a fresh two-client
-live test; the exact retail service-17 reply remains unavailable because the
+The earlier handler incorrectly treated the performance type as a count. Since
+it is zero, every reply was a successful task with zero result objects. This
+removed the popup but did not provide a `bdPerformanceValue` to candidate
+selection. The symbol-rich Ghosts PDB confirms the method signature accepts an
+entity-ID array, count, a separate U32 argument, and `bdPerformanceValue*`; it
+also proves each result serializes a U64 `m_entityID` followed by a signed I64
+`m_performanceValue`. The server had also emitted that second field with a U64
+type tag. Both issues are now corrected: the parser consumes the U32 performance
+type, reads the remaining typed U64 IDs, and returns one U64/I64 result pair per
+ID with neutral value `0`. A captured live request is covered by a golden test.
+
+The absence of `DW fetch performance values error 1024` in the latest run only
+proved that an empty success task no longer triggered the status popup. It did
+not prove the client received a usable performance record. Session updates from
+`openPrivate=8, filledPrivate=0` to `openPrivate=7, filledPrivate=1` occurred in
+that run, but both clients continued candidate evaluation rather than beginning
+peer DTLS. The exact retail service-17 reply remains unavailable because the
 retail LSG capture is encrypted and its session key is not known.
 
-The fresh two-client run confirms that both solo clients now send operation `5`.
-Both queries carry `unranked=1`, while both hosts advertise eight private slots
-and zero public slots. The implementation had already recovered but not yet
-documented the corresponding slot-pool rule: unranked searches use private
-slots, ranked searches use public slots. The current server now applies that
-rule. The active live-debugging target is a retest proving a nonempty candidate
-is accepted and tracing lobby/peer handoff. The retail PS3 captures remain the
-source of truth.
+The same run confirms that both solo clients send operation `5`. Both queries
+carry `unranked=1`, while both hosts advertise eight private slots and zero
+public slots. Unranked searches therefore use private slots; ranked searches use
+public slots. The corrected server repeatedly returns the other client's
+candidate.
+
+The direct peer sequence is also live-confirmed. RPCS3 sends exact 29-byte
+`0x0d` traversal requests to the PS3's LAN and advertised external addresses,
+receives matching `0x0c` acknowledgements, sends a 17-byte `0x28` QoS request,
+and receives the expected 18-byte zero-payload `0x29` reply. The PS3 performs
+the reciprocal traversal/QoS sequence. This matches retail's recovered
+`0x0d`/`0x0c` and `0x28`/`0x29` order.
+
+The first unresolved transition is now after successful QoS and performance
+fetch. No peer-DTLS packet follows. Both clients continue operation-5 searches
+and repeat traversal/QoS; each initially reports one filled private slot, and
+the PS3 later deletes its session when the run ends. Static analysis has now
+located the acceptance/ranking boundary. `sub_2FAC00` filters duplicate active
+session IDs, initializes the per-search QoS result object, and queues task type
+`1`. The type-1 completion path in `sub_2FA008` computes progress as
+`100 * completedQoS / candidateCount`, waits for completion or a stall timeout,
+then calls `sub_31FDD0`; that check accepts only when
+`acceptedCandidates == completedQoS + failedQoS`. It always tears down the QoS
+result afterward, and only the accepted branch additionally calls `sub_CFF28`
+to advance matchmaking. Therefore the observed operation-5 restart is no longer
+an unknown post-performance decision: at least one candidate remains unaccounted
+for, or none is promoted into the accepted-candidate count, at the type-1 QoS
+completion boundary. The next live diagnostic should capture
+`candidateCount`, `completedQoS`, `failedQoS`, `acceptedCandidates`, and the
+result of `sub_31FDD0` immediately before teardown. The retail PS3 captures
+remain the source of truth.
 
 ## Prior playlist dump diagnostic
 
@@ -543,16 +581,17 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
-1. Deploy and retest the service-17 performance-value reply with RPCS3 and a
-   physical PS3. Confirm the `DW fetch performance values error 1024` message is
-   gone and preserve both server/client logs if the next state fails.
-2. Trace the accepted candidate beyond successful direct peer QoS into lobby
-   joining. The latest run proves create -> find -> candidate QoS works, but both
-   clients deleted their sessions after the malformed performance reply.
-3. Compare the next live transition with retail's recovered type-`0x28`/`0x29`
-   QoS and type-`0x0d`/`0x0c` direct-traversal sequence.
-4. Redirect both captured `mw2-stun.*` names and live-confirm the strict v2
-   public-address reply plus primary/alternate-source NAT-classification replies.
+1. Deploy and retest the corrected service-17 parser/result schema with RPCS3
+   and a physical PS3. Confirm replies log `entity_count=1`, no popup returns,
+   and one client advances beyond candidate evaluation.
+2. If matchmaking still restarts, add minimum telemetry at the type-1 completion
+   path in `sub_2FA008` to log `candidateCount`, `completedQoS`, `failedQoS`,
+   `acceptedCandidates`, and the `sub_31FDD0` result before `sub_320048` clears
+   the QoS result.
+3. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
+   with the recovered codec and trace the first lobby message.
+4. Preserve the current run as the baseline: repeated direct `0x0d`/`0x0c` and
+   `0x28`/`0x29` exchanges succeed in both directions, and no peer DTLS starts.
 
 ## Current implementation areas
 

@@ -69,6 +69,11 @@ func (w *bdBitWriter) writeU32(value uint32) {
 	w.bits.writeBits(uint64(value), 32)
 }
 
+func (w *bdBitWriter) writeI64(value int64) {
+	w.writeType(bdTypeI64)
+	w.bits.writeBits(uint64(value), 64)
+}
+
 func (w *bdBitWriter) writeU64(value uint64) {
 	w.writeType(bdTypeU64)
 	w.bits.writeBits(value, 64)
@@ -150,6 +155,14 @@ func (r *bdBitReader) readU32() (uint32, error) {
 	}
 	value, err := r.bits.readBits(32)
 	return uint32(value), err
+}
+
+func (r *bdBitReader) readI64() (int64, error) {
+	if err := r.readType(bdTypeI64); err != nil {
+		return 0, err
+	}
+	value, err := r.bits.readBits(64)
+	return int64(value), err
 }
 
 func (r *bdBitReader) readU64() (uint64, error) {

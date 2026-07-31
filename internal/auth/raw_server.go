@@ -433,6 +433,17 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 				)
 			}
 		}
+	} else if serviceID == bdServicePerformance {
+		performanceType, entityIDs, valid := parsePerformanceValuesRequest(payload)
+		if !valid {
+			attrs = append(attrs, "performance_parse_error", "invalid performance-values request")
+		} else {
+			attrs = append(attrs,
+				"operation_id", byte(2),
+				"performance_type", performanceType,
+				"entity_count", len(entityIDs),
+			)
+		}
 	} else if serviceID == bdServiceMatchmaking {
 		request, err := parseMW2MatchmakingRequest(payload)
 		if err != nil {

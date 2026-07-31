@@ -276,6 +276,7 @@ const (
 	bdTypeU16    = 0x06
 	bdTypeI32    = 0x07
 	bdTypeU32    = 0x08
+	bdTypeI64    = 0x09
 	bdTypeU64    = 0x0a
 	bdTypeF32    = 0x0d
 	bdTypeString = 0x10
@@ -393,28 +394,32 @@ func decodeLegacyLSGTaskOperation(payload []byte) (byte, bool) {
 	return payload[1], true
 }
 
-func parsePerformanceValuesRequest(payload []byte) ([]uint64, bool) {
+func parsePerformanceValuesRequest(payload []byte) (uint32, []uint64, bool) {
 	reader := newBDBitReader(payload)
 	typeChecked, err := reader.bits.readBits(1)
 	if err != nil || typeChecked != 1 {
-		return nil, false
+		return 0, nil, false
 	}
 	operationID, err := reader.readU8()
 	if err != nil || operationID != 2 {
-		return nil, false
+		return 0, nil, false
 	}
-	entityCount, err := reader.readU32()
-	if err != nil || entityCount > 64 {
-		return nil, false
+	performanceType, err := reader.readU32()
+	if err != nil {
+		return 0, nil, false
 	}
-	entityIDs := make([]uint64, entityCount)
-	for index := range entityIDs {
-		entityIDs[index], err = reader.readU64()
+	entityIDs := make([]uint64, 0, 1)
+	for reader.bits.remainingBits() >= 69 {
+		entityID, err := reader.readU64()
 		if err != nil {
-			return nil, false
+			return 0, nil, false
 		}
+		entityIDs = append(entityIDs, entityID)
 	}
-	return entityIDs, true
+	if len(entityIDs) == 0 || reader.bits.remainingBits() > 63 {
+		return 0, nil, false
+	}
+	return performanceType, entityIDs, true
 }
 
 func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uint64) []byte {
@@ -426,7 +431,7 @@ func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uin
 	writer.writeU32(uint32(len(entityIDs)))
 	for _, entityID := range entityIDs {
 		writer.writeU64(entityID)
-		writer.writeU64(0)
+		writer.writeI64(0)
 	}
 	return writer.bytes()
 }
@@ -490,7 +495,7 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 		c.lastTaskSupported = true
 		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
 	case serviceID == bdServicePerformance && operationID == 2:
-		entityIDs, valid := parsePerformanceValuesRequest(payload)
+		_, entityIDs, valid := parsePerformanceValuesRequest(payload)
 		if !valid {
 			return lsgTaskReplyType, c.taskReply(operationID, bdErrorServiceNotAvailable, nil), true
 		}

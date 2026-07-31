@@ -142,14 +142,22 @@ func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
 	}
 }
 
-func buildPerformanceValuesRequest(entityIDs ...uint64) []byte {
+func buildPerformanceValuesRequest(performanceType uint32, entityIDs ...uint64) []byte {
 	writer := newBDBitWriter()
 	writer.writeU8(2)
-	writer.writeU32(uint32(len(entityIDs)))
+	writer.writeU32(performanceType)
 	for _, entityID := range entityIDs {
 		writer.writeU64(entityID)
 	}
 	return writer.bytes()
+}
+
+func TestParseCapturedPerformanceValuesRequest(t *testing.T) {
+	payload := mustDecodeHex("87000200000050fadae35e3ed104b800080808")
+	performanceType, entityIDs, valid := parsePerformanceValuesRequest(payload)
+	if !valid || performanceType != 0 || len(entityIDs) != 1 || entityIDs[0] != 0xb804d13e5ee3dafa {
+		t.Fatalf("valid=%v performance_type=%d entities=%x", valid, performanceType, entityIDs)
+	}
 }
 
 func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
@@ -158,7 +166,7 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 		t.Fatal(err)
 	}
 	entityIDs := []uint64{0xb804d13e5ee3dafa, 0x1cef2987c7049084}
-	payload := buildPerformanceValuesRequest(entityIDs...)
+	payload := buildPerformanceValuesRequest(0, entityIDs...)
 	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
 		t.Fatalf("performance response type=%d payload=%x ok=%v reply=%v", responseType, result, ok, reply)
@@ -188,7 +196,7 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 		if got, err := reader.readU64(); err != nil || got != entityID {
 			t.Fatalf("entity=%016x want=%016x err=%v", got, entityID, err)
 		}
-		if value, err := reader.readU64(); err != nil || value != 0 {
+		if value, err := reader.readI64(); err != nil || value != 0 {
 			t.Fatalf("performance=%d err=%v", value, err)
 		}
 	}
@@ -199,7 +207,7 @@ func TestHandleMalformedPerformanceValuesReturnsServiceError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := buildPerformanceValuesRequest(0xb804d13e5ee3dafa)
+	payload := buildPerformanceValuesRequest(0, 0xb804d13e5ee3dafa)
 	payload = payload[:len(payload)-1]
 	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
