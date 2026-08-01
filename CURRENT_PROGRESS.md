@@ -1,10 +1,10 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-01 after the first live asymmetric-matchmaking retest.
-The trace proved both clients complete direct traversal and repeated QoS, but
-also exposed unstable host ordering when MW2 deletes and recreates a session.
-Creation priority is now stable for the lifetime of each LSG connection and
-must be live-tested with the physical PS3 starting matchmaking first._
+_Last updated: 2026-08-01 after the stable-ordering live retest.
+The physical PS3 started first, RPCS3 consistently received only that session,
+and both clients completed direct traversal and repeated QoS. No peer DTLS
+followed, so the remaining failure is after accepted QoS rather than in central
+discovery ordering or operation-5 serialization._
 
 ## Executive summary
 
@@ -14,12 +14,15 @@ The retail `playlists.info` has been retrieved, the storage flow works live, and
 the game client accepts the emulated server's playlist. Two live clients now
 find one another and complete direct traversal and QoS. Corrected performance
 replies are accepted, and telemetry proves both clients pass the type-1 QoS gate.
-The first asymmetric-operation-5 retest exposed a lifecycle bug: the physical
-PS3 deleted and recreated its matchmaking session, and the store assigned that
-replacement a later creation rank than RPCS3. That inverted the intended host
-priority and eventually made both clients receive zero candidates. Session rank
-is now stable per LSG connection across delete/recreate cycles; the next task is
-a live two-client retest of that correction.
+The stable-ordering retest had the physical PS3 create first and RPCS3 create
+second. The PS3 consistently received zero candidates while RPCS3 consistently
+received exactly the PS3 session, including the correct common address, generated
+session ID, security key, slot counts, and all nine attributes. Traversal and QoS
+completed repeatedly with valid replies, but no peer-DTLS Init followed. The PS3
+deleted its session near the end and did not recreate it; only then did RPCS3
+correctly fall to zero candidates. The next task is therefore to instrument and
+reverse the accepted-candidate transition around `sub_CFF28`, not to change
+operation-5 ordering again.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -721,41 +724,53 @@ and `0x28`/`0x29` QoS packets with `192.168.0.199:3074`. The RPCS3 probe used
 the advertised PS3 session ID's shrunken value, so the candidate identity and
 address serialization are working. No peer DTLS packet followed.
 
-The same log exposed why the creation-ordered policy became unstable. The PS3
-created first, then deleted and recreated its matchmaking session while keeping
-the same LSG connection. The store ranked each new session rather than each
-connection, so the replacement was ordered after RPCS3. RPCS3 initially found
-the PS3, but later searches returned zero; the PS3 also returned zero because
-RPCS3 was no longer earlier than its replacement. `mw2MatchmakingStore` now
-assigns one stable order to each LSG connection and reuses it across session
-recreation. Unit and two-client flow coverage include this lifecycle.
+The stable-ordering retest confirms that this policy behaves as intended when
+the physical PS3 starts first. The PS3 created session `eac3f3f94e2bb9ba`; RPCS3
+created second and repeatedly received only that PS3 session. The PS3 received
+zero candidates throughout and remained the host. RPCS3 used the returned
+identity for traversal and QoS: the `0x28` security value was the first four
+bytes of the PS3 session ID, and every observed `0x29` reply matched the current
+probe. RPCS3 consumed 29 successful QoS replies, ending with probe 28, but sent
+no type-1..6 peer-DTLS packet afterward. At the end of the run the PS3 explicitly
+deleted its session and did not recreate it; RPCS3's later zero-result searches
+are therefore expected and do not indicate unstable rank reuse.
 
-The rebuilt patcher was deployed successfully and produced nonempty telemetry,
-but its assumed object layout was wrong. The useful result is the hook tag:
-all 83 records are tag `2`, proving that both clients pass the type-1 acceptance
-branch and call `sub_CFF28`. A follow-up diagnostic must read the actual outer
-state fields rather than the first 36 bytes: `candidateCount` at `+0x5B0`,
-`completedQoS` at `+0xE4C`, `failedQoS` at `+0xE50`, plus the counters and veto
-state consumed by `sub_31FDD0` / `0x2FA758..0x2FA7A0`. It should also capture
-state immediately before and after `sub_CFF28`, where the confirmed loop now
-begins.
+The supplied telemetry captures are definitively version-1, not malformed
+version-2 data. Their size and every `"QOS1"` marker advance by 52 bytes, each
+record reports version `1`, tag `0`, and the historical 36-byte candidate
+identity object. They therefore cannot answer the outer-state or pre/post-
+`sub_CFF28` questions. Static TU0 reconstruction from the verified version-2
+artifact confirms the exact input SHA-256 and caller sequence: the accepted path
+tears down the inner QoS object, calls `sub_CFF28(r18)`, then immediately resumes
+the ordinary matchmaking loop. `sub_CFF28` only clears an 80-byte result entry's
+active byte when its field at `+0x44` is `-1`.
 
-1. Live-retest stable per-connection operation-5 ordering with the physical
-   PS3 starting first. Its delete/recreate cycle must preserve first-host
-   priority: the PS3 should receive zero candidates and RPCS3 should continue
-   receiving only the PS3 replacement session instead of dropping to zero.
-   Confirm whether completed QoS now advances into peer DTLS and lobby join.
-2. Build and resign the corrected version-2 telemetry ELF, run both clients,
-   and inspect `/dev_hdd0/mw2_qos.bin` for the actual type-1 counters and the
-   pre/post-`sub_CFF28` state while retaining the abort versus accepted path tag.
-3. Reverse the remaining candidate/host-selection path after `sub_CFF28` if the
-   creation-order retest does not advance matchmaking.
+The existing version-2 artifact was reproduced byte-for-byte from reconstructed
+TU0 input: output SHA-256
+`4a516649d681c3c0af499aaadfb95d353ffc6728f3bb774d0158e8461fb8f7e4`.
+Its signed SELF SHA-256 is
+`6fc00525671e80540d4bb83c166ba7609b9012b3f25dd56f4552984792c0ea2a`.
+It is now deployed to RPCS3 as
+`dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the prior SELF is preserved as
+`default_mp.self.pre-qos-v2`, and the old `dev_hdd0/mw2_qos.bin` was removed so
+the next run starts with clean telemetry.
+
+1. Rerun both clients with the deployed version-2 SELF and collect
+   `/dev_hdd0/mw2_qos.bin`. Decode the real outer matchmaking pointer, candidate
+   count, completed/failed QoS counters, selected-candidate addresses, slot
+   state, and phase-1/phase-2 records around `sub_CFF28`.
+2. Use the new records to determine whether the selected 80-byte QoS entry has
+   `+0x44 == -1` before cleanup. If it does, reverse the assignment path for that
+   peer/member handle; if it does not, follow the ordinary loop state that
+   suppresses peer secure-association creation.
+3. Do not change operation-5 ordering or serialization without new evidence; the
+   current one-result reply was sufficient for correct candidate identity,
+   traversal, and QoS on this run.
 4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-5. Preserve the prior run as the baseline: corrected service-17 replies,
-   two-result self-inclusive finds, session updates, and repeated direct
-   `0x0d`/`0x0c` plus `0x28`/`0x29` exchanges succeeded in both directions, but
-   no peer DTLS started.
+5. Preserve this run as the baseline: stable asymmetric discovery, operation-2
+   slot/attribute updates, and repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29`
+   exchanges succeeded, but no peer DTLS started.
 
 ## Current implementation areas
 
