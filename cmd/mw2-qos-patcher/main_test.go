@@ -12,9 +12,31 @@ func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	openCallOffset := branchOffsetTo(t, wrapper, cellFsOpenVMA)
+	for offset, want := range map[int]uint32{
+		-28: 0x3c600070,
+		-24: 0x6063963c,
+		-20: 0x38800601,
+		-16: 0x38a103f0,
+		-12: 0x38c00000,
+		-8:  0x38e00000,
+		-4:  0x39000000,
+	} {
+		if instruction := binary.BigEndian.Uint32(wrapper[openCallOffset+offset : openCallOffset+offset+4]); instruction != want {
+			t.Fatalf("open argument instruction at %+d=%08x want=%08x", offset, instruction, want)
+		}
+	}
+
 	writeCallOffset := branchOffsetTo(t, wrapper, cellFsWriteVMA)
-	if instruction := binary.BigEndian.Uint32(wrapper[writeCallOffset-28 : writeCallOffset-24]); instruction != 0x806103f0 {
-		t.Fatalf("write descriptor load=%08x want=806103f0", instruction)
+	for offset, want := range map[int]uint32{
+		-16: 0x806103f0,
+		-12: 0x38810128,
+		-8:  0x7f65db78,
+		-4:  0x38c103e0,
+	} {
+		if instruction := binary.BigEndian.Uint32(wrapper[writeCallOffset+offset : writeCallOffset+offset+4]); instruction != want {
+			t.Fatalf("write argument instruction at %+d=%08x want=%08x", offset, instruction, want)
+		}
 	}
 
 	closeCallOffset := branchOffsetTo(t, wrapper, cellFsCloseVMA)
@@ -31,7 +53,7 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 	if len(wrapper) > int(wrapperLimitVMA-wrapperVMA) {
 		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-wrapperVMA)
 	}
-	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/tmp/mw2_qos.bin\x00")) {
+	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/mw2_qos.bin\x00")) {
 		t.Fatal("wrapper is missing the telemetry path suffix")
 	}
 	for _, instruction := range []uint32{
@@ -52,8 +74,9 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 		0x80ea0038,
 		0x80ca003c,
 		0x81080044,
-		0x38a00060,
-		0x38a000c0,
+		0x3b600060,
+		0x3b6000c0,
+		0x7f65db78,
 	} {
 		var encoded [4]byte
 		binary.BigEndian.PutUint32(encoded[:], instruction)
@@ -65,7 +88,7 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 	for _, target := range []uint64{cffCalleeVMA, cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
 		branchOffsetTo(t, wrapper, target)
 	}
-	for offset := 0; offset+4 <= len(wrapper)-len("/dev_hdd0/tmp/mw2_qos.bin\x00"); offset += 4 {
+	for offset := 0; offset+4 <= len(wrapper)-len("/dev_hdd0/mw2_qos.bin\x00"); offset += 4 {
 		instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4])
 		if instruction>>26 != 18 {
 			continue
@@ -91,8 +114,8 @@ func TestBuildWrapperUsesVersionTwoFixedRecords(t *testing.T) {
 	for _, field := range [][]byte{
 		{0x3c, 0x00, 0x51, 0x4f, 0x60, 0x00, 0x53, 0x31, 0x90, 0x0c, 0x00, 0x00},
 		{0x38, 0x00, 0x00, 0x02, 0xb0, 0x0c, 0x00, 0x04},
-		{0x38, 0xa0, 0x00, recordSize},
-		{0x38, 0xa0, 0x00, recordSize * 2},
+		{0x3b, 0x60, 0x00, recordSize},
+		{0x3b, 0x60, 0x00, recordSize * 2},
 	} {
 		if !bytes.Contains(wrapper, field) {
 			t.Fatalf("wrapper is missing record field %x", field)

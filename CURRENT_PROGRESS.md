@@ -1,10 +1,9 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-31 after extending the QoS telemetry to capture the
-outer `sub_2FA008` counters, selected candidate addresses, and the next
-`sub_CFF28` matchmaking phases. Matchmaking operation `5` now uses asymmetric
-owner exclusion; a live two-client retest with the version-2 diagnostic ELF is
-required to confirm whether peer DTLS begins._
+_Last updated: 2026-07-31 after fixing the version-2 QoS wrapper's
+`cellFsWrite` ABI corruption and moving its output to `/dev_hdd0/mw2_qos.bin`.
+Matchmaking operation `5` uses asymmetric owner exclusion; the corrected
+diagnostic ELF must now be copied, resigned, and live-tested with both clients._
 
 ## Executive summary
 
@@ -571,8 +570,8 @@ calls to `sub_320048` in the type-1 flow, at `0x2FA390` and `0x2FA7A0`, with a
 branch to a wrapper in verified zero padding at `0x709280`. The executable LOAD
 is extended to include the wrapper without shifting existing file data.
 
-The wrapper appends 52-byte big-endian records to
-`/dev_hdd0/tmp/mw2_qos.bin`, restores the volatile integer state and special
+The original version-1 wrapper appended 52-byte big-endian records to
+`/dev_hdd0/tmp/mw2_qos.bin`, restored the volatile integer state and special
 registers, calls the original `sub_320048`, and returns through the untouched
 continuation. Each record is `"QOS1"`, version `0x0001`, tag byte (`1` = abort
 call at `0x2FA390`, `2` = accepted-candidate call at `0x2FA7A0`), seven zero
@@ -631,16 +630,18 @@ The first telemetry ELF did reach both hook sites: RPCS3 opened
 However, the file remained zero bytes because the wrapper loaded stack offset
 `0xA8` (the tag byte) as the descriptor for `cellFsWrite` and `cellFsClose`
 instead of the descriptor returned by `cellFsOpen` at `0xD4`; RPCS3 logged
-`CELL_EBADF` writes. The patcher now uses `0xD4` for both calls and has a
-regression test that resolves the emitted branch targets and checks their
-preceding descriptor loads. The rebuilt diagnostic ELF at the same path has
-SHA-256 `f5731e1dcf393186d836da62a5b7d9c49718db049d1573a2048ee16f27b67c6b` and
+`CELL_EBADF` writes. The version-1 patcher correction uses `0xD4` for both calls
+and has a regression test that resolves the emitted branch targets and checks
+their preceding descriptor loads. That rebuilt diagnostic ELF at the same path
+has SHA-256 `f5731e1dcf393186d836da62a5b7d9c49718db049d1573a2048ee16f27b67c6b` and
 still changes no matchmaking decision.
 
 The diagnostic patcher has now been extended to version-2 fixed records. It
 still hooks the abort and accepted `sub_320048` calls, but it saves the outer
 matchmaking object from incoming `r27` before the original call clobbers
-nonvolatile state. Each 96-byte big-endian record contains magic `"QOS1"`,
+nonvolatile state. Version 2 writes to `/dev_hdd0/mw2_qos.bin`: RPCS3 returned
+`CELL_ENOENT` for the previous `/dev_hdd0/tmp` path. Each 96-byte big-endian
+record contains magic `"QOS1"`,
 version `2`, tag, phase, the captured inner-object address, `r27`,
 `candidateCount` (`r27+0x5B0`), `completedQoS` (`r27+0xE4C`), `failedQoS`
 (`r27+0xE50`), all four selected-candidate addresses from
@@ -658,7 +659,18 @@ extends the executable LOAD only into verified zero padding, and preserves the
 original call return value and saved state. A verified local build from the
 exact TU0 input produced `/tmp/opencode/default_mp.qos-v2.elf` with SHA-256
 `038095b972c559f73f112cc01ae7bc8629835f47e9224495e25f0ee3cc0c034f`;
-it has not yet been copied/resigned or run in RPCS3.
+that build is obsolete and must not be resigned. A later RPCS3 run showed its
+`cellFsWrite` call as
+`sys_fs_write(fd=0, buf=0xD000000001883D78, nbytes=0xD000000001883EA8)` and
+then faulted reading that impossible range. The wrapper loaded the correct file
+descriptor but reused `r5` for the byte count; the preceding `cellFsOpen` wrapper
+preserved `r5`, leaving the count equal to the output-count pointer. The corrected
+wrapper now holds the 96-byte record length in nonvolatile `r27`, passes
+`r5 = r27`, and restores the caller's original `r27`. Regression tests assert the
+complete open/write argument sequence. A verified fresh build from the exact TU0
+input produced `/tmp/opencode/default_mp.qos-v2-fixed.elf` with SHA-256
+`4a516649d681c3c0af499aaadfb95d353ffc6728f3bb774d0158e8461fb8f7e4`; it must
+now be copied to the resigner workspace, resigned, and run in RPCS3.
 
 ## Prior playlist dump diagnostic
 
@@ -713,9 +725,9 @@ begins.
    physical PS3. The first session creator should receive zero candidates and
    the later creator should receive only the first creator. Confirm that the
    later client enters peer QoS/DTLS and joins the first client's lobby.
-2. If matchmaking still restarts, correct or replace the telemetry wrapper so it
-   records the actual type-1 counters and the pre/post-`sub_CFF28` state, while
-   retaining the abort versus accepted path tag.
+2. Build and resign the corrected version-2 telemetry ELF, run both clients,
+   and inspect `/dev_hdd0/mw2_qos.bin` for the actual type-1 counters and the
+   pre/post-`sub_CFF28` state while retaining the abort versus accepted path tag.
 3. Reverse the remaining candidate/host-selection path after `sub_CFF28` if the
    creation-order retest does not advance matchmaking.
 4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
