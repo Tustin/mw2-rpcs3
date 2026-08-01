@@ -13,10 +13,12 @@ func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 	}
 
 	openCallOffset := branchOffsetTo(t, wrapper, cellFsOpenVMA)
+	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
+	pathAddress := wrapperVMA + uint64(bytes.LastIndex(wrapper, path))
 	for offset, want := range map[int]uint32{
-		-28: 0x3c600070,
-		-24: 0x6063963c,
-		-20: 0x38800601,
+		-28: 0x3c600000 | uint32(pathAddress>>16),
+		-24: 0x60630000 | uint32(pathAddress&0xffff),
+		-20: 0x38800441,
 		-16: 0x38a103f0,
 		-12: 0x38c00000,
 		-8:  0x38e00000,
@@ -53,9 +55,10 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 	if len(wrapper) > int(wrapperLimitVMA-wrapperVMA) {
 		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-wrapperVMA)
 	}
-	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/mw2_qos.bin\x00")) {
-		t.Fatal("wrapper is missing the telemetry path suffix")
+	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/tmp/qos.bin\x00")) {
+		t.Fatal("wrapper is missing the telemetry path")
 	}
+
 	for _, instruction := range []uint32{
 		0x38000002,
 		0xb00c0004,
@@ -91,7 +94,7 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 	for _, target := range []uint64{cffCalleeVMA, cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
 		branchOffsetTo(t, wrapper, target)
 	}
-	for offset := 0; offset+4 <= len(wrapper)-len("/dev_hdd0/mw2_qos.bin\x00"); offset += 4 {
+	for offset := 0; offset+4 <= len(wrapper)-len("/dev_hdd0/tmp/qos.bin\x00"); offset += 4 {
 		instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4])
 		if instruction>>26 != 18 {
 			continue

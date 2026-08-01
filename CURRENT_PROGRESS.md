@@ -557,17 +557,32 @@ The first unresolved transition is now after successful QoS and performance
 fetch. No peer-DTLS packet follows. Both clients continue operation-5 searches
 and repeat traversal/QoS; each initially reports one filled private slot, and
 the PS3 later deletes its session when the run ends. Static analysis has now
-located the acceptance/ranking boundary. `sub_2FAC00` filters duplicate active
+located the acceptance/ranking boundary and the downstream secure-association
+key assignment. `sub_2FAC00` filters duplicate active
 session IDs, initializes the per-search QoS result object, and queues task type
 `1`. The type-1 completion path in `sub_2FA008` computes progress as
 `100 * completedQoS / candidateCount`, waits for completion or a stall timeout,
 then calls `sub_31FDD0`; that check accepts only when
-`acceptedCandidates == completedQoS + failedQoS`. It always tears down the QoS
+`candidateCount == completedQoS + failedQoS`. It always tears down the QoS
 result afterward, and only the accepted branch additionally calls `sub_CFF28`
 to advance matchmaking. Therefore the observed operation-5 restart is no longer
 an unknown post-performance decision: at least one candidate remains unaccounted
 for, or none is promoted into the accepted-candidate count, at the type-1 QoS
 completion boundary.
+
+Further TU0 analysis corrects the meaning of the selected 80-byte entry's
+`+0x44` field. `QoSEntry_Init` (`0x2FC4A0`) initializes it to `0`, not `-1`.
+`CommonAddr_ComputeHash` (`0x281340`) computes the canonical 32-bit hash from a
+CommonAddr; both establishment paths store that result into `+0x44` at
+`0x301E9C` and `0x302368`. `SecureAssoc_FindByEntryHash` (`0x2FD288`) then reads
+`+0x44` as its lookup key, and `SecureAssoc_CreateForEntry` (`0x2FD408`) copies
+it into the newly allocated association object. Consequently the cleanup check
+`+0x44 == -1` means "invalid/unassigned lookup key," while `0` is only the
+pre-assignment initializer. If phase 2 never obtains a nonzero/non-`-1` value,
+the failure is before secure-association lookup: the selected entry never
+receives the CommonAddr hash. If it does obtain a hash, the next diagnostic
+boundary is `SecureAssoc_FindByEntryHash`/`SecureAssoc_CreateForEntry`, not the
+operation-5 reply codec.
 
 A surgical RPCS3 diagnostic ELF is now available at
 `/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf`; its
@@ -771,20 +786,74 @@ It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; both the old
 crashing wrapper and invalid debug-FSELF variants remain backed up, and the old
 telemetry output was removed.
 
+The version-2 wrapper path was changed to `/dev_hdd0/tmp/qos.bin` after RPCS3
+returned `CELL_FS_EACCES` for `/dev_hdd0/mw2_qos.bin`. The patcher diagnostic
+and its path-sensitive regression test now match the embedded path. Rebuilt ELF
+SHA-256: `980b1a8ffce02845056fb55929103e07425f20109a90656805a93b1ae74f8188`.
+It was repackaged with `scetool` from the same retail template; decrypting the
+SELF reproduces the ELF byte-for-byte. New retail SELF SHA-256:
+`4300e447fd5f02b65317e8310014ea32279aab6f815e84b601c462265500d6bc`.
+It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the previous
+retail build is backed up as `default_mp.self.pre-qos-tmp-path`.
+
+The next live run still created no telemetry file. The wrapper's embedded path
+had been shortened, but its hard-coded `lis`/`ori` pair still loaded the old
+suffix address `0x70963c`; at that address the new string contains only
+`"qos.bin"`, so `cellFsOpen` never received `/dev_hdd0/tmp/qos.bin`. The patcher
+now derives the path address from the final wrapper layout and patches the load
+instructions accordingly, with a regression test tied to the actual embedded
+string offset. Tests and `go vet` pass. Corrected ELF SHA-256:
+`daa4d4fd9d726863dae81eea88fb6545804b7340ec3e41098eebb58ca68c8cec`.
+The repackaged SELF decrypts to that ELF byte-for-byte; SELF SHA-256:
+`df31ad6eb741935c534cd319af304d12c42f5a6aafe6c1d52ec76d740debc241`.
+It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the prior
+broken-path build is backed up as `default_mp.self.pre-qos-pathptr-fix`.
+
+The following live run confirmed all three patched call sites reached the
+wrapper and that `cellFsOpen` received the correct path, but RPCS3 reported
+`flags=03001` followed by `CELL_ENOENT`. The wrapper had used immediate `0x0601`
+as though the SDK constants were hexadecimal; PS3 filesystem flags are octal,
+so that value supplied truncate/append without `CELL_FS_O_CREAT`. The patcher
+now changes the open flags to `03001` (`0x0c01`: write-only, create, truncate,
+append), with a regression assertion on the instruction before `cellFsOpen`.
+Tests and `go vet` pass. Corrected ELF SHA-256:
+`23aac62fc28151137597e092762d9433e2ff876f0891035a9cfd30abdc9071a8`.
+The repackaged SELF decrypts to that ELF byte-for-byte; SELF SHA-256:
+`6dde4708b344997d3399872fb28eb85c83b6c85738e3f4492bf5cd2eaba4b04e`.
+It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the previous
+no-create build is backed up as `default_mp.self.pre-qos-createflag-fix`.
+
+That build crashed RPCS3 inside `sys_fs_open` on the first matchmaking wrapper
+call. The live context showed `r4=0x0c01` (`flags=06001`), and RPCS3 explicitly
+documents truncate+append as an unsupported combination that may throw. The
+wrapper does not require truncation because every record is appended, so the
+patcher now uses `CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_APPEND`:
+octal `02101`, immediate `0x0441`. Tests and `go vet` pass. Corrected ELF
+SHA-256: `177e2a0a629c36dd4ff1bc29c802f1cb750016e15d6729c0ce2d3861451cc817`.
+The repackaged SELF decrypts to that ELF byte-for-byte; SELF SHA-256:
+`7763a7ef4351852cc074ca788338eedd8c4d4c44056e47c94d9eca9f941c96aa`.
+It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the crashing
+truncate+append build is backed up as `default_mp.self.pre-qos-trunc-append-fix`.
+
 1. Rerun both clients with the corrected version-2 SELF and collect
-   `/dev_hdd0/mw2_qos.bin`. Decode the real outer matchmaking pointer, candidate
+   `/dev_hdd0/tmp/qos.bin`. Decode the real outer matchmaking pointer, candidate
    count, completed/failed QoS counters, selected-candidate addresses, slot
    state, and phase-1/phase-2 records around `sub_CFF28`.
-2. Use the new records to determine whether the selected 80-byte QoS entry has
-   `+0x44 == -1` before cleanup. If it does, reverse the assignment path for that
-   peer/member handle; if it does not, follow the ordinary loop state that
-   suppresses peer secure-association creation.
-3. Do not change operation-5 ordering or serialization without new evidence; the
+2. Read the selected 80-byte entry's `+0x44` as a CommonAddr hash/secure-
+   association lookup key. `0` is the initializer, `-1` is explicitly invalid,
+   and a normal established entry should contain the value returned by
+   `CommonAddr_ComputeHash`. If phase 2 still has `0` or `-1`, trace why neither
+   establishment path at `0x301E9C`/`0x302368` assigned the hash.
+3. If phase 2 has a normal hash but peer DTLS still does not begin, instrument
+   `SecureAssoc_FindByEntryHash` (`0x2FD288`) and
+   `SecureAssoc_CreateForEntry` (`0x2FD408`) to distinguish failed lookup,
+   allocation/creation suppression, and a later state-machine rejection.
+4. Do not change operation-5 ordering or serialization without new evidence; the
    current one-result reply was sufficient for correct candidate identity,
    traversal, and QoS on this run.
-4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
+5. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-5. Preserve this run as the baseline: stable asymmetric discovery, operation-2
+6. Preserve this run as the baseline: stable asymmetric discovery, operation-2
    slot/attribute updates, and repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29`
    exchanges succeeded, but no peer DTLS started.
 

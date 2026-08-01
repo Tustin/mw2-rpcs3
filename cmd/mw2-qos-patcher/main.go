@@ -158,7 +158,7 @@ func run(inputPath, outputPath string, force bool) error {
 	fmt.Printf("abort call 0x%x -> wrapper, tag 1\n", abortCallVMA)
 	fmt.Printf("accept call 0x%x -> wrapper, tag 2 phase 0\n", acceptCallVMA)
 	fmt.Printf("CFF call 0x%x -> wrapper, tag 2 phases 1 and 2\n", cffCallVMA)
-	fmt.Printf("record: %d-byte version-2 records appended to /dev_hdd0/mw2_qos.bin\n", recordSize)
+	fmt.Printf("record: %d-byte version-2 records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
 	fmt.Printf("input SHA-256:  %s\n", inputHash)
 	fmt.Printf("output SHA-256: %s\n", outputHash)
 	fmt.Printf("wrote %s\n", outputPath)
@@ -250,8 +250,24 @@ func buildWrapper() ([]byte, error) {
 		0x7f, 0x65, 0xdb, 0x78, 0x38, 0xc1, 0x03, 0xe0, 0x4b, 0xe1, 0xcd, 0x0d, 0xe8, 0x41, 0x00, 0x28,
 		0x80, 0x61, 0x03, 0xf0, 0x4b, 0xe1, 0xcb, 0xc1, 0xe8, 0x41, 0x00, 0x28, 0xe9, 0x21, 0x03, 0xd8,
 		0x7d, 0x28, 0x03, 0xa6, 0x4e, 0x80, 0x00, 0x20, 0x2f, 0x64, 0x65, 0x76, 0x5f, 0x68, 0x64, 0x64,
-		0x30, 0x2f, 0x6d, 0x77, 0x32, 0x5f, 0x71, 0x6f, 0x73, 0x2e, 0x62, 0x69, 0x6e, 0x00,
+		0x30, 0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x71, 0x6f, 0x73, 0x2e, 0x62, 0x69, 0x6e, 0x00,
 	}
+	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
+	pathOffset := bytes.LastIndex(wrapper, path)
+	loadPath := []byte{0x3c, 0x60, 0x00, 0x70, 0x60, 0x63, 0x96, 0x3c}
+	loadOffset := bytes.Index(wrapper, loadPath)
+	if pathOffset < 0 || loadOffset < 0 || bytes.Count(wrapper, loadPath) != 1 {
+		return nil, errors.New("locate telemetry path load")
+	}
+	pathAddress := wrapperVMA + uint64(pathOffset)
+	binary.BigEndian.PutUint32(wrapper[loadOffset:loadOffset+4], 0x3c600000|uint32(pathAddress>>16))
+	binary.BigEndian.PutUint32(wrapper[loadOffset+4:loadOffset+8], 0x60630000|uint32(pathAddress&0xffff))
+	openFlags := []byte{0x38, 0x80, 0x06, 0x01}
+	flagsOffset := bytes.Index(wrapper, openFlags)
+	if flagsOffset < 0 || bytes.Count(wrapper, openFlags) != 1 {
+		return nil, errors.New("locate telemetry open flags")
+	}
+	binary.BigEndian.PutUint32(wrapper[flagsOffset:flagsOffset+4], 0x38800441)
 	return wrapper, nil
 }
 
