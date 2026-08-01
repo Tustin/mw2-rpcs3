@@ -758,11 +758,18 @@ branches, without link, to the ordinary `sub_320048` path. Regression tests now
 assert the dispatcher words and require the clear-QoS branch's link bit to be
 zero. Rebuilt ELF SHA-256:
 `af685196f74a412b0d6dfc15e7c2ff1af0f2a9bea7f112ad5adab13e0dbb2b06`.
-Signed SELF SHA-256:
-`9330eb74c18d36a487d6605ced9eaba95e17cb93ccf278d00aa4d3634885e16e`.
-The fixed SELF is deployed to
-`dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the crashing version is backed
-up as `default_mp.self.qos-v2-crashing`, and the old telemetry output was removed.
+
+The first packaging attempt used `make_fself` and produced a debug FSELF (key
+revision `DEBUG`, SHA-256
+`9330eb74c18d36a487d6605ced9eaba95e17cb93ccf278d00aa4d3634885e16e`), which
+failed immediately when MW2 tried to spawn multiplayer. That artifact is invalid
+for this deployment. The ELF was repackaged with `scetool`, using the prior
+loadable retail SELF as the template and compressed encrypted sections. A decrypt
+round-trip exactly reproduces the fixed ELF. Correct retail SELF SHA-256:
+`50f4b6430a2826ab924aff45c90e127915a6f3b06156ed7eba23ac02bb3e3279`.
+It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; both the old
+crashing wrapper and invalid debug-FSELF variants remain backed up, and the old
+telemetry output was removed.
 
 1. Rerun both clients with the corrected version-2 SELF and collect
    `/dev_hdd0/mw2_qos.bin`. Decode the real outer matchmaking pointer, candidate
