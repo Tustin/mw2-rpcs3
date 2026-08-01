@@ -84,7 +84,10 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 			t.Fatalf("wrapper is missing instruction %08x", instruction)
 		}
 	}
-	branchOffsetToAny(t, wrapper, clearQoSCalleeVMA)
+	clearOffset := branchOffsetToAny(t, wrapper, clearQoSCalleeVMA)
+	if instruction := binary.BigEndian.Uint32(wrapper[clearOffset : clearOffset+4]); instruction&1 != 0 {
+		t.Fatalf("clear-QoS branch=%08x has link bit set", instruction)
+	}
 	for _, target := range []uint64{cffCalleeVMA, cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
 		branchOffsetTo(t, wrapper, target)
 	}
@@ -102,6 +105,29 @@ func TestBuildWrapperCapturesOuterStateAndCFFPhases(t *testing.T) {
 			if uint64(target) != clearQoSCalleeVMA && (target < int64(wrapperVMA) || target >= int64(wrapperLimitVMA)) {
 				t.Fatalf("relative branch at wrapper+0x%x targets 0x%x outside wrapper", offset, target)
 			}
+		}
+	}
+}
+
+func TestBuildWrapperDispatchesByLowReturnAddress(t *testing.T) {
+	wrapper, err := buildWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for offset, want := range map[int]uint32{
+		0x60: 0x7d2802a6,
+		0x64: 0x79290420,
+		0x68: 0x2809a7bc,
+		0x6c: 0x41820090,
+		0x70: 0x39000001,
+		0x74: 0x2809a7a4,
+		0x78: 0x40820008,
+		0x7c: 0x39000002,
+		0x80: 0x39200000,
+		0x84: 0x7c6a1b78,
+	} {
+		if instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4]); instruction != want {
+			t.Fatalf("dispatcher instruction at wrapper+0x%x=%08x want=%08x", offset, instruction, want)
 		}
 	}
 }

@@ -1,10 +1,10 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-01 after the stable-ordering live retest.
-The physical PS3 started first, RPCS3 consistently received only that session,
-and both clients completed direct traversal and repeated QoS. No peer DTLS
-followed, so the remaining failure is after accepted QoS rather than in central
-discovery ordering or operation-5 serialization._
+_Last updated: 2026-08-01 after diagnosing the first version-2 telemetry run.
+The server again delivered the physical PS3 session and RPCS3 completed direct
+QoS, but the diagnostic wrapper crashed before peer DTLS by passing `r3 = 1` to
+`sub_CFF28`. The wrapper dispatch/register bug is fixed, rebuilt, signed, and
+deployed for another live retest._
 
 ## Executive summary
 
@@ -745,17 +745,26 @@ tears down the inner QoS object, calls `sub_CFF28(r18)`, then immediately resume
 the ordinary matchmaking loop. `sub_CFF28` only clears an 80-byte result entry's
 active byte when its field at `+0x44` is `-1`.
 
-The existing version-2 artifact was reproduced byte-for-byte from reconstructed
-TU0 input: output SHA-256
-`4a516649d681c3c0af499aaadfb95d353ffc6728f3bb774d0158e8461fb8f7e4`.
-Its signed SELF SHA-256 is
-`6fc00525671e80540d4bb83c166ba7609b9012b3f25dd56f4552984792c0ea2a`.
-It is now deployed to RPCS3 as
-`dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the prior SELF is preserved as
-`default_mp.self.pre-qos-v2`, and the old `dev_hdd0/mw2_qos.bin` was removed so
-the next run starts with clean telemetry.
+The first version-2 live run reached the accepted QoS path, but the diagnostic
+itself crashed RPCS3 at `sub_CFF28`. `RPCS3.log` recorded CIA `0x000CFF28`, LR
+`0x00709398`, and an unmapped read at `0x3D`; the register dump showed `r3 = 1`.
+The wrapper compared only an unmasked 64-bit LR against 16-bit return offsets, so
+it misclassified the CFF hook as the abort hook. The abort path then used a
+linking call after restoring the caller stack and fell through into the CFF path,
+where `ld r3,0x48(r1)` loaded `1` from the wrong frame.
 
-1. Rerun both clients with the deployed version-2 SELF and collect
+The corrected wrapper masks LR to its low 16 bits before dispatch and tail-
+branches, without link, to the ordinary `sub_320048` path. Regression tests now
+assert the dispatcher words and require the clear-QoS branch's link bit to be
+zero. Rebuilt ELF SHA-256:
+`af685196f74a412b0d6dfc15e7c2ff1af0f2a9bea7f112ad5adab13e0dbb2b06`.
+Signed SELF SHA-256:
+`9330eb74c18d36a487d6605ced9eaba95e17cb93ccf278d00aa4d3634885e16e`.
+The fixed SELF is deployed to
+`dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the crashing version is backed
+up as `default_mp.self.qos-v2-crashing`, and the old telemetry output was removed.
+
+1. Rerun both clients with the corrected version-2 SELF and collect
    `/dev_hdd0/mw2_qos.bin`. Decode the real outer matchmaking pointer, candidate
    count, completed/failed QoS counters, selected-candidate addresses, slot
    state, and phase-1/phase-2 records around `sub_CFF28`.
