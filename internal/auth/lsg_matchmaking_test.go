@@ -582,7 +582,13 @@ func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 		t.Fatalf("later creator found=%x want first creator=%x own=%x", found, requesterSessionID, peerSessionID)
 	}
 
-	store.deleteOwner(peer.connectionID)
+	store.deleteOwner(requester.connectionID)
+	_, replacementReply, replacementHandled := requester.handleMatchmakingTask(
+		buildMW2SessionObjectRequest(bdMatchmakingCreateSession),
+	)
+	if !replacementHandled || !requester.lastTaskSupported {
+		t.Fatalf("replacement create handled=%v supported=%v reply=%x", replacementHandled, requester.lastTaskSupported, replacementReply)
+	}
 	_, reply, handled := requester.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
 		2,
 		50,

@@ -64,7 +64,7 @@ func TestMW2MatchmakingStoreSortsAndCapsBySessionID(t *testing.T) {
 	}
 }
 
-func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedBeforeOwner(t *testing.T) {
+func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedByEarlierOwners(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	validInfo := func() mw2MatchmakingInfo {
 		return mw2MatchmakingInfo{
@@ -100,6 +100,21 @@ func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedBeforeOwner(t *testing.T) 
 	}
 	if found[0].sessionID != first.sessionID && found[0].sessionID != second.sessionID {
 		t.Fatalf("third owner found a non-earlier session: %+v", found)
+	}
+
+	if !store.delete(first.sessionID[:], 7) {
+		t.Fatal("failed to delete first owner's original session")
+	}
+	firstReplacement, err := store.create(validInfo(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := store.findEarlierThanOwner(3, 0, false, 7); len(found) != 0 {
+		t.Fatalf("first owner replacement found later sessions: %+v", found)
+	}
+	found = store.findEarlierThanOwner(3, 0, false, 8)
+	if len(found) != 1 || found[0].sessionID != firstReplacement.sessionID {
+		t.Fatalf("second owner candidates=%+v want replacement=%x", found, firstReplacement.sessionID)
 	}
 }
 

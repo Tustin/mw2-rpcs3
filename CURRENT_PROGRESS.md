@@ -1,9 +1,10 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-07-31 after fixing the version-2 QoS wrapper's
-`cellFsWrite` ABI corruption and moving its output to `/dev_hdd0/mw2_qos.bin`.
-Matchmaking operation `5` uses asymmetric owner exclusion; the corrected
-diagnostic ELF must now be copied, resigned, and live-tested with both clients._
+_Last updated: 2026-08-01 after the first live asymmetric-matchmaking retest.
+The trace proved both clients complete direct traversal and repeated QoS, but
+also exposed unstable host ordering when MW2 deletes and recreates a session.
+Creation priority is now stable for the lifetime of each LSG connection and
+must be live-tested with the physical PS3 starting matchmaking first._
 
 ## Executive summary
 
@@ -12,11 +13,13 @@ encrypted Lobby Service Gateway (LSG) handshake, storage, and playlist loading.
 The retail `playlists.info` has been retrieved, the storage flow works live, and
 the game client accepts the emulated server's playlist. Two live clients now
 find one another and complete direct traversal and QoS. Corrected performance
-replies are accepted, and telemetry proves both clients pass the type-1 QoS gate,
-but the self-inclusive operation-5 results leave each accepted state carrying
-its own session identity and matchmaking restarts before peer DTLS. The server
-now excludes the requesting connection's sessions from operation-5 replies; the
-next task is a live two-client retest.
+replies are accepted, and telemetry proves both clients pass the type-1 QoS gate.
+The first asymmetric-operation-5 retest exposed a lifecycle bug: the physical
+PS3 deleted and recreated its matchmaking session, and the store assigned that
+replacement a later creation rank than RPCS3. That inverted the intended host
+priority and eventually made both clients receive zero candidates. Session rank
+is now stable per LSG connection across delete/recreate cycles; the next task is
+a live two-client retest of that correction.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -711,6 +714,22 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
+The 2026-08-01 live retest confirms the asymmetric result policy reaches the
+peer network stage. RPCS3 received the physical PS3's exact common address,
+session ID, and security key, then exchanged repeated `0x0d`/`0x0c` traversal
+and `0x28`/`0x29` QoS packets with `192.168.0.199:3074`. The RPCS3 probe used
+the advertised PS3 session ID's shrunken value, so the candidate identity and
+address serialization are working. No peer DTLS packet followed.
+
+The same log exposed why the creation-ordered policy became unstable. The PS3
+created first, then deleted and recreated its matchmaking session while keeping
+the same LSG connection. The store ranked each new session rather than each
+connection, so the replacement was ordered after RPCS3. RPCS3 initially found
+the PS3, but later searches returned zero; the PS3 also returned zero because
+RPCS3 was no longer earlier than its replacement. `mw2MatchmakingStore` now
+assigns one stable order to each LSG connection and reuses it across session
+recreation. Unit and two-client flow coverage include this lifecycle.
+
 The rebuilt patcher was deployed successfully and produced nonempty telemetry,
 but its assumed object layout was wrong. The useful result is the hook tag:
 all 83 records are tag `2`, proving that both clients pass the type-1 acceptance
@@ -721,10 +740,11 @@ state consumed by `sub_31FDD0` / `0x2FA758..0x2FA7A0`. It should also capture
 state immediately before and after `sub_CFF28`, where the confirmed loop now
 begins.
 
-1. Live-retest the creation-ordered operation-5 replies with RPCS3 and the
-   physical PS3. The first session creator should receive zero candidates and
-   the later creator should receive only the first creator. Confirm that the
-   later client enters peer QoS/DTLS and joins the first client's lobby.
+1. Live-retest stable per-connection operation-5 ordering with the physical
+   PS3 starting first. Its delete/recreate cycle must preserve first-host
+   priority: the PS3 should receive zero candidates and RPCS3 should continue
+   receiving only the PS3 replacement session instead of dropping to zero.
+   Confirm whether completed QoS now advances into peer DTLS and lobby join.
 2. Build and resign the corrected version-2 telemetry ELF, run both clients,
    and inspect `/dev_hdd0/mw2_qos.bin` for the actual type-1 counters and the
    pre/post-`sub_CFF28` state while retaining the abort versus accepted path tag.

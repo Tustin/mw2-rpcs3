@@ -24,10 +24,11 @@ type mw2StoredMatchmakingSession struct {
 }
 
 type mw2MatchmakingStore struct {
-	mu                sync.RWMutex
-	maxSessions       int
-	nextCreationOrder uint64
-	sessions          map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
+	mu             sync.RWMutex
+	maxSessions    int
+	nextOwnerOrder uint64
+	ownerOrders    map[uint64]uint64
+	sessions       map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
 }
 
 func newMW2MatchmakingStore() *mw2MatchmakingStore {
@@ -40,6 +41,7 @@ func newMW2MatchmakingStoreWithLimit(maxSessions int) *mw2MatchmakingStore {
 	}
 	return &mw2MatchmakingStore{
 		maxSessions: maxSessions,
+		ownerOrders: make(map[uint64]uint64),
 		sessions:    make(map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession),
 	}
 }
@@ -102,8 +104,13 @@ func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (m
 			)
 		}
 		if _, exists := s.sessions[session.sessionID]; !exists {
-			s.nextCreationOrder++
-			session.creationOrder = s.nextCreationOrder
+			ownerOrder := s.ownerOrders[ownerID]
+			if ownerOrder == 0 {
+				s.nextOwnerOrder++
+				ownerOrder = s.nextOwnerOrder
+				s.ownerOrders[ownerID] = ownerOrder
+			}
+			session.creationOrder = ownerOrder
 			s.sessions[session.sessionID] = session
 			s.mu.Unlock()
 			return session, nil
