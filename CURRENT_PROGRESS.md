@@ -1,10 +1,13 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-01 after diagnosing the first version-2 telemetry run.
+_Last updated: 2026-08-01 after correcting service-17 raw-field endianness.
 The server again delivered the physical PS3 session and RPCS3 completed direct
-QoS, but the diagnostic wrapper crashed before peer DTLS by passing `r3 = 1` to
-`sub_CFF28`. The wrapper dispatch/register bug is fixed, rebuilt, signed, and
-deployed for another live retest._
+QoS, but the first version-2 diagnostic wrapper crashed before peer DTLS by
+passing `r3 = 1` to `sub_CFF28`. The wrapper dispatch/register bug remains fixed
+and deployed. Static review also found that operation-2 status/performance fields
+were emitted little-endian even though the recovered MW2 result reader consumes
+raw big-endian U32 values; the server and regression test now use the correct
+byte order and require another live retest._
 
 ## Executive summary
 
@@ -20,9 +23,11 @@ received exactly the PS3 session, including the correct common address, generate
 session ID, security key, slot counts, and all nine attributes. Traversal and QoS
 completed repeatedly with valid replies, but no peer-DTLS Init followed. The PS3
 deleted its session near the end and did not recreate it; only then did RPCS3
-correctly fall to zero candidates. The next task is therefore to instrument and
-reverse the accepted-candidate transition around `sub_CFF28`, not to change
-operation-5 ordering again.
+correctly fall to zero candidates. The next live task is therefore to retest the
+corrected service-17 raw-field endianness with the fixed diagnostic wrapper,
+then use its counters to reverse
+the accepted-candidate transition around `sub_CFF28`; operation-5 ordering
+should not be changed again.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -532,9 +537,14 @@ big-endian U32 performance value. The consumer copies that final value directly
 into the candidate's 32-bit performance field, and zero is rejected by the
 client as unusable. This supersedes the earlier Ghosts-derived typed-I64
 assumption. The server now emits `raw status 0`, `typed U64 entity ID`, and `raw
-performance 1` per result. The regression test decodes that exact sequence and
-requires the nonzero value. This correction still requires a fresh RPCS3
-validation. Session updates from `openPrivate=8, filledPrivate=0` to
+performance 1` per result. A subsequent codec audit found that the generic raw
+U32 writer serialized those two raw fields least-significant byte first, while
+the recovered MW2 reader explicitly reverses four wire bytes into host order.
+Status zero hid the mismatch, but performance `1` arrived as `0x01000000` rather
+than `1`. The service-17 response now emits both raw U32 fields in big-endian
+byte order, and the regression test reconstructs the performance field with
+`binary.BigEndian` and requires exactly `1`. This correction still requires a
+fresh RPCS3 validation. Session updates from `openPrivate=8, filledPrivate=0` to
 `openPrivate=7, filledPrivate=1` occurred in the prior run, but both clients
 continued candidate evaluation rather than beginning peer DTLS. The exact retail
 service-17 reply remains unavailable because the retail LSG capture is encrypted

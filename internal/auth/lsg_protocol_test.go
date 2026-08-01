@@ -198,9 +198,16 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 		if got, err := reader.readU64(); err != nil || got != entityID {
 			t.Fatalf("entity=%016x want=%016x err=%v", got, entityID, err)
 		}
-		value, err := reader.bits.readBits(32)
-		if err != nil || value != 1 {
-			t.Fatalf("performance=%d err=%v", value, err)
+		var valueBytes [4]byte
+		for i := range valueBytes {
+			value, err := reader.bits.readBits(8)
+			if err != nil {
+				t.Fatalf("performance byte %d err=%v", i, err)
+			}
+			valueBytes[i] = byte(value)
+		}
+		if value := binary.BigEndian.Uint32(valueBytes[:]); value != 1 {
+			t.Fatalf("performance=%d bytes=%x", value, valueBytes)
 		}
 	}
 }
