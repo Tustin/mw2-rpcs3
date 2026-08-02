@@ -7,14 +7,14 @@ import (
 )
 
 func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
-	wrapper, err := buildWrapper()
+	wrapper, err := buildJoinWrapper()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	openCallOffset := branchOffsetTo(t, wrapper, cellFsOpenVMA)
+	openCallOffset := branchOffsetToFrom(t, wrapper, joinWrapperVMA, cellFsOpenVMA)
 	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
-	pathAddress := wrapperVMA + uint64(bytes.LastIndex(wrapper, path))
+	pathAddress := joinWrapperVMA + uint64(bytes.LastIndex(wrapper, path))
 	for offset, want := range map[int]uint32{
 		-28: 0x3c600000 | uint32(pathAddress>>16),
 		-24: 0x60630000 | uint32(pathAddress&0xffff),
@@ -29,7 +29,7 @@ func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 		}
 	}
 
-	writeCallOffset := branchOffsetTo(t, wrapper, cellFsWriteVMA)
+	writeCallOffset := branchOffsetToFrom(t, wrapper, joinWrapperVMA, cellFsWriteVMA)
 	for offset, want := range map[int]uint32{
 		-16: 0x806100f0,
 		-12: 0x38810100,
@@ -41,19 +41,46 @@ func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 		}
 	}
 
-	closeCallOffset := branchOffsetTo(t, wrapper, cellFsCloseVMA)
+	closeCallOffset := branchOffsetToFrom(t, wrapper, joinWrapperVMA, cellFsCloseVMA)
 	if instruction := binary.BigEndian.Uint32(wrapper[closeCallOffset-4 : closeCallOffset]); instruction != 0x806100f0 {
 		t.Fatalf("close descriptor load=%08x want=806100f0", instruction)
 	}
 }
 
-func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
+func TestBuildWrapperRetainsVersionTwoQoSDispatch(t *testing.T) {
 	wrapper, err := buildWrapper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(wrapper) > int(wrapperLimitVMA-wrapperVMA) {
-		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-wrapperVMA)
+	for _, field := range [][]byte{
+		{0x28, 0x09, 0xa7, 0xbc},
+		{0x28, 0x09, 0xa7, 0xa4},
+		{0x4b, 0xc1, 0x6c, 0xd0},
+		{0x4b, 0x9c, 0x6b, 0x95},
+	} {
+		if !bytes.Contains(wrapper, field) {
+			t.Fatalf("QoS wrapper is missing dispatcher field %x", field)
+		}
+	}
+	for _, joinReturn := range [][]byte{
+		{0x28, 0x09, 0xdc, 0x04},
+		{0x28, 0x09, 0xdc, 0x34},
+		{0x28, 0x09, 0xdc, 0x54},
+		{0x28, 0x09, 0xdc, 0x70},
+	} {
+		if bytes.Contains(wrapper, joinReturn) {
+			t.Fatalf("QoS wrapper unexpectedly handles join return %x", joinReturn)
+		}
+	}
+}
+
+func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
+	wrapper, err := buildJoinWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) > int(wrapperLimitVMA-joinWrapperVMA) {
+		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-joinWrapperVMA)
 	}
 	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/tmp/qos.bin\x00")) {
 		t.Fatal("wrapper is missing the telemetry path")
@@ -90,7 +117,7 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 		}
 	}
 	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
-		branchOffsetTo(t, wrapper, target)
+		branchOffsetToFrom(t, wrapper, joinWrapperVMA, target)
 	}
 	for offset, target := range map[int]uint64{
 		0x214: joinTestCalleeVMA,
@@ -102,7 +129,7 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 		if displacement&0x02000000 != 0 {
 			displacement -= 0x04000000
 		}
-		resolved := uint64(int64(wrapperVMA+uint64(offset)) + displacement)
+		resolved := uint64(int64(joinWrapperVMA+uint64(offset)) + displacement)
 		if instruction>>26 != 18 || resolved != target || instruction&1 != 0 {
 			t.Fatalf("tail branch at 0x%x instruction=%08x target=0x%x", offset, instruction, resolved)
 		}
@@ -110,7 +137,7 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 }
 
 func TestBuildWrapperDispatchesJoinStagesByLowReturnAddress(t *testing.T) {
-	wrapper, err := buildWrapper()
+	wrapper, err := buildJoinWrapper()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +159,7 @@ func TestBuildWrapperDispatchesJoinStagesByLowReturnAddress(t *testing.T) {
 }
 
 func TestBuildWrapperUsesVersionThreeFixedRecords(t *testing.T) {
-	wrapper, err := buildWrapper()
+	wrapper, err := buildJoinWrapper()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,9 +176,14 @@ func TestBuildWrapperUsesVersionThreeFixedRecords(t *testing.T) {
 
 func branchOffsetTo(t *testing.T, code []byte, target uint64) int {
 	t.Helper()
+	return branchOffsetToFrom(t, code, wrapperVMA, target)
+}
+
+func branchOffsetToFrom(t *testing.T, code []byte, base, target uint64) int {
+	t.Helper()
 	for offset := 0; offset+4 <= len(code); offset += 4 {
 		instruction := binary.BigEndian.Uint32(code[offset : offset+4])
-		address := wrapperVMA + uint64(offset)
+		address := base + uint64(offset)
 		resolved, err := branchTarget(address, instruction)
 		if err == nil && resolved == target {
 			return offset
