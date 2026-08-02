@@ -173,7 +173,7 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -182,16 +182,7 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 	usePrivateSlots bool,
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true, false)
-}
-
-func (s *mw2MatchmakingStore) findEarlierThanOwner(
-	maxResults int32,
-	requiredFreeSlots int32,
-	usePrivateSlots bool,
-	ownerID uint64,
-) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true, true)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true)
 }
 
 func (s *mw2MatchmakingStore) findMatching(
@@ -200,30 +191,14 @@ func (s *mw2MatchmakingStore) findMatching(
 	usePrivateSlots bool,
 	excludedOwnerID uint64,
 	excludeOwner bool,
-	earlierThanOwner bool,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
 	}
 	s.mu.RLock()
-	ownerCreationOrder := uint64(0)
-	if earlierThanOwner {
-		for _, session := range s.sessions {
-			if session.ownerID == excludedOwnerID &&
-				(ownerCreationOrder == 0 || session.creationOrder < ownerCreationOrder) {
-				ownerCreationOrder = session.creationOrder
-			}
-		}
-		if ownerCreationOrder == 0 {
-			earlierThanOwner = false
-		}
-	}
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
-			continue
-		}
-		if earlierThanOwner && session.creationOrder >= ownerCreationOrder {
 			continue
 		}
 		openSlots := session.openPublic
@@ -236,6 +211,9 @@ func (s *mw2MatchmakingStore) findMatching(
 	}
 	s.mu.RUnlock()
 	sort.Slice(result, func(i, j int) bool {
+		if result[i].creationOrder != result[j].creationOrder {
+			return result[i].creationOrder < result[j].creationOrder
+		}
 		return bytes.Compare(result[i].sessionID[:], result[j].sessionID[:]) < 0
 	})
 	if int64(len(result)) > int64(maxResults) {

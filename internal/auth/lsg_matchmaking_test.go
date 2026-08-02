@@ -501,7 +501,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
+func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	requester := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	peer := &lsgConnection{connectionID: 2, matchmakingSessions: store}
@@ -539,7 +539,7 @@ func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 	requesterSessionID := readCreatedSessionID(requesterCreateReply)
 	peerSessionID := readCreatedSessionID(peerCreateReply)
 
-	findSessionID := func(connection *lsgConnection, expectedCount uint32) []byte {
+	findSessionIDs := func(connection *lsgConnection, expectedCount uint32) [][]byte {
 		t.Helper()
 		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
 			2,
@@ -562,24 +562,22 @@ func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 		if count, err := reader.readU32(); err != nil || count != expectedCount {
 			t.Fatalf("count=%d want=%d err=%v reply=%x", count, expectedCount, err, reply)
 		}
-		if expectedCount == 0 {
-			return nil
+		sessionIDs := make([][]byte, 0, expectedCount)
+		for index := uint32(0); index < expectedCount; index++ {
+			info, err := readMW2MatchmakingInfo(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sessionIDs = append(sessionIDs, info.sessionID)
 		}
-		if _, err := reader.readBlob(mw2MatchmakingCommonAddressSize); err != nil {
-			t.Fatal(err)
-		}
-		sessionID, err := reader.readBlob(mw2MatchmakingSessionIDSize)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return sessionID
+		return sessionIDs
 	}
 
-	if found := findSessionID(requester, 0); found != nil {
-		t.Fatalf("first creator found=%x want no candidates own=%x peer=%x", found, requesterSessionID, peerSessionID)
-	}
-	if found := findSessionID(peer, 1); !bytes.Equal(found, requesterSessionID) {
-		t.Fatalf("later creator found=%x want first creator=%x own=%x", found, requesterSessionID, peerSessionID)
+	for _, connection := range []*lsgConnection{requester, peer} {
+		found := findSessionIDs(connection, 2)
+		if !bytes.Equal(found[0], requesterSessionID) || !bytes.Equal(found[1], peerSessionID) {
+			t.Fatalf("self-inclusive order=%x want first=%x second=%x", found, requesterSessionID, peerSessionID)
+		}
 	}
 
 	store.deleteOwner(requester.connectionID)
@@ -589,8 +587,10 @@ func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 	if !replacementHandled || !requester.lastTaskSupported {
 		t.Fatalf("replacement create handled=%v supported=%v reply=%x", replacementHandled, requester.lastTaskSupported, replacementReply)
 	}
-	if found := findSessionID(requester, 1); !bytes.Equal(found, peerSessionID) {
-		t.Fatalf("replacement creator found=%x want older peer=%x", found, peerSessionID)
+	replacementSessionID := readCreatedSessionID(replacementReply)
+	found := findSessionIDs(requester, 2)
+	if !bytes.Equal(found[0], peerSessionID) || !bytes.Equal(found[1], replacementSessionID) {
+		t.Fatalf("replacement order=%x want older=%x replacement=%x", found, peerSessionID, replacementSessionID)
 	}
 }
 

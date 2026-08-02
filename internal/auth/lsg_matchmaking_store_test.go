@@ -47,24 +47,27 @@ func TestMW2MatchmakingStoreDeepCopiesSessionData(t *testing.T) {
 	}
 }
 
-func TestMW2MatchmakingStoreSortsAndCapsBySessionID(t *testing.T) {
+func TestMW2MatchmakingStoreSortsAndCapsByCreationOrder(t *testing.T) {
 	store := newMW2MatchmakingStore()
-	store.sessions[[mw2MatchmakingSessionIDSize]byte{3}] = mw2StoredMatchmakingSession{
-		sessionID: [mw2MatchmakingSessionIDSize]byte{3},
-	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
-		sessionID: [mw2MatchmakingSessionIDSize]byte{1},
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
+		creationOrder: 3,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{3}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{3},
+		creationOrder: 1,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
-		sessionID: [mw2MatchmakingSessionIDSize]byte{2},
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
+		creationOrder: 2,
 	}
 	found := store.find(2, 0, false)
-	if len(found) != 2 || found[0].sessionID[0] != 1 || found[1].sessionID[0] != 2 {
+	if len(found) != 2 || found[0].sessionID[0] != 3 || found[1].sessionID[0] != 2 {
 		t.Fatalf("find order/cap=%+v", found)
 	}
 }
 
-func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedByEarlierOwners(t *testing.T) {
+func TestMW2MatchmakingStoreReturnsSelfInclusiveSessionsInCreationOrder(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	validInfo := func() mw2MatchmakingInfo {
 		return mw2MatchmakingInfo{
@@ -87,40 +90,22 @@ func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedByEarlierOwners(t *testing
 		t.Fatal(err)
 	}
 
-	if found := store.findEarlierThanOwner(2, 0, false, 7); len(found) != 0 {
-		t.Fatalf("first owner found later sessions: %+v", found)
-	}
-	found := store.findEarlierThanOwner(2, 0, false, 8)
-	if len(found) != 1 || found[0].sessionID != first.sessionID {
-		t.Fatalf("second owner candidates=%+v want first=%x", found, first.sessionID)
-	}
-	found = store.findEarlierThanOwner(1, 0, false, 9)
-	if len(found) != 1 || found[0].sessionID == third.sessionID {
-		t.Fatalf("third owner capped candidates=%+v", found)
-	}
-	if found[0].sessionID != first.sessionID && found[0].sessionID != second.sessionID {
-		t.Fatalf("third owner found a non-earlier session: %+v", found)
+	found := store.find(3, 0, false)
+	if len(found) != 3 ||
+		found[0].sessionID != first.sessionID ||
+		found[1].sessionID != second.sessionID ||
+		found[2].sessionID != third.sessionID {
+		t.Fatalf("self-inclusive creation order=%+v", found)
 	}
 
-	if !store.delete(first.sessionID[:], 7) {
-		t.Fatal("failed to delete first owner's original session")
+	firstInfo := first.info()
+	firstInfo.openPublic = 0
+	if _, ok := store.update(firstInfo, 7); !ok {
+		t.Fatal("failed to update first session")
 	}
-	_, err = store.create(validInfo(), 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found = store.findEarlierThanOwner(3, 0, false, 7)
-	if len(found) != 2 {
-		t.Fatalf("replacement owner candidates=%+v want second=%x third=%x", found, second.sessionID, third.sessionID)
-	}
-	foundSecond := found[0].sessionID == second.sessionID || found[1].sessionID == second.sessionID
-	foundThird := found[0].sessionID == third.sessionID || found[1].sessionID == third.sessionID
-	if !foundSecond || !foundThird {
-		t.Fatalf("replacement owner candidates=%+v want second=%x third=%x", found, second.sessionID, third.sessionID)
-	}
-	found = store.findEarlierThanOwner(3, 0, false, 8)
-	if len(found) != 0 {
-		t.Fatalf("second owner found newer replacement: %+v", found)
+	found = store.find(3, 0, false)
+	if len(found) != 3 || found[0].sessionID != first.sessionID {
+		t.Fatalf("update changed creation order: %+v", found)
 	}
 }
 

@@ -288,11 +288,10 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 	case bdMatchmakingFindSessions:
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
-			sessions := c.matchmakingStore().findEarlierThanOwner(
+			sessions := c.matchmakingStore().find(
 				request.maxResults,
 				request.search.requiredFreeSlots,
 				request.search.gameType != 0,
-				c.connectionID,
 			)
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}

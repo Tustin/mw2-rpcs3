@@ -743,6 +743,20 @@ multiplayer executable was correctly deployed as `default_mp.self`.
 
 Current matchmaking-lobby work:
 
+The 2026-08-02 retail two-PS3 capture
+`captures/mw2_ps3_both_matchmaking.pcapng` supersedes the asymmetric directory
+policy. Both active lobby TCP streams receive repeated 289-byte encrypted
+service replies; this is the exact wire length of a service-5 operation-5 reply
+containing two 131-byte session results. The later seeker then sends the retail
+peer sequence to the earlier host: type-`0x0d` traversal, followed by a 16-byte
+type-`1` bdDTLS Init carrying the selected host's eight-byte session ID. The
+retail directory is therefore self-inclusive for both clients. Host selection is
+preserved by returning eligible sessions in monotonic creation order, with the
+earliest advertisement first, rather than suppressing self and later sessions.
+The Go server now uses this self-inclusive creation-order result policy; the
+older asymmetric tests and encrypted two-client flow were updated accordingly.
+A physical-PS3/RPCS3 retest is required.
+
 The 2026-08-01 live retest confirms the asymmetric result policy reaches the
 peer network stage. RPCS3 received the physical PS3's exact common address,
 session ID, and security key, then exchanged repeated `0x0d`/`0x0c` traversal
