@@ -845,27 +845,66 @@ The repackaged SELF decrypts to that ELF byte-for-byte; SELF SHA-256:
 It is deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the crashing
 truncate+append build is backed up as `default_mp.self.pre-qos-trunc-append-fix`.
 
-1. Rerun both clients with the corrected version-2 SELF and collect
-   `/dev_hdd0/tmp/qos.bin`. Decode the real outer matchmaking pointer, candidate
-   count, completed/failed QoS counters, selected-candidate addresses, slot
-   state, and phase-1/phase-2 records around `sub_CFF28`.
-2. Read the selected 80-byte entry's `+0x44` as a CommonAddr hash/secure-
-   association lookup key. `0` is the initializer, `-1` is explicitly invalid,
-   and a normal established entry should contain the value returned by
-   `CommonAddr_ComputeHash`. If phase 2 still has `0` or `-1`, trace why neither
-   establishment path at `0x301E9C`/`0x302368` assigned the hash.
-3. If phase 2 has a normal hash but peer DTLS still does not begin, instrument
-   `SecureAssoc_FindByEntryHash` (`0x2FD288`) and
-   `SecureAssoc_CreateForEntry` (`0x2FD408`) to distinguish failed lookup,
-   allocation/creation suppression, and a later state-machine rejection.
-4. Do not change operation-5 ordering or serialization without new evidence; the
-   current one-result reply was sufficient for correct candidate identity,
-   traversal, and QoS on this run.
-5. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
+The corrected version-2 live run produced `/dev_hdd0/tmp/qos.bin`: 6624 bytes,
+exactly 69 valid 96-byte big-endian records, comprising 23 repeated phase-0,
+phase-1, phase-2 triplets. Every phase-0 record reaches the accepted call at
+`0x2FA7A0` with outer pointer `0x01F15174`, `candidateCount=1`,
+`completedQoS=1`, `failedQoS=0`, and the saved result-array field still
+`0x02731810`. The wrapper's phase-0 `candidate` field equals the outer pointer
+because that hook runs before the CFF caller establishes its candidate pointer;
+it is not evidence that the two objects alias.
+
+Every phase-1 record at `0x2FA7B8` calls `sub_CFF28` with the valid result-list
+object `0x008C1750`, whose entry array is `0x008C38D0`, count is `0x32` (50),
+exactly one entry has a nonzero leading byte, all 50 entry pointers are non-null,
+and the first entry whose `+0x44` field is `-1` is index 0. Every phase-2 record
+returns normally with the same object and array, but the nonzero-leading-byte
+count changes from 1 to 0 while the non-null pointer count and first `-1` index
+remain unchanged. This exactly matches `sub_CFF28`: it clears byte 0 of entries
+whose `+0x44 == -1`; it does not promote a candidate or initiate networking.
+
+This resolves the prior confidence boundary. QoS completion and accepted-path
+dispatch are both working, `sub_CFF28` receives the correct object and returns,
+and the repeated search cycle is not caused by the earlier invalid `r3` wrapper
+bug. The retained candidate identity words vary as monotonic runtime values while
+the pointer and counts remain stable; they are diagnostic state, not a missing
+session promotion signal. The first unresolved transition is now after accepted
+QoS cleanup, in the ordinary matchmaking state-machine consumer that should turn
+the retained successful result into join/secure-association work.
+
+1. Trace the owner and consumers of result-list object `dword_74C884` after
+   `sub_2FA008` returns, especially reads of the 50-entry array at object `+0x38`,
+   entry byte 0, and entry pointer at `+0x48`.
+2. Correlate those consumers with RPCS3 network traces and the next task/state
+   assignments to identify why no join or peer-DTLS task is queued after the
+   accepted callback.
+3. Instrument or patch only that exact downstream consumer; do not change QoS,
+   service-17 serialization, operation-5 ordering, or `sub_CFF28`, which the
+   version-2 telemetry now clears.
+4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
-6. Preserve this run as the baseline: stable asymmetric discovery, operation-2
+5. Preserve this run as the baseline: stable asymmetric discovery, operation-2
    slot/attribute updates, and repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29`
-   exchanges succeeded, but no peer DTLS started.
+   exchanges succeeded, accepted QoS cleanup completed normally, but no peer
+   DTLS started.
+
+The next diagnostic build is ready. Version-3 telemetry replaces the five
+join-pipeline edges in `sub_2FD758` at `0x2FDC00`, `0x2FDC30`, `0x2FDC50`,
+`0x2FDC6C`, and `0x2FDC90` with a register-preserving wrapper. It appends one
+96-byte tag-3 record to `/dev_hdd0/tmp/qos.bin` before each edge and then
+continues to the original `sub_D2468`, `sub_D26E0`, `sub_CED10`, or rejection
+path without adding a new link on the original tail branch. Stages 1 through 5
+capture the call arguments, produced sockaddr fields, join-ready byte, controller
+state, join state, lobby object pointers, and candidate identity words. The
+patcher now validates the exact TU0 instruction windows and resolves the original
+branch targets independently of the BL link bit; tests and `go vet ./...` pass.
+The verified input was `mw2_latest_clean.elf.bak` with SHA-256
+`16523486aa1c148eb7e19c40ae98763ec2c85b660dabd46131adb34f815495fb`.
+The generated ELF is
+`/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-v3.elf`, SHA-256
+`977df858c3b53747ffee327c59966613f2bf40ca68e44ace21ba1df5ac590834`.
+Its executable LOAD ends at `0x7094B6`; objdump verification confirms all five
+sites branch to wrapper VMA `0x709280`. It has not yet been resigned or deployed.
 
 ## Current implementation areas
 

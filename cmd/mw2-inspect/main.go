@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -20,9 +21,10 @@ import (
 func main() {
 	max := flag.Uint("max-frame", 1<<20, "maximum payload bytes")
 	jsonl := flag.Bool("jsonl", false, "read capture JSONL instead of raw frames")
+	qos := flag.Bool("qos", false, "read fixed-size QoS telemetry records")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: mw2-inspect [-jsonl] FILE")
+		fmt.Fprintln(os.Stderr, "usage: mw2-inspect [-jsonl|-qos] FILE")
 		os.Exit(2)
 	}
 	file, err := os.Open(flag.Arg(0))
@@ -30,11 +32,60 @@ func main() {
 		fatal(err)
 	}
 	defer file.Close()
+	if *qos {
+		inspectQoS(file)
+		return
+	}
 	if *jsonl {
 		inspectJSONL(file, uint32(*max))
 		return
 	}
 	inspectFrames(file, uint32(*max))
+}
+
+func inspectQoS(r io.Reader) {
+	const recordSize = 96
+	record := make([]byte, recordSize)
+	for index := 0; ; index++ {
+		_, err := io.ReadFull(r, record)
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			fatal(err)
+		}
+		if string(record[:4]) != "QOS1" {
+			fatal(fmt.Errorf("record %d has invalid magic %x", index, record[:4]))
+		}
+		version := binary.BigEndian.Uint16(record[4:6])
+		tag := binary.BigEndian.Uint16(record[6:8])
+		if version != 3 || tag != 3 {
+			fmt.Printf("record=%d version=%d tag=%d raw=%s\n", index, version, tag, hex.EncodeToString(record))
+			continue
+		}
+		fmt.Printf("record=%d version=%d tag=%d stage=%d call_r3=%016x call_r4=%016x sockaddr_len=%d sockaddr_family=%d remote=%d.%d.%d.%d:%d global_port=%d ready=%d controller_state=%d join_state=%d lobby_r28=%016x lobby_r27=%016x lobby_r30=%016x r31_id=%08x r27_id=%08x r30_id=%08x lobby_r31=%016x\n",
+			index,
+			version,
+			tag,
+			binary.BigEndian.Uint16(record[8:10]),
+			binary.BigEndian.Uint64(record[16:24]),
+			binary.BigEndian.Uint64(record[24:32]),
+			record[32], record[33],
+			record[36], record[37], record[38], record[39],
+			binary.BigEndian.Uint16(record[34:36]),
+			binary.BigEndian.Uint16(record[40:42]),
+			record[42],
+			record[43],
+			binary.BigEndian.Uint32(record[44:48]),
+			binary.BigEndian.Uint64(record[48:56]),
+			binary.BigEndian.Uint64(record[56:64]),
+			binary.BigEndian.Uint64(record[64:72]),
+			binary.BigEndian.Uint32(record[72:76]),
+			binary.BigEndian.Uint32(record[76:80]),
+			binary.BigEndian.Uint32(record[80:84]),
+			binary.BigEndian.Uint64(record[88:96]),
+		)
+	}
 }
 
 func inspectFrames(r io.Reader, max uint32) {
@@ -76,7 +127,7 @@ func inspectJSONL(r io.Reader, max uint32) {
 
 type inspectionSession struct {
 	authResponse auth.ParsedLegacySuccessResponse
-	platformKey [24]byte
+	platformKey  [24]byte
 	hasAuth      bool
 	hasKey       bool
 }
