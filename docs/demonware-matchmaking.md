@@ -335,9 +335,11 @@ continues through the no-sessions path.
 - caps the process-wide directory at 4096 sessions;
 - shares one mutex-protected directory across retail LSG connections; and
 - emits exact zero/nonempty operation-5 results in deterministic ID order; and
-- uses creation order for deterministic host election: a requester's session is
-  excluded, the first creator receives zero candidates, and each later creator
-  receives only compatible sessions created before its own.
+- uses active-session creation order for deterministic host election: a requester's
+  session is excluded, the first active creator receives zero candidates, and each
+  later active creator receives only compatible sessions created before its own.
+  A delete/recreate receives a fresh position rather than retaining its connection's
+  former priority.
 
 The creation-order filter is a compatibility policy, not a recovered wire field.
 It prevents symmetric two-client searches from electing one another while

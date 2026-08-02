@@ -105,16 +105,22 @@ func TestMW2MatchmakingStoreReturnsOnlySessionsCreatedByEarlierOwners(t *testing
 	if !store.delete(first.sessionID[:], 7) {
 		t.Fatal("failed to delete first owner's original session")
 	}
-	firstReplacement, err := store.create(validInfo(), 7)
+	_, err = store.create(validInfo(), 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if found := store.findEarlierThanOwner(3, 0, false, 7); len(found) != 0 {
-		t.Fatalf("first owner replacement found later sessions: %+v", found)
+	found = store.findEarlierThanOwner(3, 0, false, 7)
+	if len(found) != 2 {
+		t.Fatalf("replacement owner candidates=%+v want second=%x third=%x", found, second.sessionID, third.sessionID)
+	}
+	foundSecond := found[0].sessionID == second.sessionID || found[1].sessionID == second.sessionID
+	foundThird := found[0].sessionID == third.sessionID || found[1].sessionID == third.sessionID
+	if !foundSecond || !foundThird {
+		t.Fatalf("replacement owner candidates=%+v want second=%x third=%x", found, second.sessionID, third.sessionID)
 	}
 	found = store.findEarlierThanOwner(3, 0, false, 8)
-	if len(found) != 1 || found[0].sessionID != firstReplacement.sessionID {
-		t.Fatalf("second owner candidates=%+v want replacement=%x", found, firstReplacement.sessionID)
+	if len(found) != 0 {
+		t.Fatalf("second owner found newer replacement: %+v", found)
 	}
 }
 

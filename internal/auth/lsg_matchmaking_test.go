@@ -589,26 +589,8 @@ func TestMW2FindSessionsAssignsFirstCreatorAsHost(t *testing.T) {
 	if !replacementHandled || !requester.lastTaskSupported {
 		t.Fatalf("replacement create handled=%v supported=%v reply=%x", replacementHandled, requester.lastTaskSupported, replacementReply)
 	}
-	_, reply, handled := requester.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
-		2,
-		50,
-		mw2MatchmakingSearch{},
-	))
-	if !handled || !requester.lastTaskSupported {
-		t.Fatalf("solo find handled=%v supported=%v reply=%x", handled, requester.lastTaskSupported, reply)
-	}
-	reader := mustBDTaskReplyReader(t, reply)
-	if _, err := reader.readU64(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.readU32(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.readU8(); err != nil {
-		t.Fatal(err)
-	}
-	if count, err := reader.readU32(); err != nil || count != 0 {
-		t.Fatalf("solo count=%d err=%v reply=%x", count, err, reply)
+	if found := findSessionID(requester, 1); !bytes.Equal(found, peerSessionID) {
+		t.Fatalf("replacement creator found=%x want older peer=%x", found, peerSessionID)
 	}
 }
 

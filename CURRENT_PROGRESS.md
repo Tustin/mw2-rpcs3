@@ -1,13 +1,14 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-01 after correcting service-17 raw-field endianness.
-The server again delivered the physical PS3 session and RPCS3 completed direct
-QoS, but the first version-2 diagnostic wrapper crashed before peer DTLS by
-passing `r3 = 1` to `sub_CFF28`. The wrapper dispatch/register bug remains fixed
-and deployed. Static review also found that operation-2 status/performance fields
-were emitted little-endian even though the recovered MW2 result reader consumes
-raw big-endian U32 values; the server and regression test now use the correct
-byte order and require another live retest._
+_Last updated: 2026-08-01 after correcting matchmaking recreation ordering.
+COD4 labeled matchmaking flow and MW2 TU0 cross-reference confirmed that the
+post-find transition remains client-side: candidate selection, address conversion,
+and join-state gates precede the peer connection attempt. No server wire-format
+change was justified. The process-wide directory did have a lifecycle bug: host
+priority was cached per LSG connection, so create/delete/create incorrectly kept
+an old session's priority. Creation order is now assigned to each active session;
+a replacement correctly sees older peers. The existing version-3 join-pipeline
+diagnostic ELF remains the next live step._
 
 ## Executive summary
 
@@ -887,6 +888,19 @@ the retained successful result into join/secure-association work.
    slot/attribute updates, and repeated direct `0x0d`/`0x0c` plus `0x28`/`0x29`
    exchanges succeeded, accepted QoS cleanup completed normally, but no peer
    DTLS started.
+
+Static comparison against the labeled COD4 executable maps MW2 TU0's same
+post-search pipeline through `sub_2FD758`: accepted candidates pass address
+conversion (`sub_D2468`/`sub_D26E0`), join-state gates, and the terminal
+`sub_CED10` transition before peer networking. This supports retaining the
+current backend response boundary rather than inventing another Demonware task.
+A server-side audit did find and correct one independent lifecycle defect in the
+compatibility directory. Creation order had been retained per LSG connection,
+which made a deleted-and-recreated advertisement keep its former host priority.
+Each successful create now receives a fresh monotonically increasing active-session
+order. Regression coverage proves that a replacement owner receives older peers
+while those peers do not receive the newer replacement. `go test ./...` and
+`go vet ./...` pass.
 
 The next diagnostic build is ready. Version-3 telemetry replaces the five
 join-pipeline edges in `sub_2FD758` at `0x2FDC00`, `0x2FDC30`, `0x2FDC50`,
