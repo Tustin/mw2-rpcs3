@@ -20,8 +20,9 @@ wire layouts are not imported where the MW2 ELF differs.
 | zero results are accepted by the client container | >95% |
 | op-1/op-2 nine-I32 extension and nonempty-result echo | >99% |
 | meanings and order of all seven op-5 query I32s | >95% |
-| compatibility equality for game type/mode, netcode, map packs, and playlist version | crash-capture-derived safety gate; implemented |
-| performance comparison | unproven; intentionally not implemented |
+| compatibility equality for unranked/ranked game type | >95%; slot-pool selector must match |
+| game mode, netcode, playlist version, and performance comparison | disproven by successful retail two-PS3 capture; intentionally not implemented |
+| map-pack comparison | unproven; intentionally not implemented |
 | unranked/ranked slot-pool condition (`openPrivate`/`openPublic >= requiredFreeSlots`) | >95% |
 | 25-byte common-address layout and create-to-result echo | >95% |
 | encrypted two-client storage-to-candidate server lifecycle | >95%; automated |
@@ -298,11 +299,14 @@ Completion `0x0031aa58` reads only the base object and never reads offsets
 `+0x24..+0x44`; their values do not affect candidate construction on this
 client path. Container `0x004ef168` accepts at most 50 results.
 
-An exhaustive write-reference audit found that this build leaves title fields
-`0..7` at their constructor value zero. Title field `8` (`+0x44`) is the
+An exhaustive write-reference audit found that this build normally leaves title
+fields `0..7` at their constructor value zero. Title field `8` (`+0x44`) is the
 current performance value: `0x003079fc..0x00307a00` stores it for create, and
-the same global is passed as query `q6` at `0x00305e90`. This proves that
-correspondence but not the retail backend's skill comparison policy.
+the same global is passed as query `q6` at `0x00305e90`. The successful retail
+two-PS3 capture confirms the wire correspondence: one host advertised field `8`
+as `1000` and searched with `q6=1000`, while the other advertised field `8` as
+`0` and searched with `q6=0`. Both operation-5 replies still contained both
+sessions, disproving exact performance equality as retail directory policy.
 
 Zero results are explicitly valid. The exact implemented body at transaction
 zero is:
@@ -338,25 +342,23 @@ continues through the no-sessions path.
 - binds mutation rights to the LSG connection that created the record;
 - caps the process-wide directory at 4096 sessions;
 - shares one mutex-protected directory across retail LSG connections; and
-- emits exact zero/nonempty operation-5 results in deterministic ID order; and
-- uses active-session creation order for deterministic host election: a requester's
-  session is excluded, the first active creator receives zero candidates, and each
-  later active creator receives only compatible sessions created before its own.
-  A delete/recreate receives a fresh position rather than retaining its connection's
-  former priority.
+- emits exact zero/nonempty operation-5 results in deterministic creation order;
+- includes the requester's own session, orders eligible sessions by creation, and
+  gives both clients the same directory snapshot once reciprocal advertisements
+  exist. A delete/recreate receives a fresh position rather than retaining its
+  connection's former priority.
 
-The creation-order filter is a compatibility policy, not a recovered wire field.
-It prevents symmetric two-client searches from electing one another while
-preserving the exact result object and leaving peer QoS/traversal responsible for
-validating the selected host. Connections without an owned session retain the
-broader directory-search behavior used by non-host callers and tests.
+Creation ordering is used only to keep returned snapshots deterministic and put
+the earliest advertisement first. The successful retail two-client flow is
+self-inclusive: both clients receive both advertisements before peer selection.
 
-The query meanings are recovered. The compatibility policy uses the recovered
-unranked flag to choose private or public slots and applies the directly
-justified free-slot requirement. The retail backend's comparison rules for
-playlist, netcode, map packs, playlist version, and performance remain below
-the confidence threshold, so the directory otherwise returns capped results
-without inventing comparisons. This is deliberately broader than the historical
+The query meanings are recovered. The compatibility policy requires the echoed
+unranked/ranked game type to match, uses it to choose private or public slots,
+and applies the directly justified free-slot requirement. The successful retail
+two-PS3 capture returned both sessions even though the peers differed in game
+mode, netcode version, playlist version, and performance, disproving equality
+filters for those fields. Map-pack comparison remains unproven, so the directory
+does not invent one. This is deliberately no narrower than the observed retail
 backend.
 
 Operation 4 remains unsupported until its exact result template and live use
@@ -404,8 +406,8 @@ concurrency, and race detection.
 3. Observe an actual service-5 op-5 payload and record its seven live values.
 4. Confirm the client accepts both zero-result and nonempty-result responses.
 5. Run two clients through create -> find -> update -> delete against the
-   shared directory and confirm creation-order host election: first creator gets
-   zero candidates, later creator gets the first creator.
+   shared directory and confirm both clients receive the same self-inclusive,
+   creation-ordered two-session snapshot before peer selection.
 6. Capture the post-find peer QoS/traversal and secure-association flows
    described in `demonware-peer-qos.md` and `demonware-peer-dtls.md`, then
    complete a joined match.

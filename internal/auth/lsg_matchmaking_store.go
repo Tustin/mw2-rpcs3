@@ -253,11 +253,7 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 }
 
 func mw2SessionMatchesSearch(session mw2StoredMatchmakingSession, search mw2MatchmakingSearch) bool {
-	return session.attributes[mw2MatchmakingAttributeGameType] == search.gameType &&
-		session.attributes[mw2MatchmakingAttributeGameMode] == search.gameMode &&
-		session.attributes[mw2MatchmakingAttributeNetcodeVersion] == search.netcodeVersion &&
-		session.attributes[mw2MatchmakingAttributeMapPackFlags] == search.mapPackFlags &&
-		session.attributes[mw2MatchmakingAttributePlaylistVersion] == search.playlistVersion
+	return session.attributes[mw2MatchmakingAttributeGameType] == search.gameType
 }
 
 func (s *mw2MatchmakingStore) findMatching(

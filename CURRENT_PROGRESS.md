@@ -1,15 +1,13 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-02 after comparing the successful two-PS3 retail capture
-with the failed RPCS3/PS3 custom-server capture. Retail holds the initial public
-find for roughly 4.47 seconds and then gives both clients the same two-session
-snapshot before peer testing starts. The custom server replied immediately to the
-first client with only its own session; the second client advertised 1.67 seconds
-later and started traversal from a different snapshot. The store now wakes a
-bounded five-second first self-only find when a second eligible advertisement
-arrives and another LSG client is active, while preserving self-inclusive,
-creation-ordered results and immediate solo or later-search behavior.
-A physical-PS3/RPCS3 retest is required._
+_Last updated: 2026-08-03 after comparing the no-games live retest with the
+successfully decrypted two-PS3 retail capture. The live server returned each
+client only its own session because the prior crash fix required equal game mode
+and netcode values. Retail returned both sessions despite those same fields—and
+playlist version and performance—differing. The directory now retains only the
+unranked/ranked game-type match, selected slot pool, free-slot requirement,
+self-inclusive creation ordering, and bounded reciprocal first-find wait. A
+physical-PS3/RPCS3 retest is required._
 
 ## Executive summary
 
@@ -330,9 +328,11 @@ performance. The directory uses the recovered unranked flag to select the slot p
 nonzero requires `openPrivate >= requiredFreeSlots`, while zero requires
 `openPublic >= requiredFreeSlots`. This is confirmed by the latest two-client
 trace: both searches carried `unranked=1`, both hosts advertised private slots,
-and the public-only filter incorrectly returned zero. The historical comparisons
-for the remaining five fields plus performance remain server-side and are
-intentionally not guessed. Full schemas and confidence boundaries are in
+and the public-only filter incorrectly returned zero. The successful retail
+two-PS3 capture disproves equality filters for game mode, netcode, playlist
+version, and performance. Map-pack comparison remains unproven; only game type,
+slot pool, and free slots are currently enforced. Full schemas and confidence
+boundaries are in
 `docs/demonware-matchmaking.md`.
 
 An active host forces operation `2` every 180 seconds. Dirty create/join/leave
@@ -762,21 +762,27 @@ second client advertised 1.67 seconds later and began peer testing against a
 different snapshot. A connection's first self-only find now waits up to five
 seconds when another LSG client is active and wakes on store changes.
 
-The vanilla-client crash capture
-`captures/mw2_rpcs3_ps3_crash.pcapng` showed that the reciprocal wait exposed a
-more important directory error. The two advertisements were not compatible:
-RPCS3 searched for game mode `0` and netcode `128`, while the physical PS3
-searched for game mode `1` and netcode `139`; their echoed title attributes also
-carried those differing values. The server nevertheless returned both sessions
-in 289-byte replies and the clients immediately attempted peer traversal. Retail
-two-result evidence only covers compatible advertisements. Operation-5 matching
-now requires the host's echoed game type, game mode, netcode version, map-pack
-flags, and playlist version to equal the search before applying the selected
-slot-pool/free-slot test. Performance remains unfiltered because no retail
-comparison rule is proven. A regression test reproduces the crash-capture values
-and requires each incompatible client to receive only its own result. This work
-uses only the retail and crash PCAPs; the QoS ELF patch is no longer required for
-the current server fix.
+The 2026-08-03 no-games retest confirmed the over-filter directly. The physical
+PS3 repeatedly advertised/searched game mode `1`, netcode `139`, while RPCS3
+advertised/searched game mode `0`, netcode `128`; both were unranked, used map
+packs `2`, playlist version `361`, required one slot, and advertised seven or
+eight open private slots. All 91 finds returned only the caller's own session, so
+the selected slot pool and wait path were not the blocker. The peer failed only
+the game-mode and netcode equality checks.
+
+The earlier crash-capture interpretation was incorrect. Direct decryption of the
+successful retail two-PS3 capture shows that its peers also differed materially:
+the earlier client searched with game mode `0`, netcode `128`, playlist version
+`361`, and performance `1000`, while the later client searched with game mode
+`1`, netcode `139`, playlist version `426`, and performance `0`. Their operation-1
+advertisements echoed the same differences, including advertisement field `8`
+matching search `q6` on each host. Both retail clients nevertheless received both
+sessions and proceeded to traversal/DTLS, so exact equality filters for game
+mode, netcode, playlist version, and performance are disproven. Map-pack flags
+were `2` for both clients, so that comparison remains unproven and is not
+invented. Operation-5 matching now retains only equal unranked/ranked game type,
+the selected slot pool, and required free slots. The regression test uses the
+successful retail values and requires both searches to receive both sessions.
 
 The 2026-08-01 live retest confirms the asymmetric result policy reaches the
 peer network stage. RPCS3 received the physical PS3's exact common address,

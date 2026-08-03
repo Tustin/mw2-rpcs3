@@ -603,7 +603,7 @@ func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsExcludesIncompatibleCrashCapturePeer(t *testing.T) {
+func TestMW2FindSessionsMatchesRetailTwoPS3Searches(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	first := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	second := &lsgConnection{connectionID: 2, matchmakingSessions: store}
@@ -613,7 +613,7 @@ func TestMW2FindSessionsExcludesIncompatibleCrashCapturePeer(t *testing.T) {
 		bytes.Repeat([]byte{0x22}, mw2MatchmakingSessionIDSize),
 		bytes.Repeat([]byte{0x33}, mw2MatchmakingSecurityKeySize),
 		[4]int32{0, 0, 8, 0},
-		[9]int32{1, 1, 361, 0, 128, 2, 0, 17, 0},
+		[9]int32{1, 1000, 361, 0, 128, 2, 0, 0, 0},
 	)
 	secondCreate := buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,
@@ -621,7 +621,7 @@ func TestMW2FindSessionsExcludesIncompatibleCrashCapturePeer(t *testing.T) {
 		bytes.Repeat([]byte{0x55}, mw2MatchmakingSessionIDSize),
 		bytes.Repeat([]byte{0x66}, mw2MatchmakingSecurityKeySize),
 		[4]int32{0, 0, 8, 0},
-		[9]int32{1, 1, 361, 0, 139, 2, 1, 0, 0},
+		[9]int32{1, 0, 426, 0, 139, 2, 1, 33, 0},
 	)
 	if _, _, handled := first.handleMatchmakingTask(firstCreate); !handled || !first.lastTaskSupported {
 		t.Fatal("first create failed")
@@ -653,11 +653,11 @@ func TestMW2FindSessionsExcludesIncompatibleCrashCapturePeer(t *testing.T) {
 		return count
 	}
 
-	if count := findCount(first, mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1}); count != 1 {
-		t.Fatalf("first search count=%d, want self only", count)
+	if count := findCount(first, mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1, performance: 1000}); count != 2 {
+		t.Fatalf("first retail search count=%d, want both sessions", count)
 	}
-	if count := findCount(second, mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1}); count != 1 {
-		t.Fatalf("second search count=%d, want self only", count)
+	if count := findCount(second, mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 426, requiredFreeSlots: 1}); count != 2 {
+		t.Fatalf("second retail search count=%d, want both sessions", count)
 	}
 }
 
@@ -772,29 +772,26 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	}
 
 	incompatible := eligible
-	incompatible.gameMode++
+	incompatible.gameType++
 	if count := resultCount(incompatible); count != 0 {
-		t.Fatalf("incompatible game mode returned sessions: count=%d", count)
+		t.Fatalf("incompatible game type returned sessions: count=%d", count)
 	}
-	incompatible = eligible
-	incompatible.netcodeVersion++
-	if count := resultCount(incompatible); count != 0 {
-		t.Fatalf("incompatible netcode version returned sessions: count=%d", count)
+	for name, change := range map[string]func(*mw2MatchmakingSearch){
+		"game mode":        func(search *mw2MatchmakingSearch) { search.gameMode++ },
+		"netcode version":  func(search *mw2MatchmakingSearch) { search.netcodeVersion++ },
+		"playlist version": func(search *mw2MatchmakingSearch) { search.playlistVersion++ },
+		"performance":      func(search *mw2MatchmakingSearch) { search.performance++ },
+	} {
+		variant := eligible
+		change(&variant)
+		if count := resultCount(variant); count != 1 {
+			t.Fatalf("%s filtering was added despite retail mismatch proof: count=%d", name, count)
+		}
 	}
-	incompatible = eligible
-	incompatible.mapPackFlags++
-	if count := resultCount(incompatible); count != 0 {
-		t.Fatalf("incompatible map-pack flags returned sessions: count=%d", count)
-	}
-	incompatible = eligible
-	incompatible.playlistVersion++
-	if count := resultCount(incompatible); count != 0 {
-		t.Fatalf("incompatible playlist version returned sessions: count=%d", count)
-	}
-	incompatible = eligible
-	incompatible.performance++
-	if count := resultCount(incompatible); count != 1 {
-		t.Fatalf("performance filtering was added without retail proof: count=%d", count)
+	mapPackVariant := eligible
+	mapPackVariant.mapPackFlags++
+	if count := resultCount(mapPackVariant); count != 1 {
+		t.Fatalf("map-pack filtering was added without retail proof: count=%d", count)
 	}
 
 	eligible.requiredFreeSlots = 5
