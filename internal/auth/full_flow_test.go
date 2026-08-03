@@ -255,7 +255,13 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 	findReply := client.exchange(
 		t,
 		bdServiceMatchmaking,
-		buildMW2FindSessionsRequestWithSearch(2, 50, mw2MatchmakingSearch{}),
+		buildMW2FindSessionsRequestWithSearch(2, 50, mw2MatchmakingSearch{
+			gameType:        1,
+			gameMode:        7,
+			netcodeVersion:  5,
+			mapPackFlags:    6,
+			playlistVersion: 3,
+		}),
 	)
 	if found := readFullFlowFindReply(t, findReply, 1); len(found) != 1 {
 		t.Fatalf("self-inclusive session disappeared across read deadlines: %+v", found)
@@ -418,7 +424,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		2,
 	}
 	hostCounts := [4]int32{0, 1, 8, 0}
-	hostAttributes := [9]int32{0, 0, 0, 0, 0, 0, 0, 0, 504}
+	hostAttributes := [9]int32{101, 0, 105, 0, 103, 104, 102, 0, 504}
 	createReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingCreateSession,
 		hostAddress,
@@ -485,7 +491,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	updatedAddress[21] = 8
 	updatedAddress[24] = 1
 	updatedCounts := [4]int32{0, 2, 7, 1}
-	updatedAttributes := [9]int32{9, 8, 7, 6, 5, 4, 3, 2, 505}
+	updatedAttributes := [9]int32{101, 8, 105, 6, 103, 104, 102, 2, 505}
 	updateReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingUpdateSession,
 		updatedAddress,

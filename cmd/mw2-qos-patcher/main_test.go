@@ -79,6 +79,14 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, unsafeLoad := range [][]byte{
+		{0x88, 0x19, 0x03, 0xd1},
+		{0x80, 0x19, 0x03, 0x90},
+	} {
+		if bytes.Contains(wrapper, unsafeLoad) {
+			t.Fatalf("join wrapper retains unsafe controller load %x", unsafeLoad)
+		}
+	}
 	if len(wrapper) > int(wrapperLimitVMA-joinWrapperVMA) {
 		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-joinWrapperVMA)
 	}
@@ -97,18 +105,18 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 		0xb00c0028,
 		0x881c014e,
 		0x980c002a,
-		0x881903d1,
+		0x38000000,
 		0x980c002b,
-		0x80190390,
 		0x900c002c,
 		0xfbec0030,
 		0xfb6c0038,
 		0xfbcc0040,
+		0x2c3f0000,
 		0x801f0010,
-		0x801b0010,
-		0x801e0010,
 		0xe81f0000,
 		0xf80c0058,
+		0x801b0010,
+		0x801e0010,
 	} {
 		var encoded [4]byte
 		binary.BigEndian.PutUint32(encoded[:], instruction)
@@ -120,9 +128,9 @@ func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 		branchOffsetToFrom(t, wrapper, joinWrapperVMA, target)
 	}
 	for offset, target := range map[int]uint64{
-		0x214: joinTestCalleeVMA,
-		0x218: joinHostCalleeVMA,
-		0x21c: joinStartCalleeVMA,
+		0x21c: joinTestCalleeVMA,
+		0x220: joinHostCalleeVMA,
+		0x224: joinStartCalleeVMA,
 	} {
 		instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4])
 		displacement := int64(instruction & 0x03fffffc)
@@ -151,6 +159,14 @@ func TestBuildWrapperDispatchesJoinStagesByLowReturnAddress(t *testing.T) {
 		{0x39, 0x00, 0x00, 0x03},
 		{0x39, 0x00, 0x00, 0x04},
 		{0x39, 0x00, 0x00, 0x05},
+		{
+			0x2c, 0x3f, 0x00, 0x00,
+			0x41, 0x82, 0x00, 0x14,
+			0x80, 0x1f, 0x00, 0x10,
+			0x90, 0x0c, 0x00, 0x48,
+			0xe8, 0x1f, 0x00, 0x00,
+			0xf8, 0x0c, 0x00, 0x58,
+		},
 	} {
 		if !bytes.Contains(wrapper, field) {
 			t.Fatalf("wrapper is missing dispatcher field %x", field)

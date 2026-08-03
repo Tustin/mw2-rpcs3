@@ -160,9 +160,10 @@ q6=performance
 ```
 
 Confirm first that a zero-result reply completes without a remote-task error.
-For `q0 != 0` require `host.openPrivate >= q5`; for `q0 == 0` require
-`host.openPublic >= q5`. Do not infer equality, mask, or skill comparisons from
-`q1..q4` or `q6`.
+Require exact host/search equality for game type, game mode, netcode version,
+map-pack flags, and playlist version. For `q0 != 0` require
+`host.openPrivate >= q5`; for `q0 == 0` require `host.openPublic >= q5`.
+Performance remains unfiltered.
 
 ## 6. Two-client host/find gate
 

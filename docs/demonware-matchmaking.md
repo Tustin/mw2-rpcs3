@@ -20,7 +20,8 @@ wire layouts are not imported where the MW2 ELF differs.
 | zero results are accepted by the client container | >95% |
 | op-1/op-2 nine-I32 extension and nonempty-result echo | >99% |
 | meanings and order of all seven op-5 query I32s | >95% |
-| literal backend comparisons for query fields 0..4 and 6 | below 80%; intentionally not implemented |
+| compatibility equality for game type/mode, netcode, map packs, and playlist version | crash-capture-derived safety gate; implemented |
+| performance comparison | unproven; intentionally not implemented |
 | unranked/ranked slot-pool condition (`openPrivate`/`openPublic >= requiredFreeSlots`) | >95% |
 | 25-byte common-address layout and create-to-result echo | >95% |
 | encrypted two-client storage-to-candidate server lifecycle | >95%; automated |
@@ -177,10 +178,13 @@ The client and the 2026-07-30 two-client trace prove that `q0` selects the slot
 pool used by `q5`: nonzero (`!ranked`, an unranked search) requires enough
 `openPrivate` slots, while zero (ranked) requires enough `openPublic` slots.
 Both live searches carried `q0=1`; their hosts advertised `openPrivate=8` and
-`openPublic=0`, exposing the previous public-only filter. The literal historical
-comparison rules for `q1..q4` and `q6` lived server-side and remain below 80%
-confidence. Plausible equality, mask-containment, or skill-proximity rules are
-therefore not imported.
+`openPublic=0`, exposing the previous public-only filter. The vanilla-client
+crash capture shows that returning sessions across different `q1` game-mode and
+`q2` netcode values sends incompatible clients into peer
+traversal. The directory therefore requires exact equality for game type, game
+mode, netcode version, map-pack flags, and playlist version before applying the
+slot test. Performance remains unfiltered because no retail comparison rule for
+`q6` is proven.
 
 Primary functions are common builder `0x003e16a0`, base query serializer
 `0x003de268`, and derived query serializer `0x00325850`.

@@ -262,6 +262,7 @@ func TestMW2MatchmakingStoreWaitsForSecondEligibleSession(t *testing.T) {
 		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
 		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
 		openPrivate:   8,
+		attributes:    [9]int32{1},
 	}
 	first, err := store.create(info, 1)
 	if err != nil {
@@ -269,7 +270,7 @@ func TestMW2MatchmakingStoreWaitsForSecondEligibleSession(t *testing.T) {
 	}
 	result := make(chan []mw2StoredMatchmakingSession, 1)
 	go func() {
-		result <- store.findWaitingForResults(50, 1, true, 2, time.Second)
+		result <- store.findWaitingForSearchResults(50, mw2MatchmakingSearch{requiredFreeSlots: 1, gameType: 1}, 2, time.Second)
 	}()
 	select {
 	case found := <-result:
@@ -297,13 +298,14 @@ func TestMW2MatchmakingStoreWaitTimesOutWithSoloSession(t *testing.T) {
 		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
 		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
 		openPrivate:   8,
+		attributes:    [9]int32{1},
 	}
 	created, err := store.create(info, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	found := store.findWaitingForResults(50, 1, true, 2, 20*time.Millisecond)
+	found := store.findWaitingForSearchResults(50, mw2MatchmakingSearch{requiredFreeSlots: 1, gameType: 1}, 2, 20*time.Millisecond)
 	if elapsed := time.Since(start); elapsed < 15*time.Millisecond {
 		t.Fatalf("find returned too early after %s", elapsed)
 	}

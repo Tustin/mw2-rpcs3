@@ -292,18 +292,12 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
 			store := c.matchmakingStore()
-			usePrivateSlots := request.search.gameType != 0
-			sessions := store.find(
-				request.maxResults,
-				request.search.requiredFreeSlots,
-				usePrivateSlots,
-			)
+			sessions := store.findForSearch(request.maxResults, request.search)
 			if c.matchmakingFindReplies == 0 && len(sessions) == 1 && sessions[0].ownerID == c.connectionID &&
 				c.activeLSGConnections != nil && c.activeLSGConnections.Load() > 1 {
-				sessions = store.findWaitingForResults(
+				sessions = store.findWaitingForSearchResults(
 					request.maxResults,
-					request.search.requiredFreeSlots,
-					usePrivateSlots,
+					request.search,
 					mw2InitialFindMinimumResults,
 					c.matchmakingFindWait,
 				)

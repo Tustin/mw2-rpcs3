@@ -447,11 +447,11 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 		2,
 		50,
 		mw2MatchmakingSearch{
-			gameType:          1,
-			gameMode:          2,
-			netcodeVersion:    3,
-			mapPackFlags:      4,
-			playlistVersion:   5,
+			gameType:          updatedAttributes[mw2MatchmakingAttributeGameType],
+			gameMode:          updatedAttributes[mw2MatchmakingAttributeGameMode],
+			netcodeVersion:    updatedAttributes[mw2MatchmakingAttributeNetcodeVersion],
+			mapPackFlags:      updatedAttributes[mw2MatchmakingAttributeMapPackFlags],
+			playlistVersion:   updatedAttributes[mw2MatchmakingAttributePlaylistVersion],
 			requiredFreeSlots: 6,
 			performance:       7,
 		},
@@ -546,7 +546,14 @@ func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
 			2,
 			50,
-			mw2MatchmakingSearch{},
+			mw2MatchmakingSearch{
+				gameType:          1,
+				gameMode:          7,
+				netcodeVersion:    5,
+				mapPackFlags:      6,
+				playlistVersion:   3,
+				requiredFreeSlots: 0,
+			},
 		))
 		if !handled || !connection.lastTaskSupported {
 			t.Fatalf("find handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
@@ -593,6 +600,64 @@ func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	found := findSessionIDs(requester, 2)
 	if !bytes.Equal(found[0], peerSessionID) || !bytes.Equal(found[1], replacementSessionID) {
 		t.Fatalf("replacement order=%x want older=%x replacement=%x", found, peerSessionID, replacementSessionID)
+	}
+}
+
+func TestMW2FindSessionsExcludesIncompatibleCrashCapturePeer(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	first := &lsgConnection{connectionID: 1, matchmakingSessions: store}
+	second := &lsgConnection{connectionID: 2, matchmakingSessions: store}
+	firstCreate := buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingCreateSession,
+		bytes.Repeat([]byte{0x11}, mw2MatchmakingCommonAddressSize),
+		bytes.Repeat([]byte{0x22}, mw2MatchmakingSessionIDSize),
+		bytes.Repeat([]byte{0x33}, mw2MatchmakingSecurityKeySize),
+		[4]int32{0, 0, 8, 0},
+		[9]int32{1, 1, 361, 0, 128, 2, 0, 17, 0},
+	)
+	secondCreate := buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingCreateSession,
+		bytes.Repeat([]byte{0x44}, mw2MatchmakingCommonAddressSize),
+		bytes.Repeat([]byte{0x55}, mw2MatchmakingSessionIDSize),
+		bytes.Repeat([]byte{0x66}, mw2MatchmakingSecurityKeySize),
+		[4]int32{0, 0, 8, 0},
+		[9]int32{1, 1, 361, 0, 139, 2, 1, 0, 0},
+	)
+	if _, _, handled := first.handleMatchmakingTask(firstCreate); !handled || !first.lastTaskSupported {
+		t.Fatal("first create failed")
+	}
+	if _, _, handled := second.handleMatchmakingTask(secondCreate); !handled || !second.lastTaskSupported {
+		t.Fatal("second create failed")
+	}
+
+	findCount := func(connection *lsgConnection, search mw2MatchmakingSearch) uint32 {
+		t.Helper()
+		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(2, 50, search))
+		if !handled || !connection.lastTaskSupported {
+			t.Fatalf("find failed: reply=%x", reply)
+		}
+		reader := mustBDTaskReplyReader(t, reply)
+		if _, err := reader.readU64(); err != nil {
+			t.Fatal(err)
+		}
+		if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+			t.Fatalf("error=%d err=%v", errorCode, err)
+		}
+		if operationID, err := reader.readU8(); err != nil || operationID != bdMatchmakingFindSessions {
+			t.Fatalf("operation=%d err=%v", operationID, err)
+		}
+		count, err := reader.readU32()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
+	if count := findCount(first, mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1}); count != 1 {
+		t.Fatalf("first search count=%d, want self only", count)
+	}
+	if count := findCount(second, mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1}); count != 1 {
+		t.Fatalf("second search count=%d, want self only", count)
 	}
 }
 
@@ -656,14 +721,14 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
 		openPublic:  2,
 		openPrivate: 4,
-		attributes:  [9]int32{11, 12, 13, 14, 15, 16, 17, 18, 19},
+		attributes:  [9]int32{101, 12, 105, 106, 103, 104, 102, 18, 19},
 		ownerID:     1,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
 		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
 		openPublic:  3,
 		openPrivate: 1,
-		attributes:  [9]int32{91, 92, 93, 94, 95, 96, 97, 98, 99},
+		attributes:  [9]int32{101, 92, 105, 106, 103, 104, 102, 98, 99},
 		ownerID:     2,
 	}
 	connection := &lsgConnection{connectionID: 3, matchmakingSessions: store}
@@ -706,13 +771,30 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		t.Fatalf("count=%d, want one unranked session with at least three private slots", count)
 	}
 
-	eligible.gameMode = -202
-	eligible.netcodeVersion = -203
-	eligible.mapPackFlags = -204
-	eligible.playlistVersion = -205
-	eligible.performance = -206
-	if count := resultCount(eligible); count != 1 {
-		t.Fatalf("unproven fields filtered sessions: count=%d", count)
+	incompatible := eligible
+	incompatible.gameMode++
+	if count := resultCount(incompatible); count != 0 {
+		t.Fatalf("incompatible game mode returned sessions: count=%d", count)
+	}
+	incompatible = eligible
+	incompatible.netcodeVersion++
+	if count := resultCount(incompatible); count != 0 {
+		t.Fatalf("incompatible netcode version returned sessions: count=%d", count)
+	}
+	incompatible = eligible
+	incompatible.mapPackFlags++
+	if count := resultCount(incompatible); count != 0 {
+		t.Fatalf("incompatible map-pack flags returned sessions: count=%d", count)
+	}
+	incompatible = eligible
+	incompatible.playlistVersion++
+	if count := resultCount(incompatible); count != 0 {
+		t.Fatalf("incompatible playlist version returned sessions: count=%d", count)
+	}
+	incompatible = eligible
+	incompatible.performance++
+	if count := resultCount(incompatible); count != 1 {
+		t.Fatalf("performance filtering was added without retail proof: count=%d", count)
 	}
 
 	eligible.requiredFreeSlots = 5
@@ -722,6 +804,20 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 
 	eligible.gameType = 0
 	eligible.requiredFreeSlots = 3
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic:  2,
+		openPrivate: 4,
+		attributes:  [9]int32{0, 12, 105, 106, 103, 104, 102, 18, 19},
+		ownerID:     1,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic:  3,
+		openPrivate: 1,
+		attributes:  [9]int32{0, 92, 105, 106, 103, 104, 102, 98, 99},
+		ownerID:     2,
+	}
 	if count := resultCount(eligible); count != 1 {
 		t.Fatalf("count=%d, want one ranked session with at least three public slots", count)
 	}

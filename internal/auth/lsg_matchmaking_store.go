@@ -9,7 +9,15 @@ import (
 	"time"
 )
 
-const defaultMW2MatchmakingSessionLimit = 4096
+const (
+	defaultMW2MatchmakingSessionLimit = 4096
+
+	mw2MatchmakingAttributeGameType        = 0
+	mw2MatchmakingAttributePlaylistVersion = 2
+	mw2MatchmakingAttributeNetcodeVersion  = 4
+	mw2MatchmakingAttributeMapPackFlags    = 5
+	mw2MatchmakingAttributeGameMode        = 6
+)
 
 type mw2StoredMatchmakingSession struct {
 	commonAddress [mw2MatchmakingCommonAddressSize]byte
@@ -182,25 +190,32 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, 0, false)
 }
 
-func (s *mw2MatchmakingStore) findWaitingForResults(
+func (s *mw2MatchmakingStore) findForSearch(
 	maxResults int32,
-	requiredFreeSlots int32,
-	usePrivateSlots bool,
+	search mw2MatchmakingSearch,
+) []mw2StoredMatchmakingSession {
+	usePrivateSlots := search.gameType != 0
+	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, 0, false)
+}
+
+func (s *mw2MatchmakingStore) findWaitingForSearchResults(
+	maxResults int32,
+	search mw2MatchmakingSearch,
 	minimumResults int,
 	timeout time.Duration,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || minimumResults < 1 || timeout <= 0 {
-		return s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+		return s.findForSearch(maxResults, search)
 	}
 	deadline := time.Now().Add(timeout)
 	for {
 		s.mu.RLock()
 		changed := s.changed
 		s.mu.RUnlock()
-		results := s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+		results := s.findForSearch(maxResults, search)
 		if len(results) >= minimumResults {
 			return results
 		}
@@ -218,7 +233,7 @@ func (s *mw2MatchmakingStore) findWaitingForResults(
 				}
 			}
 		case <-timer.C:
-			return s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+			return s.findForSearch(maxResults, search)
 		}
 	}
 }
@@ -234,13 +249,22 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 	usePrivateSlots bool,
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, ownerID, true)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, ownerID, true)
+}
+
+func mw2SessionMatchesSearch(session mw2StoredMatchmakingSession, search mw2MatchmakingSearch) bool {
+	return session.attributes[mw2MatchmakingAttributeGameType] == search.gameType &&
+		session.attributes[mw2MatchmakingAttributeGameMode] == search.gameMode &&
+		session.attributes[mw2MatchmakingAttributeNetcodeVersion] == search.netcodeVersion &&
+		session.attributes[mw2MatchmakingAttributeMapPackFlags] == search.mapPackFlags &&
+		session.attributes[mw2MatchmakingAttributePlaylistVersion] == search.playlistVersion
 }
 
 func (s *mw2MatchmakingStore) findMatching(
 	maxResults int32,
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
+	search *mw2MatchmakingSearch,
 	excludedOwnerID uint64,
 	excludeOwner bool,
 ) []mw2StoredMatchmakingSession {
@@ -251,6 +275,9 @@ func (s *mw2MatchmakingStore) findMatching(
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
+			continue
+		}
+		if search != nil && !mw2SessionMatchesSearch(session, *search) {
 			continue
 		}
 		openSlots := session.openPublic

@@ -760,8 +760,23 @@ then delivered both 289-byte two-result replies before traversal. The custom ser
 returned a 161-byte self-only reply to the first client immediately, while the
 second client advertised 1.67 seconds later and began peer testing against a
 different snapshot. A connection's first self-only find now waits up to five
-seconds when another LSG client is active and wakes on store changes; a
-physical-PS3/RPCS3 retest is required.
+seconds when another LSG client is active and wakes on store changes.
+
+The vanilla-client crash capture
+`captures/mw2_rpcs3_ps3_crash.pcapng` showed that the reciprocal wait exposed a
+more important directory error. The two advertisements were not compatible:
+RPCS3 searched for game mode `0` and netcode `128`, while the physical PS3
+searched for game mode `1` and netcode `139`; their echoed title attributes also
+carried those differing values. The server nevertheless returned both sessions
+in 289-byte replies and the clients immediately attempted peer traversal. Retail
+two-result evidence only covers compatible advertisements. Operation-5 matching
+now requires the host's echoed game type, game mode, netcode version, map-pack
+flags, and playlist version to equal the search before applying the selected
+slot-pool/free-slot test. Performance remains unfiltered because no retail
+comparison rule is proven. A regression test reproduces the crash-capture values
+and requires each incompatible client to receive only its own result. This work
+uses only the retail and crash PCAPs; the QoS ELF patch is no longer required for
+the current server fix.
 
 The 2026-08-01 live retest confirms the asymmetric result policy reaches the
 peer network stage. RPCS3 received the physical PS3's exact common address,
@@ -961,8 +976,32 @@ the matchmaking path. That image is now backed up as
 `default_mp.self.pre-qos-v3-redeploy-20260802`. The verified version-3 SELF has
 been redeployed, and the installed SHA-256 is again
 `2522fe7e861f3ef8c2c99d5fd624fbdef0373483c86ddf614450e50c029e0947`.
-The next required action is another two-client RPCS3/physical-PS3 run followed
-by inspection of `/dev_hdd0/tmp/qos.bin`.
+
+The next version-3 RPCS3 run exposed a wrapper-only crash before telemetry could
+be consumed. `RPCS3.log` records CIA `0x0070938C`, LR `0x002FA7A4`, an unmapped
+read at `0x3D1`, and `r25 == 0`: the accepted-QoS record builder unconditionally
+read controller fields at `0x3D1(r25)` and `0x390(r25)`. These two
+diagnostic-only fields now emit zero instead of dereferencing the null pointer.
+Separately, the stage-1 join edge can enter with saved
+`r31 == 0`; that wrapper now checks `r31` before reading `0x10(r31)` or `0(r31)`.
+Null candidates leave record fields `0x48` and `0x58` zero, while non-null join
+candidates preserve the prior captures. The rebuilt join wrapper is `0x23e`
+bytes and ends at VMA `0x70989e`, inside the `0x7098a0` cave limit. Regression
+coverage rejects both unsafe controller loads, asserts the complete guarded
+join sequence, and validates relocated tail branches. The controller fallback
+uses an explicit `li r0,0`, so it cannot serialize a stale register value.
+`go test ./...`, `go vet ./...`, and `git diff --check` pass. The guarded ELF was
+rebuilt at
+`/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-v3-nullguard.elf`,
+SHA-256 `573cf3c5ee9bbcbf92c879b3d8b7527385662fe585cba9b30a7bdf2a95bc9f05`.
+It was packaged with `scetool` from the known-good retail v3 template; decrypting
+`default_mp.qos-v3-nullguard.self` reproduces the ELF byte-for-byte. SELF
+SHA-256: `4bf71aa6bce4054e8b4bba03537a5f7125506c2cb91c839d69953aea9b6eb3d7`.
+That SELF is deployed to
+`dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the previous v3 image is backed
+up as `default_mp.self.pre-qos-v3-nullguard-20260802`, and stale `qos.bin` was
+removed. The next required action is another two-client RPCS3/physical-PS3 test
+followed by inspection of `/dev_hdd0/tmp/qos.bin`.
 
 ## Current implementation areas
 
