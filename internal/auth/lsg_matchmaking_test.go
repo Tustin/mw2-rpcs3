@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/hex"
 	"math"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func buildMW2FindSessionsRequest() []byte {
@@ -591,6 +593,60 @@ func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	found := findSessionIDs(requester, 2)
 	if !bytes.Equal(found[0], peerSessionID) || !bytes.Equal(found[1], replacementSessionID) {
 		t.Fatalf("replacement order=%x want older=%x replacement=%x", found, peerSessionID, replacementSessionID)
+	}
+}
+
+func TestMW2FindSessionsWaitsForReciprocalAdvertisement(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	var active atomic.Int64
+	active.Store(2)
+	first := &lsgConnection{connectionID: 1, matchmakingSessions: store, matchmakingFindWait: time.Second, activeLSGConnections: &active}
+	second := &lsgConnection{connectionID: 2, matchmakingSessions: store, matchmakingFindWait: time.Second, activeLSGConnections: &active}
+	createRequest := buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingCreateSession,
+		bytes.Repeat([]byte{0x11}, mw2MatchmakingCommonAddressSize),
+		bytes.Repeat([]byte{0x22}, mw2MatchmakingSessionIDSize),
+		bytes.Repeat([]byte{0x33}, mw2MatchmakingSecurityKeySize),
+		[4]int32{0, 0, 8, 0},
+		[9]int32{1, 1, 361, 0, 139, 2, 1, 0, 0},
+	)
+	if _, _, handled := first.handleMatchmakingTask(createRequest); !handled || !first.lastTaskSupported {
+		t.Fatal("first create failed")
+	}
+	result := make(chan []byte, 1)
+	go func() {
+		_, reply, _ := first.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
+			2,
+			50,
+			mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1},
+		))
+		result <- reply
+	}()
+	select {
+	case reply := <-result:
+		t.Fatalf("find returned before reciprocal advertisement: %x", reply)
+	case <-time.After(20 * time.Millisecond):
+	}
+	if _, _, handled := second.handleMatchmakingTask(createRequest); !handled || !second.lastTaskSupported {
+		t.Fatal("second create failed")
+	}
+	select {
+	case reply := <-result:
+		reader := mustBDTaskReplyReader(t, reply)
+		if _, err := reader.readU64(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU32(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reader.readU8(); err != nil {
+			t.Fatal(err)
+		}
+		if count, err := reader.readU32(); err != nil || count != 2 {
+			t.Fatalf("count=%d err=%v reply=%x", count, err, reply)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("find did not wake after reciprocal advertisement")
 	}
 }
 

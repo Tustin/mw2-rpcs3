@@ -1,14 +1,15 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-01 after correcting matchmaking recreation ordering.
-COD4 labeled matchmaking flow and MW2 TU0 cross-reference confirmed that the
-post-find transition remains client-side: candidate selection, address conversion,
-and join-state gates precede the peer connection attempt. No server wire-format
-change was justified. The process-wide directory did have a lifecycle bug: host
-priority was cached per LSG connection, so create/delete/create incorrectly kept
-an old session's priority. Creation order is now assigned to each active session;
-a replacement correctly sees older peers. The existing version-3 join-pipeline
-diagnostic ELF remains the next live step._
+_Last updated: 2026-08-02 after comparing the successful two-PS3 retail capture
+with the failed RPCS3/PS3 custom-server capture. Retail holds the initial public
+find for roughly 4.47 seconds and then gives both clients the same two-session
+snapshot before peer testing starts. The custom server replied immediately to the
+first client with only its own session; the second client advertised 1.67 seconds
+later and started traversal from a different snapshot. The store now wakes a
+bounded five-second first self-only find when a second eligible advertisement
+arrives and another LSG client is active, while preserving self-inclusive,
+creation-ordered results and immediate solo or later-search behavior.
+A physical-PS3/RPCS3 retest is required._
 
 ## Executive summary
 
@@ -18,17 +19,16 @@ The retail `playlists.info` has been retrieved, the storage flow works live, and
 the game client accepts the emulated server's playlist. Two live clients now
 find one another and complete direct traversal and QoS. Corrected performance
 replies are accepted, and telemetry proves both clients pass the type-1 QoS gate.
-The stable-ordering retest had the physical PS3 create first and RPCS3 create
-second. The PS3 consistently received zero candidates while RPCS3 consistently
-received exactly the PS3 session, including the correct common address, generated
-session ID, security key, slot counts, and all nine attributes. Traversal and QoS
-completed repeatedly with valid replies, but no peer-DTLS Init followed. The PS3
-deleted its session near the end and did not recreate it; only then did RPCS3
-correctly fall to zero candidates. The next live task is therefore to retest the
-corrected service-17 raw-field endianness with the fixed diagnostic wrapper,
-then use its counters to reverse
-the accepted-candidate transition around `sub_CFF28`; operation-5 ordering
-should not be changed again.
+The latest custom-server capture shows both clients receiving usable identities,
+exchanging direct traversal and QoS, and accepting service-17 performance replies,
+but the first public find returned before the reciprocal advertisement existed.
+This produced mismatched initial directory snapshots and symmetric peer testing,
+unlike retail, where both 289-byte two-result replies arrive before traversal.
+The server now delays only a connection's first self-only public find for up to
+five seconds when another authenticated LSG client is active, and wakes immediately
+when store mutations make two eligible results available. The next live task is to
+retest physical PS3 plus RPCS3 and confirm both initial finds
+return the same two-session snapshot followed by a type-1 peer-DTLS Init.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -753,9 +753,15 @@ type-`1` bdDTLS Init carrying the selected host's eight-byte session ID. The
 retail directory is therefore self-inclusive for both clients. Host selection is
 preserved by returning eligible sessions in monotonic creation order, with the
 earliest advertisement first, rather than suppressing self and later sessions.
-The Go server now uses this self-inclusive creation-order result policy; the
-older asymmetric tests and encrypted two-client flow were updated accordingly.
-A physical-PS3/RPCS3 retest is required.
+The Go server now uses this self-inclusive creation-order result policy. Comparing
+`captures/mw2_rpcs3_ps3_custom_server.pcapng` against retail exposed one remaining
+difference: retail held the initial public find until both advertisements existed,
+then delivered both 289-byte two-result replies before traversal. The custom server
+returned a 161-byte self-only reply to the first client immediately, while the
+second client advertised 1.67 seconds later and began peer testing against a
+different snapshot. A connection's first self-only find now waits up to five
+seconds when another LSG client is active and wakes on store changes; a
+physical-PS3/RPCS3 retest is required.
 
 The 2026-08-01 live retest confirms the asymmetric result policy reaches the
 peer network stage. RPCS3 received the physical PS3's exact common address,
@@ -945,6 +951,18 @@ byte-for-byte to the expected v3 ELF; SELF SHA-256
 It is now deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the
 previous image is backed up as `default_mp.self.pre-qos-v3-deploy`, and stale
 telemetry was removed.
+
+The 2026-08-02 live run still did not exercise version-3 telemetry because the
+installed executable had subsequently reverted to the version-2 image: RPCS3
+launched `default_mp.self` with SHA-256
+`dcb73b12b5eb0bd175b9d3dbe0c2883ba9385f5ce5bb25d7dec1df475cb8c9e7`, and
+no `qos.bin` open appeared in the network trace despite both clients reaching
+the matchmaking path. That image is now backed up as
+`default_mp.self.pre-qos-v3-redeploy-20260802`. The verified version-3 SELF has
+been redeployed, and the installed SHA-256 is again
+`2522fe7e861f3ef8c2c99d5fd624fbdef0373483c86ddf614450e50c029e0947`.
+The next required action is another two-client RPCS3/physical-PS3 run followed
+by inspection of `/dev_hdd0/tmp/qos.bin`.
 
 ## Current implementation areas
 

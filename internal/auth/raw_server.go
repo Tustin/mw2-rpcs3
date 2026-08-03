@@ -43,23 +43,24 @@ type RequestSummary struct {
 }
 
 type RawServer struct {
-	addr                string
-	log                 *slog.Logger
-	recorder            *capture.Recorder
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
-	lsgIdleTimeout      time.Duration
-	logSensitive        bool
-	connections         atomic.Uint64
-	requests            atomic.Uint64
-	lsgConnections      atomic.Uint64
-	lsgFrames           atomic.Uint64
-	lsgSessions         *lsgSessionStore
-	matchmakingOnce     sync.Once
-	matchmakingSessions *mw2MatchmakingStore
-	bandwidthIPv4       [4]byte
-	bandwidthPort       uint16
-	bandwidthConfigured bool
+	addr                 string
+	log                  *slog.Logger
+	recorder             *capture.Recorder
+	readTimeout          time.Duration
+	writeTimeout         time.Duration
+	lsgIdleTimeout       time.Duration
+	logSensitive         bool
+	connections          atomic.Uint64
+	requests             atomic.Uint64
+	lsgConnections       atomic.Uint64
+	activeLSGConnections atomic.Int64
+	lsgFrames            atomic.Uint64
+	lsgSessions          *lsgSessionStore
+	matchmakingOnce      sync.Once
+	matchmakingSessions  *mw2MatchmakingStore
+	bandwidthIPv4        [4]byte
+	bandwidthPort        uint16
+	bandwidthConfigured  bool
 }
 
 const minimumAuthenticatedLSGIdleTimeout = 5 * time.Minute
@@ -265,6 +266,8 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		log.Warn("retail LSG session setup failed", "error", err)
 		return
 	}
+	s.activeLSGConnections.Add(1)
+	defer s.activeLSGConnections.Add(-1)
 	session.bandwidthIPv4 = s.bandwidthIPv4
 	session.bandwidthPort = s.bandwidthPort
 	session.bandwidthConfigured = s.bandwidthConfigured
@@ -595,6 +598,7 @@ func (s *RawServer) newLSGConnection(key, pendingKey [24]byte) (*lsgConnection, 
 		return nil, err
 	}
 	connection.matchmakingSessions = s.matchmakingStore()
+	connection.activeLSGConnections = &s.activeLSGConnections
 	return connection, nil
 }
 

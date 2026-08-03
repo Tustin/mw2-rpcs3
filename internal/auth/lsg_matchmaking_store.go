@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 )
 
 const defaultMW2MatchmakingSessionLimit = 4096
@@ -28,6 +29,7 @@ type mw2MatchmakingStore struct {
 	maxSessions       int
 	nextCreationOrder uint64
 	sessions          map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
+	changed           chan struct{}
 }
 
 func newMW2MatchmakingStore() *mw2MatchmakingStore {
@@ -41,6 +43,7 @@ func newMW2MatchmakingStoreWithLimit(maxSessions int) *mw2MatchmakingStore {
 	return &mw2MatchmakingStore{
 		maxSessions: maxSessions,
 		sessions:    make(map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession),
+		changed:     make(chan struct{}),
 	}
 }
 
@@ -105,6 +108,7 @@ func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (m
 			s.nextCreationOrder++
 			session.creationOrder = s.nextCreationOrder
 			s.sessions[session.sessionID] = session
+			s.signalChangedLocked()
 			s.mu.Unlock()
 			return session, nil
 		}
@@ -132,6 +136,7 @@ func (s *mw2MatchmakingStore) update(info mw2MatchmakingInfo, ownerID uint64) (m
 	current.filledPrivate = info.filledPrivate
 	current.attributes = info.attributes
 	s.sessions[sessionID] = current
+	s.signalChangedLocked()
 	return current, true
 }
 
@@ -149,6 +154,7 @@ func (s *mw2MatchmakingStore) delete(sessionIDValue []byte, ownerID uint64) bool
 		return false
 	}
 	delete(s.sessions, sessionID)
+	s.signalChangedLocked()
 	return true
 }
 
@@ -165,6 +171,9 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 			removed++
 		}
 	}
+	if removed > 0 {
+		s.signalChangedLocked()
+	}
 	return removed
 }
 
@@ -174,6 +183,49 @@ func (s *mw2MatchmakingStore) find(
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
 	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, 0, false)
+}
+
+func (s *mw2MatchmakingStore) findWaitingForResults(
+	maxResults int32,
+	requiredFreeSlots int32,
+	usePrivateSlots bool,
+	minimumResults int,
+	timeout time.Duration,
+) []mw2StoredMatchmakingSession {
+	if s == nil || minimumResults < 1 || timeout <= 0 {
+		return s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		s.mu.RLock()
+		changed := s.changed
+		s.mu.RUnlock()
+		results := s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+		if len(results) >= minimumResults {
+			return results
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return results
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-changed:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		case <-timer.C:
+			return s.find(maxResults, requiredFreeSlots, usePrivateSlots)
+		}
+	}
+}
+
+func (s *mw2MatchmakingStore) signalChangedLocked() {
+	close(s.changed)
+	s.changed = make(chan struct{})
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(

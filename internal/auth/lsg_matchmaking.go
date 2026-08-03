@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"time"
 )
 
 const (
@@ -14,6 +15,8 @@ const (
 	mw2MatchmakingCommonAddressSize = 25
 	mw2MatchmakingSessionIDSize     = 8
 	mw2MatchmakingSecurityKeySize   = 16
+	mw2InitialFindWait              = 5 * time.Second
+	mw2InitialFindMinimumResults    = 2
 )
 
 type mw2MatchmakingInfo struct {
@@ -288,11 +291,24 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 	case bdMatchmakingFindSessions:
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
-			sessions := c.matchmakingStore().find(
+			store := c.matchmakingStore()
+			usePrivateSlots := request.search.gameType != 0
+			sessions := store.find(
 				request.maxResults,
 				request.search.requiredFreeSlots,
-				request.search.gameType != 0,
+				usePrivateSlots,
 			)
+			if c.matchmakingFindReplies == 0 && len(sessions) == 1 && sessions[0].ownerID == c.connectionID &&
+				c.activeLSGConnections != nil && c.activeLSGConnections.Load() > 1 {
+				sessions = store.findWaitingForResults(
+					request.maxResults,
+					request.search.requiredFreeSlots,
+					usePrivateSlots,
+					mw2InitialFindMinimumResults,
+					c.matchmakingFindWait,
+				)
+			}
+			c.matchmakingFindReplies++
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}
 	}
