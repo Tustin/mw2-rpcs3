@@ -1,13 +1,16 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-03 after comparing the no-games live retest with the
-successfully decrypted two-PS3 retail capture. The live server returned each
-client only its own session because the prior crash fix required equal game mode
-and netcode values. Retail returned both sessions despite those same fields—and
-playlist version and performance—differing. The directory now retains only the
-unranked/ranked game-type match, selected slot pool, free-slot requirement,
-self-inclusive creation ordering, and bounded reciprocal first-find wait. A
-physical-PS3/RPCS3 retest is required._
+_Last updated: 2026-08-03 after the physical-PS3/RPCS3 reciprocal-find retest.
+Both clients received byte-identical two-result operation-5 arrays after the
+per-connection transaction ID. Decoding proves entry 0 is the earlier RPCS3
+advertisement (`192.168.0.199`, session `afe27d9a845444a3`) and entry 1 is the
+later physical-PS3 advertisement (`192.168.0.117`, session
+`5af12eafbb698c81`), so the current backend is self-inclusive and globally
+creation-ordered rather than requester-relative. The supplied production PCAP
+contains the same two 289-byte operation-5 reply frames but cannot reveal their
+plaintext sequence: it has no pcapng secrets block and MW2's 24-byte LSG key
+exists only inside the PSN ticket. The next unresolved task remains the
+downstream post-QoS join/secure-association transition._
 
 ## Executive summary
 
@@ -24,9 +27,12 @@ This produced mismatched initial directory snapshots and symmetric peer testing,
 unlike retail, where both 289-byte two-result replies arrive before traversal.
 The server now delays only a connection's first self-only public find for up to
 five seconds when another authenticated LSG client is active, and wakes immediately
-when store mutations make two eligible results available. The next live task is to
-retest physical PS3 plus RPCS3 and confirm both initial finds
-return the same two-session snapshot followed by a type-1 peer-DTLS Init.
+when store mutations make two eligible results available. The 2026-08-03
+physical-PS3/RPCS3 retest confirmed both initial finds return the same two-session
+snapshot. Their serialized result arrays are byte-identical after the transaction
+ID and ordered by advertisement creation: RPCS3 first, physical PS3 second for
+both requesters. The next live task is the already-isolated downstream post-QoS
+join/secure-association transition; changing operation-5 order is not indicated.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -922,7 +928,11 @@ the retained successful result into join/secure-association work.
    accepted callback.
 3. Instrument or patch only that exact downstream consumer; do not change QoS,
    service-17 serialization, operation-5 ordering, or `sub_CFF28`, which the
-   version-2 telemetry now clears.
+   version-2 telemetry now clears. The 2026-08-03 reciprocal-find retest proves
+   the current operation-5 arrays are identical for both requesters and globally
+   creation-ordered, with RPCS3 first and the physical PS3 second. Production's
+   encrypted 289-byte replies cannot be sequence-decoded from the supplied PCAP
+   because its per-session LSG keys are not present in the capture.
 4. Once peer DTLS begins, compare the live Init/InitAck/CookieEcho/CookieAck flow
    with the recovered codec and trace the first lobby message.
 5. Preserve this run as the baseline: stable asymmetric discovery, operation-2
@@ -1006,8 +1016,108 @@ SHA-256: `4bf71aa6bce4054e8b4bba03537a5f7125506c2cb91c839d69953aea9b6eb3d7`.
 That SELF is deployed to
 `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; the previous v3 image is backed
 up as `default_mp.self.pre-qos-v3-nullguard-20260802`, and stale `qos.bin` was
-removed. The next required action is another two-client RPCS3/physical-PS3 test
-followed by inspection of `/dev_hdd0/tmp/qos.bin`.
+removed.
+
+The 2026-08-03 two-client retest completed without a wrapper crash, but the
+result is negative for all five version-3 hooks. The deployed SELF still hashes
+to the verified null-guard image (`4bf71aa6...`), and RPCS3 appended 408 complete
+96-byte records to `/dev_hdd0/tmp/qos.bin` (39,168 bytes). Every record is
+version 2/tag 0; there are zero version 3/tag 3 records. Thus accepted QoS and
+`sub_CFF28` cleanup continue to run repeatedly, while none of the instrumented
+join-pipeline calls at `0x2FDC00`, `0x2FDC30`, `0x2FDC50`, `0x2FDC6C`, or
+`0x2FDC90` executes. This is stronger than the prior no-DTLS observation: the
+active RPCS3 candidate never reaches the lower half of `sub_2FD758` containing
+address conversion and `sub_CED10`.
+
+The next diagnostic target must move earlier in `sub_2FD758`. Instrument its
+entry/callers and the gates before `0x2FDC00`, especially the top-level result of
+`sub_30CC78` and the state tests that branch around the candidate-processing
+half. The current five version-3 hooks should remain as downstream confirmation.
+
+The patcher now implements that version-4 diagnostic. A third wrapper at
+`0x7098A0` records 96-byte version-4/tag-4 snapshots for the entry call at
+`0xB3F9C`, the fallback/candidate callers at `0x2FDD98` and `0x2FE95C`, the
+state-update call at `0x2FD830`, and both gate calls at `0x2FD838`/`0x2FD850`.
+Each record captures the hook ID, original LR, input `r3`, the active join-state
+pointer and its first three words, plus `dword_74C860[0x1B00/4]`, before tail-
+calling the original target. The existing version-2 QoS and version-3 downstream
+join hooks remain enabled. Exact TU0 call-site contexts are validated. On
+2026-08-29, `files/default_mp_tu0_clean.elf` was verified as the exact IDA TU0
+input: MD5 `85908e567a827d383510ee28222b85b6`, SHA-256
+`5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`, with
+sampled code windows at `0xB3F98`, `0x2FD82C`, `0x2FA38C`, and `0x2FDBFC`
+matching byte-for-byte. The clean file remains unchanged. The patcher now accepts
+only that SHA-256 and generated `files/default_mp_tu0_qos_v4.elf`, SHA-256
+`73c26462820244f80829b474c04b5b4391380bb32d536385752f62d7e3283ce8`.
+`go test ./cmd/mw2-qos-patcher` and `go vet ./cmd/mw2-qos-patcher` pass. Packaging
+and an RPCS3 run are still required to determine which early gate stops the
+candidate path.
+
+The newly added World at War PS3 Demonware documentation has now been
+cross-referenced against this remaining issue in
+`docs/two-player-lobby-investigation.md`. Its recovered flow independently
+supports the current boundary: service-5 find results are candidate offers,
+followed by client-side QoS, host selection, party/session-state copying,
+socket-router registration, and peer DTLS rather than another central join RPC.
+It also shows the same `SecurityID8 + CommonAddr25 + SecurityKey16` join material
+in both matchmaking and native-invite paths.
+
+A follow-up TU0 static pass has now mapped that model directly onto MW2 without
+a new telemetry run. `sub_2FDE58` copies an exact 49-byte native join block into
+`dword_74C860+0x160`, and `sub_2FDCD8` copies the same 49 bytes into the active
+party/session object at `dword_74CB70+8` after `sub_323448` supplies the local
+64-bit identity. In the public-matchmaking path, `sub_2FE2C0` calls
+`sub_2FD758` only after join state `dword_74C870+0x390` equals 2 and a four-entry,
+0x48-byte local-controller scan finds state 2 with identity equal to
+`qword_1F37488`. `sub_2FD758` then gates peer setup on the local NP classifier
+`sub_30CC78` (classifier state 2, produced only by NP state field 9), local global
+state 4 or 6 through `sub_30CC40`, a live object at `dword_74C860+0x2124`, and
+per-controller state 2 through `sub_2F8E68`. Only after those local predicates
+does it reach address conversion and `sub_CED10`.
+
+None of those early predicates reads operation-5 attributes, slots, performance
+values, or another server response. The server already emits TU0's recovered
+wire order (`CommonAddr25`, `SecurityID8`, `SecurityKey16`); TU0 performs the
+conversion into the invite/party 49-byte order itself. Therefore no confident
+backend matchmaking, QoS, service-17, result-order, or added-join-RPC fix is
+currently justified. Static producer analysis has now separated the local controller transition from
+the NP classifier. `sub_2F9598` is the sole writer of each 72-byte controller
+record's state at `+0x28`; its only callers are `sub_2F9898`, which passes state
+`1`, and `sub_2FC888`, which passes state `2`. The state-2 path is therefore a
+normal local controller/party teardown-or-finalization transition, not data
+decoded from matchmaking. For controller zero, `sub_2F9598` copies the local NP
+identity through `sub_323448`/`sub_323390` only when `sub_30CC78` is true.
+`sub_30CC78` is exactly the predicate `sub_318188() == 2`; this requires the NP
+state object at `dword_74D464` to be idle with `dword_2023904 == 9`.
+`sub_3184E8` clears that field and promotes it to 9 only when the retained NP
+async object reports terminal status 2, while `sub_3182C8` produces retry state
+1 after timeout/backoff. Separately, `sub_2F94C0` is an explicit reset producer
+for join state `dword_74C870+0x390`, writing zero and clearing the adjacent
+49-byte block. A corrected xref pass found the previously missed value-2
+producer: `sub_2F8DF0` writes `2`, and `sub_2F8E10` is a thunk to it.
+`sub_2FD758` calls that thunk unconditionally at `0x2FD7C0` before testing the
+NP classifier. Thus the entry hook at `0xB3F9C` and the alternate tail-call at
+`0x2FDD98` can establish join state 2 directly; only the normal pump caller at
+`0x2FE95C` requires state 2 beforehand through `sub_2F8E18` plus the local
+controller-record scan. This removes the alleged hidden server-driven producer
+and further confirms the unresolved predicates are local NP/controller/party
+lifecycle state, not operation-5 or service-17 reply fields.
+
+No backend protocol defect is evident from the latest two-client server log.
+Both clients created one valid session, repeatedly received operation-5 find
+replies from the shared store, and accepted QoS packets; no lower join-pipeline
+hook then fired. The earliest likely blocker remains the local NP predicate
+`sub_30CC78` immediately after the now-confirmed state-2 write, or a later local
+controller/object predicate inside `sub_2FD758`. The prepared version-4 telemetry run reportedly crashed during the latest
+manual test, so it must not be rerun unchanged. The next actionable step is to
+capture and diagnose that crash from the corresponding RPCS3 log/register dump,
+then reduce or repair the version-4 wrapper before testing hook `0xB3F9C` and the
+`0x2FD7C4`/`0x2FD838` NP-gate result. Matchmaking replies should remain unchanged
+while the diagnostic-only crash is isolated.
+IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
+`0x2FDD98`, and `0x2FE95C`, alongside `0x2FDE58`, `0x2FE700`, `0x2FD7C0`,
+`0x2FD850`, `0x2FDC00`, `0x2FDC6C`, `0x2F9598`, `0x2F9908`, `0x2FC8F4`,
+`0x2F94C0`, `0x3182C8`, `0x3184E8`, and `0x30CC78`.
 
 ## Current implementation areas
 

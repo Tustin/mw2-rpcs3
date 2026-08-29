@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	expectedInputSHA256  = "16523486aa1c148eb7e19c40ae98763ec2c85b660dabd46131adb34f815495fb"
+	expectedInputSHA256  = "5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041"
 	abortCallVMA         = uint64(0x2fa390)
 	acceptCallVMA        = uint64(0x2fa7a0)
 	cffCallVMA           = uint64(0x2fa7b8)
@@ -21,16 +21,27 @@ const (
 	joinHostTwoCallVMA   = uint64(0x2fdc50)
 	joinStartCallVMA     = uint64(0x2fdc6c)
 	joinRejectCallVMA    = uint64(0x2fdc90)
+	gateEntryCallVMA     = uint64(0xb3f9c)
+	gateStateCallVMA     = uint64(0x2fd830)
+	gatePrimaryCallVMA   = uint64(0x2fd838)
+	gateSecondaryCallVMA = uint64(0x2fd850)
+	gateFallbackCallVMA  = uint64(0x2fdd98)
+	gateCandidateCallVMA = uint64(0x2fe95c)
 	clearQoSCalleeVMA    = uint64(0x320048)
 	cffCalleeVMA         = uint64(0xcff28)
 	joinTestCalleeVMA    = uint64(0xd2468)
 	joinHostCalleeVMA    = uint64(0xd26e0)
 	joinStartCalleeVMA   = uint64(0xced10)
+	gateStateCalleeVMA   = uint64(0x2fc7d8)
+	gatePrimaryCalleeVMA = uint64(0x30cc78)
+	gateSecondCalleeVMA  = uint64(0x30cc40)
+	gateJoinCalleeVMA    = uint64(0x2fd758)
 	wrapperVMA           = uint64(0x709280)
 	joinWrapperVMA       = uint64(0x709660)
-	wrapperLimitVMA      = uint64(0x7098a0)
+	gateWrapperVMA       = uint64(0x7098a0)
+	wrapperLimitVMA      = uint64(0x709a40)
 	wrapperFileOffset    = uint64(0x6f9280)
-	firstLoadFileSize    = uint64(0x6f9280)
+	firstLoadFileSize    = uint64(0x6f9160)
 	firstLoadVAddr       = uint64(0x10000)
 	secondLoadFileOff    = uint64(0x700000)
 	cellFsOpenVMA        = uint64(0x526274)
@@ -99,6 +110,36 @@ var (
 		0x38, 0x60, 0x00, 0x0e,
 		0x4b, 0xee, 0xa6, 0x65,
 	}
+	gateEntryContext = []byte{
+		0x7c, 0x63, 0x07, 0xb4,
+		0x48, 0x24, 0x97, 0xbd,
+		0x60, 0x00, 0x00, 0x00,
+	}
+	gateStateContext = []byte{
+		0x80, 0x82, 0x68, 0x24,
+		0x4b, 0xff, 0xef, 0xa9,
+		0x4b, 0xff, 0xb5, 0xdd,
+	}
+	gatePrimaryContext = []byte{
+		0x4b, 0xff, 0xb5, 0xdd,
+		0x48, 0x00, 0xf4, 0x41,
+		0x60, 0x00, 0x00, 0x00,
+	}
+	gateSecondaryContext = []byte{
+		0x60, 0x00, 0x00, 0x00,
+		0x48, 0x00, 0xf3, 0xf1,
+		0x60, 0x00, 0x00, 0x00,
+	}
+	gateFallbackContext = []byte{
+		0x38, 0x21, 0x00, 0x90,
+		0x4b, 0xff, 0xf9, 0xc0,
+		0x60, 0x00, 0x00, 0x00,
+	}
+	gateCandidateContext = []byte{
+		0x7c, 0x63, 0x07, 0xb4,
+		0x4b, 0xff, 0xed, 0xfd,
+		0x4b, 0xff, 0xfd, 0xcc,
+	}
 )
 
 func main() {
@@ -147,8 +188,14 @@ func run(inputPath, outputPath string, force bool) error {
 	if uint64(len(data)) < secondLoadFileOff {
 		return fmt.Errorf("input is shorter than writable LOAD offset 0x%x", secondLoadFileOff)
 	}
-	if wrapperFileOffset != first.Off+first.Filesz || wrapperVMA != first.Vaddr+first.Filesz {
-		return errors.New("wrapper constants do not match the executable LOAD tail")
+	if wrapperVMA != first.Vaddr+wrapperFileOffset {
+		return errors.New("wrapper constants do not match the executable LOAD mapping")
+	}
+	if wrapperFileOffset < first.Off+first.Filesz {
+		return errors.New("wrapper starts inside the executable LOAD data")
+	}
+	if !allZero(data[first.Off+first.Filesz : wrapperFileOffset]) {
+		return errors.New("executable LOAD tail before wrapper is not zero padding")
 	}
 	if err := validateCallSite(data, file, abortCallVMA, abortContext, clearQoSCalleeVMA); err != nil {
 		return fmt.Errorf("abort call: %w", err)
@@ -158,6 +205,24 @@ func run(inputPath, outputPath string, force bool) error {
 	}
 	if err := validateCallSite(data, file, cffCallVMA, cffContext, cffCalleeVMA); err != nil {
 		return fmt.Errorf("CFF call: %w", err)
+	}
+	for _, site := range []struct {
+		name    string
+		vma     uint64
+		context []byte
+		callee  uint64
+		hasNOP  bool
+	}{
+		{"join entry", gateEntryCallVMA, gateEntryContext, gateJoinCalleeVMA, true},
+		{"join state update", gateStateCallVMA, gateStateContext, gateStateCalleeVMA, false},
+		{"primary gate", gatePrimaryCallVMA, gatePrimaryContext, gatePrimaryCalleeVMA, true},
+		{"secondary gate", gateSecondaryCallVMA, gateSecondaryContext, gateSecondCalleeVMA, false},
+		{"fallback entry", gateFallbackCallVMA, gateFallbackContext, gateJoinCalleeVMA, true},
+		{"candidate entry", gateCandidateCallVMA, gateCandidateContext, gateJoinCalleeVMA, false},
+	} {
+		if err := validateBranchSite(data, file, site.vma, site.context, site.callee, site.hasNOP); err != nil {
+			return fmt.Errorf("%s: %w", site.name, err)
+		}
 	}
 	for _, site := range []struct {
 		name     string
@@ -185,12 +250,20 @@ func run(inputPath, outputPath string, force bool) error {
 	if err != nil {
 		return fmt.Errorf("build join wrapper: %w", err)
 	}
+	gateWrapper, err := buildGateWrapper()
+	if err != nil {
+		return fmt.Errorf("build gate wrapper: %w", err)
+	}
 	joinWrapperOffset := joinWrapperVMA - wrapperVMA
+	gateWrapperOffset := gateWrapperVMA - wrapperVMA
 	if uint64(len(wrapper)) > joinWrapperOffset {
 		return fmt.Errorf("QoS wrapper overlaps join wrapper: end 0x%x, join start 0x%x", wrapperVMA+uint64(len(wrapper)), joinWrapperVMA)
 	}
-	payloadSize := joinWrapperOffset + uint64(len(joinWrapper))
-	newFirstSize := first.Filesz + payloadSize
+	if joinWrapperOffset+uint64(len(joinWrapper)) > gateWrapperOffset {
+		return fmt.Errorf("join wrapper overlaps gate wrapper: end 0x%x, gate start 0x%x", joinWrapperVMA+uint64(len(joinWrapper)), gateWrapperVMA)
+	}
+	payloadSize := gateWrapperOffset + uint64(len(gateWrapper))
+	newFirstSize := wrapperFileOffset + payloadSize
 	if wrapperVMA+payloadSize > wrapperLimitVMA {
 		return fmt.Errorf("wrappers exceed verified cave: end 0x%x, limit 0x%x", wrapperVMA+payloadSize, wrapperLimitVMA)
 	}
@@ -207,6 +280,7 @@ func run(inputPath, outputPath string, force bool) error {
 	patched := append([]byte(nil), data...)
 	copy(patched[wrapperFileOffset:], wrapper)
 	copy(patched[wrapperFileOffset+joinWrapperOffset:], joinWrapper)
+	copy(patched[wrapperFileOffset+gateWrapperOffset:], gateWrapper)
 	binary.BigEndian.PutUint64(patched[programFileSizeOff:programFileSizeOff+8], newFirstSize)
 	binary.BigEndian.PutUint64(patched[programMemorySizeOff:programMemorySizeOff+8], newFirstSize)
 	for _, site := range []struct {
@@ -222,6 +296,12 @@ func run(inputPath, outputPath string, force bool) error {
 		{joinHostTwoCallVMA, joinWrapperVMA, true},
 		{joinStartCallVMA, joinWrapperVMA, true},
 		{joinRejectCallVMA, joinWrapperVMA, false},
+		{gateEntryCallVMA, gateWrapperVMA, true},
+		{gateStateCallVMA, gateWrapperVMA + 4, true},
+		{gatePrimaryCallVMA, gateWrapperVMA + 8, true},
+		{gateSecondaryCallVMA, gateWrapperVMA + 12, true},
+		{gateFallbackCallVMA, gateWrapperVMA + 16, false},
+		{gateCandidateCallVMA, gateWrapperVMA + 20, true},
 	} {
 		offset, err := vmaToFileOffset(file, site.vma, uint64(len(data)))
 		if err != nil {
@@ -240,6 +320,7 @@ func run(inputPath, outputPath string, force bool) error {
 	outputHash := fmt.Sprintf("%x", sha256.Sum256(patched))
 	fmt.Printf("QoS wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
 	fmt.Printf("join wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", joinWrapperVMA, wrapperFileOffset+joinWrapperOffset, len(joinWrapper))
+	fmt.Printf("gate wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", gateWrapperVMA, wrapperFileOffset+gateWrapperOffset, len(gateWrapper))
 	fmt.Printf("abort call 0x%x -> wrapper, tag 1\n", abortCallVMA)
 	fmt.Printf("accept call 0x%x -> wrapper, tag 2 phase 0\n", acceptCallVMA)
 	fmt.Printf("CFF call 0x%x -> wrapper, tag 2 phases 1 and 2\n", cffCallVMA)
@@ -467,6 +548,39 @@ func buildJoinWrapper() ([]byte, error) {
 		}
 		binary.BigEndian.PutUint32(wrapper[offset:offset+4], encodeBranch(joinWrapperVMA+uint64(offset), target, instruction&1 != 0))
 	}
+	return wrapper, nil
+}
+
+func buildGateWrapper() ([]byte, error) {
+	wrapper := []byte{
+		0x48, 0x00, 0x00, 0x19, 0x48, 0x00, 0x00, 0x15, 0x48, 0x00, 0x00, 0x11, 0x48, 0x00, 0x00, 0x0d,
+		0x48, 0x00, 0x00, 0x09, 0x48, 0x00, 0x00, 0x05, 0xf8, 0x21, 0xff, 0x81, 0x7c, 0x08, 0x02, 0xa6,
+		0xf8, 0x01, 0x00, 0x90, 0xf8, 0x41, 0x00, 0x28, 0x7c, 0x00, 0x00, 0x26, 0xf8, 0x01, 0x00, 0x30,
+		0xf8, 0x61, 0x00, 0x38, 0xf8, 0x81, 0x00, 0x40, 0xf8, 0xa1, 0x00, 0x48, 0xf8, 0xc1, 0x00, 0x50,
+		0xf8, 0xe1, 0x00, 0x58, 0xf9, 0x01, 0x00, 0x60, 0xf9, 0x21, 0x00, 0x68, 0xf9, 0x41, 0x00, 0x70,
+		0xf9, 0x61, 0x00, 0x78, 0x48, 0x00, 0x00, 0x05, 0x7d, 0x68, 0x02, 0xa6, 0x39, 0x6b, 0x00, 0x40,
+		0x7d, 0x68, 0x03, 0xa6, 0x38, 0x00, 0x51, 0x47, 0x90, 0x0b, 0x00, 0x00, 0x38, 0x00, 0x00, 0x04,
+		0xb0, 0x0b, 0x00, 0x04, 0x38, 0x00, 0x00, 0x04, 0x98, 0x0b, 0x00, 0x06, 0x38, 0x00, 0x00, 0x01,
+		0x98, 0x0b, 0x00, 0x07, 0x38, 0x00, 0x00, 0x00, 0x90, 0x0b, 0x00, 0x08, 0xe8, 0x01, 0x00, 0x90,
+		0x78, 0x00, 0xf0, 0x82, 0x90, 0x0b, 0x00, 0x0c, 0xe8, 0x01, 0x00, 0x38, 0x90, 0x0b, 0x00, 0x10,
+		0x3d, 0x40, 0x00, 0x71, 0x61, 0x4a, 0xeb, 0x10, 0xe9, 0x4a, 0x00, 0x00, 0xe8, 0x0a, 0x00, 0x00,
+		0x90, 0x0b, 0x00, 0x14, 0x80, 0x0a, 0x00, 0x04, 0x90, 0x0b, 0x00, 0x18, 0x80, 0x0a, 0x00, 0x08,
+		0x90, 0x0b, 0x00, 0x1c, 0x80, 0x0a, 0x00, 0x0c, 0x90, 0x0b, 0x00, 0x20, 0x3d, 0x40, 0x00, 0x74,
+		0x61, 0x4a, 0xc8, 0x60, 0x81, 0x4a, 0x00, 0x00, 0x80, 0x0a, 0x1b, 0x00, 0x90, 0x0b, 0x00, 0x24,
+		0xe8, 0x01, 0x00, 0x30, 0x7c, 0x0f, 0xf1, 0x20, 0xe8, 0x61, 0x00, 0x38, 0xe8, 0x81, 0x00, 0x40,
+		0xe8, 0xa1, 0x00, 0x48, 0xe8, 0xc1, 0x00, 0x50, 0xe8, 0xe1, 0x00, 0x58, 0xe9, 0x01, 0x00, 0x60,
+		0xe9, 0x21, 0x00, 0x68, 0xe9, 0x41, 0x00, 0x70, 0xe9, 0x61, 0x00, 0x78, 0xe8, 0x41, 0x00, 0x28,
+		0xe8, 0x01, 0x00, 0x90, 0x7c, 0x08, 0x03, 0xa6, 0x38, 0x21, 0x00, 0x80,
+	}
+	for _, target := range []uint64{gateJoinCalleeVMA, gateStateCalleeVMA, gatePrimaryCalleeVMA, gateSecondCalleeVMA, gateJoinCalleeVMA, gateJoinCalleeVMA} {
+		address := gateWrapperVMA + uint64(len(wrapper))
+		instruction := encodeBranch(address, target, false)
+		word := make([]byte, 4)
+		binary.BigEndian.PutUint32(word, instruction)
+		wrapper = append(wrapper, word...)
+	}
+	wrapper = append(wrapper, 0x60, 0x00, 0x00, 0x00)
+	wrapper = append(wrapper, make([]byte, recordSize)...)
 	return wrapper, nil
 }
 

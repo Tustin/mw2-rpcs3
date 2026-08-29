@@ -352,6 +352,26 @@ Creation ordering is used only to keep returned snapshots deterministic and put
 the earliest advertisement first. The successful retail two-client flow is
 self-inclusive: both clients receive both advertisements before peer selection.
 
+The 2026-08-03 physical-PS3/RPCS3 custom-server retest establishes the current
+backend's exact two-result order. RPCS3 (`192.168.0.199`) created session
+`afe27d9a845444a3` first; the physical PS3 (`192.168.0.117`) then created
+`5af12eafbb698c81`. Both clients' first nonempty operation-5 replies contain the
+same serialized array after their differing transaction IDs:
+
+```text
+index 0: RPCS3 / afe27d9a845444a3
+index 1: physical PS3 / 5af12eafbb698c81
+```
+
+This rules out requester-relative `self, other` ordering for the implementation.
+It proves global creation order for the custom backend. The supplied successful
+production PCAP also contains two 289-byte operation-5 replies, but their result
+sequence is not recoverable from capture bytes alone: the records are 3DES-CBC
+and HMAC protected, the pcapng has no secrets block, and MW2's 24-byte LSG key
+exists only inside the PSN ticket. Production remains proven self-inclusive, but
+its two-element sequence is unknown rather than demonstrated to match creation
+order.
+
 The query meanings are recovered. The compatibility policy requires the echoed
 unranked/ranked game type to match, uses it to choose private or public slots,
 and applies the directly justified free-slot requirement. The successful retail

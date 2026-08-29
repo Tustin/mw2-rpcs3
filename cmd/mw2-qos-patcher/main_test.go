@@ -190,6 +190,15 @@ func TestBuildWrapperUsesVersionThreeFixedRecords(t *testing.T) {
 	}
 }
 
+func TestSecondaryGateContextCentersCallAtVMA(t *testing.T) {
+	if got := binary.BigEndian.Uint32(gateSecondaryContext[4:8]); got != 0x4800f3f1 {
+		t.Fatalf("secondary gate call=%08x want=4800f3f1", got)
+	}
+	if got := binary.BigEndian.Uint32(gateSecondaryContext[8:12]); got != 0x60000000 {
+		t.Fatalf("secondary gate delay slot=%08x want=60000000", got)
+	}
+}
+
 func branchOffsetTo(t *testing.T, code []byte, target uint64) int {
 	t.Helper()
 	return branchOffsetToFrom(t, code, wrapperVMA, target)
