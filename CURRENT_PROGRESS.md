@@ -1049,9 +1049,32 @@ sampled code windows at `0xB3F98`, `0x2FD82C`, `0x2FA38C`, and `0x2FDBFC`
 matching byte-for-byte. The clean file remains unchanged. The patcher now accepts
 only that SHA-256 and generated `files/default_mp_tu0_qos_v4.elf`, SHA-256
 `73c26462820244f80829b474c04b5b4391380bb32d536385752f62d7e3283ce8`.
-`go test ./cmd/mw2-qos-patcher` and `go vet ./cmd/mw2-qos-patcher` pass. Packaging
-and an RPCS3 run are still required to determine which early gate stops the
-candidate path.
+`go test ./cmd/mw2-qos-patcher` and `go vet ./cmd/mw2-qos-patcher` pass.
+
+The 2026-08-29 attempted RPCS3 retest did not execute this telemetry ELF. Its
+copy at `/dev_hdd0/game/BLUS30377/USRDIR/default_mp.elf` hashes correctly, but
+the launcher requested `/dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`, got
+`CELL_ENOENT`, and fell back to `/dev_bdvd/PS3_GAME/USRDIR/default_mp.self`.
+RPCS3 consequently loaded the clean executable LOAD size `0x6F9160`, not the
+patched `0x6F9A38`; there was no `/dev_hdd0/tmp/qos.bin` open and no telemetry
+file. The observed roughly five-second pause was not a wrapper freeze: the
+server received RPCS3's first matchmaking operation-5 request at
+`19:56:04.812028Z` and deliberately returned it at `19:56:09.813493Z` under the
+first-self-only-find delay.
+
+SELF packaging is now part of every successful `cmd/mw2-qos-patcher` CLI run.
+The patcher invokes the repository-local `files/self/tool/scetool.exe` with its
+adjacent `data` directory, uses `-0 SELF -1 TRUE -s FALSE` and a known-good
+retail SELF template, decrypts the temporary result, requires an exact
+byte-for-byte match with the patched ELF, and only then installs
+`default_mp.self`. `-scetool-dir`, `-self-template`, and `-self-output` allow
+explicit paths; the SELF output otherwise defaults beside the ELF output. A
+real WSL/scetool end-to-end run produced the expected ELF SHA-256
+`73c26462820244f80829b474c04b5b4391380bb32d536385752f62d7e3283ce8` and
+passed the internal decrypt round-trip. The packaged `files/default_mp.self`
+has SHA-256 `f89abebbbfd36e5f4552a3fe40a32c072be3146923ce175f5ea03e662c2d23e6`.
+The next step is to install that file at
+`/dev_hdd0/game/BLUS30377/USRDIR/default_mp.self` and rerun RPCS3.
 
 The newly added World at War PS3 Demonware documentation has now been
 cross-referenced against this remaining issue in

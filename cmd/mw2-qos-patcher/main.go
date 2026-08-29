@@ -9,6 +9,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 const (
@@ -145,10 +149,20 @@ var (
 func main() {
 	input := flag.String("input", "/mnt/d/Reversing/PS3/self resigner/self/default_mp.elf", "playlist-patched MW2 multiplayer ELF")
 	output := flag.String("output", "/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf", "QoS telemetry ELF output")
+	selfOutput := flag.String("self-output", "", "retail SELF output; defaults to default_mp.self beside the ELF output")
+	scetoolDir := flag.String("scetool-dir", "files/self", "directory containing tool/scetool.exe and data")
+	template := flag.String("self-template", "files/default_mp.self", "retail SELF template")
 	force := flag.Bool("force", false, "accept a non-reference input SHA-256 if all byte and ELF checks pass")
 	flag.Parse()
 
 	if err := run(*input, *output, *force); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+	if *selfOutput == "" {
+		*selfOutput = filepath.Join(filepath.Dir(*output), "default_mp.self")
+	}
+	if err := packageSELF(*output, *selfOutput, *scetoolDir, *template, runScetool); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -628,6 +642,107 @@ func allZero(data []byte) bool {
 		}
 	}
 	return true
+}
+
+type scetoolRunner func(string, ...string) ([]byte, error)
+
+func packageSELF(elfPath, selfPath, scetoolDir, templatePath string, runner scetoolRunner) error {
+	for _, path := range []string{elfPath, templatePath, filepath.Join(scetoolDir, "tool", "scetool.exe"), filepath.Join(scetoolDir, "data", "keys")} {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("inspect SELF packaging input %s: %w", path, err)
+		}
+	}
+	if _, err := os.Stat(selfPath); err == nil {
+		return fmt.Errorf("SELF output already exists: %s", selfPath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect SELF output path: %w", err)
+	}
+
+	temporarySELF := selfPath + ".tmp"
+	roundtripELF := selfPath + ".roundtrip.tmp"
+	for _, path := range []string{temporarySELF, roundtripELF} {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("temporary SELF packaging output already exists: %s", path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect temporary SELF packaging output: %w", err)
+		}
+	}
+	defer os.Remove(temporarySELF)
+	defer os.Remove(roundtripELF)
+
+	output, err := runner(scetoolDir, "-v", "-t", templatePath, "-0", "SELF", "-1", "TRUE", "-s", "FALSE", "-e", elfPath, temporarySELF)
+	if err != nil {
+		return fmt.Errorf("package SELF: %w\n%s", err, output)
+	}
+	output, err = runner(scetoolDir, "-v", "-d", temporarySELF, roundtripELF)
+	if err != nil {
+		return fmt.Errorf("decrypt packaged SELF: %w\n%s", err, output)
+	}
+	original, err := os.ReadFile(elfPath)
+	if err != nil {
+		return fmt.Errorf("read patched ELF for SELF verification: %w", err)
+	}
+	roundtrip, err := os.ReadFile(roundtripELF)
+	if err != nil {
+		return fmt.Errorf("read decrypted SELF for verification: %w", err)
+	}
+	if !bytes.Equal(original, roundtrip) {
+		return errors.New("decrypted SELF does not match the patched ELF")
+	}
+	if err := os.Rename(temporarySELF, selfPath); err != nil {
+		return fmt.Errorf("install SELF output: %w", err)
+	}
+	selfData, err := os.ReadFile(selfPath)
+	if err != nil {
+		return fmt.Errorf("read SELF output: %w", err)
+	}
+	fmt.Printf("SELF SHA-256:   %x\n", sha256.Sum256(selfData))
+	fmt.Printf("wrote %s\n", selfPath)
+	return nil
+}
+
+func runScetool(scetoolDir string, args ...string) ([]byte, error) {
+	executable := filepath.Join(scetoolDir, "tool", "scetool.exe")
+	if runtime.GOOS == "windows" {
+		command := exec.Command(executable, args...)
+		command.Dir = scetoolDir
+		return command.CombinedOutput()
+	}
+	powershell, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		return nil, errors.New("scetool packaging requires Windows or WSL with powershell.exe")
+	}
+	windowsDir, err := wslPath(scetoolDir)
+	if err != nil {
+		return nil, err
+	}
+	windowsArgs := make([]string, len(args))
+	for index, argument := range args {
+		if filepath.IsAbs(argument) || filepath.Dir(argument) != "." {
+			if converted, convertErr := wslPath(argument); convertErr == nil {
+				argument = converted
+			}
+		}
+		windowsArgs[index] = quotePowerShell(argument)
+	}
+	script := fmt.Sprintf("$ErrorActionPreference='Stop'; Set-Location -LiteralPath %s; & '.\\tool\\scetool.exe' %s; exit $LASTEXITCODE", quotePowerShell(windowsDir), strings.Join(windowsArgs, " "))
+	return exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+}
+
+func quotePowerShell(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func wslPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve path %s: %w", path, err)
+	}
+	output, err := exec.Command("wslpath", "-w", absolute).Output()
+	if err != nil {
+		return "", fmt.Errorf("convert path %s for scetool: %w", path, err)
+	}
+	return string(bytes.TrimSpace(output)), nil
 }
 
 func writeAtomic(path string, data []byte, mode os.FileMode) error {

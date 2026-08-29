@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -196,6 +198,103 @@ func TestSecondaryGateContextCentersCallAtVMA(t *testing.T) {
 	}
 	if got := binary.BigEndian.Uint32(gateSecondaryContext[8:12]); got != 0x60000000 {
 		t.Fatalf("secondary gate delay slot=%08x want=60000000", got)
+	}
+}
+
+func TestPackageSELFVerifiesRoundTripBeforeInstall(t *testing.T) {
+	directory := t.TempDir()
+	elfPath := filepath.Join(directory, "patched.elf")
+	selfPath := filepath.Join(directory, "default_mp.self")
+	templatePath := filepath.Join(directory, "template.self")
+	scetoolDir := filepath.Join(directory, "self")
+	for path, data := range map[string][]byte{
+		elfPath:      []byte("patched elf"),
+		templatePath: []byte("template"),
+		filepath.Join(scetoolDir, "tool", "scetool.exe"): []byte("tool"),
+		filepath.Join(scetoolDir, "data", "keys"):        []byte("keys"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	calls := 0
+	runner := func(gotDir string, args ...string) ([]byte, error) {
+		calls++
+		if gotDir != scetoolDir {
+			t.Fatalf("scetool directory=%q want=%q", gotDir, scetoolDir)
+		}
+		switch calls {
+		case 1:
+			if len(args) != 12 || args[0] != "-v" || args[1] != "-t" || args[2] != templatePath || args[9] != "-e" || args[10] != elfPath || args[11] != selfPath+".tmp" {
+				t.Fatalf("package arguments=%q", args)
+			}
+			return nil, os.WriteFile(args[11], []byte("self"), 0o644)
+		case 2:
+			if len(args) != 4 || args[0] != "-v" || args[1] != "-d" || args[2] != selfPath+".tmp" || args[3] != selfPath+".roundtrip.tmp" {
+				t.Fatalf("decrypt arguments=%q", args)
+			}
+			data, err := os.ReadFile(elfPath)
+			if err != nil {
+				return nil, err
+			}
+			return nil, os.WriteFile(args[3], data, 0o644)
+		default:
+			t.Fatalf("unexpected scetool call %d", calls)
+			return nil, nil
+		}
+	}
+
+	if err := packageSELF(elfPath, selfPath, scetoolDir, templatePath, runner); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("scetool calls=%d want=2", calls)
+	}
+	if data, err := os.ReadFile(selfPath); err != nil || string(data) != "self" {
+		t.Fatalf("SELF output=%q err=%v", data, err)
+	}
+	for _, path := range []string{selfPath + ".tmp", selfPath + ".roundtrip.tmp"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("temporary output remains: %s", path)
+		}
+	}
+}
+
+func TestPackageSELFRejectsRoundTripMismatch(t *testing.T) {
+	directory := t.TempDir()
+	elfPath := filepath.Join(directory, "patched.elf")
+	selfPath := filepath.Join(directory, "default_mp.self")
+	templatePath := filepath.Join(directory, "template.self")
+	scetoolDir := filepath.Join(directory, "self")
+	for path, data := range map[string][]byte{
+		elfPath:      []byte("patched elf"),
+		templatePath: []byte("template"),
+		filepath.Join(scetoolDir, "tool", "scetool.exe"): []byte("tool"),
+		filepath.Join(scetoolDir, "data", "keys"):        []byte("keys"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runner := func(_ string, args ...string) ([]byte, error) {
+		if args[0] == "-v" && args[1] == "-t" {
+			return nil, os.WriteFile(args[len(args)-1], []byte("self"), 0o644)
+		}
+		return nil, os.WriteFile(args[len(args)-1], []byte("wrong elf"), 0o644)
+	}
+	if err := packageSELF(elfPath, selfPath, scetoolDir, templatePath, runner); err == nil || err.Error() != "decrypted SELF does not match the patched ELF" {
+		t.Fatalf("error=%v", err)
+	}
+	if _, err := os.Stat(selfPath); !os.IsNotExist(err) {
+		t.Fatalf("invalid SELF was installed")
 	}
 }
 
