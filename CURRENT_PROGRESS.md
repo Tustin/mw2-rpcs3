@@ -1183,6 +1183,42 @@ IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
 `0x2FD850`, `0x2FDC00`, `0x2FDC6C`, `0x2F9598`, `0x2F9908`, `0x2FC8F4`,
 `0x2F94C0`, `0x3182C8`, `0x3184E8`, and `0x30CC78`.
 
+### In-Memory Promotion Snapshot Retest (2026-08-30)
+
+The focused decision hook at `0x2FA760` was rebuilt as a leaf-only in-memory
+snapshot wrapper. It now makes no `cellFsOpen`, `cellFsWrite`, or `cellFsClose`
+calls and does not move the live stack pointer while external code runs. On its
+first invocation it writes the same version-5, tag-5, stage-1 96-byte record to
+reserved zero-filled memory at `0x75E348`; the one-shot guard remains at
+`0x75E340`. The overwritten `cmpwi cr7,r0,0` is replayed immediately before
+return.
+
+The hook is enabled again in generated images. The stable abort/accept/CFF
+filesystem logger remains enabled independently, so a retest can first answer
+whether the previous RPCS3 crash was caused specifically by filesystem HLE from
+inside the decision hook. The in-memory record is not yet flushed to `qos.bin`;
+that is intentionally deferred until the leaf snapshot proves crash-free.
+
+Regression coverage rejects filesystem calls or the telemetry path in the
+decision wrapper, requires the one-shot guard and snapshot buffer selection,
+and verifies the promotion-state loads plus final comparison/return sequence.
+`go test ./cmd/mw2-qos-patcher`, `go vet ./cmd/mw2-qos-patcher`, and
+`git diff --check` pass.
+
+Retest artifacts:
+
+- patched ELF: `files/default_mp_tu0_qos_v10.elf`
+- patched ELF SHA-256: `013d829f9aab2bb91127eda7b347b6744f70648d7152ee4c13bb731e4e8f72f0`
+- packaged SELF: `files/default_mp_qos_v10.self`
+- packaged SELF SHA-256: `057695bae8bc27d839d3c78d4fc9642f7fd69c1741d39e5833066b7966896e6e`
+- installed deployable: `files/default_mp.self`
+
+Next RPCS3 test: launch multiplayer with the installed v10 SELF, run the same
+public-match search through the former `0x2FA764` crash point, and confirm that
+the game remains stable. Preserve `RPCS3.log`, `server_log.log`, and `qos.bin`
+(if produced). If stable, add a safe deferred flush of the `0x75E348` snapshot
+from a proven logger path.
+
 ### Focused Promotion-Decision Telemetry (2026-08-29)
 
 Implemented the next diagnostic in `cmd/mw2-qos-patcher` and produced
@@ -1215,6 +1251,22 @@ The first RPCS3 test crashed at wrapper address `0x709740`. The log showed that
 raw `r21 + 0x2100` value at `0x48` without dereferencing it; a regression test
 rejects the unsafe `lbz r0,0x0C(r0)` instruction.
 
+The next RPCS3 test crashed at original address `0x2FA764`, where the branch read
+CR7 after the wrapper returned. The wrapper had replaced both `lbz r0,0x0C(r9)`
+and `cmpwi cr7,r0,0`, but replayed only the comparison. Its telemetry path load
+left `r0=0x60000000`, so the branch incorrectly fell through and later code used
+that value as a pointer. The wrapper now replays `lbz r0,0x0C(r9)` immediately
+before `cmpwi cr7,r0,0`; regression coverage requires both instructions.
+
+The following RPCS3-only retest still crashed at `0x2FA764`. Its context showed
+`r31=0x60000000`, while the immediately preceding HLE `cellFsOpen`,
+`cellFsWrite`, and `cellFsClose` calls failed because `qos.bin` did not exist.
+The retail PS3 did not crash during the same search. RPCS3's direct filesystem
+HLE path therefore clobbered nonvolatile PPU registers across the telemetry
+calls. The decision wrapper now saves and restores `r14` through `r31` around
+all three calls and uses a `0x220`-byte stack frame; regression coverage checks
+the `r14`/`r31` save and restore instructions.
+
 The existing version-3 abort/accept/CFF records remain enabled. Earlier
 version-4 join and gate hooks were removed from the generated image to keep this
 test focused and reduce instrumentation risk.
@@ -1223,8 +1275,8 @@ Build artifacts:
 
 - clean input: `files/default_mp_tu0_clean.elf`
 - clean input SHA-256: `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`
-- patched ELF SHA-256: `c12d7a20f9a1dd3d1b2db73795f68a021d089c2d325836ba0f737041fa179535`
-- `files/default_mp.self` SHA-256: `a3984ac66ccef6dd06b6b1e349d290dd63a1ccf695bed31981575520b68f9fb1`
+- patched ELF SHA-256: `d3c4c3c4e28d41a7b44a966e0ea9f26c3cf7ba7db557e42e40d0ab79fba1849f`
+- `files/default_mp.self` SHA-256: `3a45a5986f79280b6e1740516d47239ee4502d6676a51c3b07a9cc663311d331`
 
 Next RPCS3 test:
 
@@ -1278,6 +1330,102 @@ Next RPCS3 test:
   receive behavior, retry state, and the central-introducer boundary.
 - `docs/demonware-peer-dtls.md`: exact peer secure-association packet layouts,
   security-material roles, state machine, retries, and central-service boundary.
+
+### Promotion-Telemetry Stack Anchor (2026-08-29)
+
+IDA confirmed `0x526274`, `0x526334`, and `0x5261F4` are valid direct import
+thunks for `cellFsOpen`, `cellFsWrite`, and `cellFsClose`. Each thunk stores its
+imported TOC at `0x28(r1)` before tail-calling the HLE implementation. Live v5
+telemetry nevertheless showed the wrapper returning with `r1` exactly `0x80`
+below its expected value, causing nonvolatile restores to read the wrong frame
+and return `r31=0x60000000` instead of the captured pre-hook value `1`.
+
+The decision wrapper now saves its frame pointer in nonvolatile `r14` before the
+filesystem calls and restores `r1` from `r14` immediately after every import
+thunk returns. `r14..r31` remain saved and restored around the wrapper, so this
+does not alter caller-visible nonvolatile state. Regression coverage verifies
+that every filesystem call is followed by the stack-pointer restoration.
+`go test ./cmd/mw2-qos-patcher` and `go vet ./cmd/mw2-qos-patcher` pass.
+
+Generated test artifacts:
+
+- `files/default_mp_tu0_qos_v6.elf` — SHA-256
+  `4254fc7c4e06470afc09ccbe9213c3e3120f892c8ae72036848d372571d1a660`
+- `files/default_mp_qos_v6.self` — SHA-256
+  `62da03834f8f8e815376b649ac695effd8462bacd2e7c297a4d0c0fb6f24dd9d`
+
+The v6 SELF was tested on both RPCS3 and retail PS3 and still crashes. RPCS3
+reproduced the same failure immediately after the 96-byte decision record closed:
+`r1=0xd000f210` instead of the pre-hook `0xd000f290`, `r31=0x60000000`, and the
+fatal read remains at `0x002fa764`. This proves the import-thunk return path also
+corrupts the nonvolatile `r14` stack anchor; restoring `r1` from a GPR is not
+sufficient. The v7 patch keeps the `r14` restore after open/write but, for the final close,
+directly reverses the observed `-0x80` displacement with `addi r1,r1,0x80`
+before restoring the saved register image. Regression coverage verifies this
+split recovery sequence. `go test ./cmd/mw2-qos-patcher`,
+`go vet ./cmd/mw2-qos-patcher`, and `git diff --check` pass.
+
+Generated test artifacts:
+
+- `files/default_mp_tu0_qos_v7.elf` — SHA-256
+  `bc7ce8e51263f0665c4d54801129a1e61e6fd85a0f7597bdc2f095be325f53e2`
+- `files/default_mp_qos_v7.self` — SHA-256
+  `aee85887438927ddec7b1550889c477580709a4f7d85388b21387476a469fc76`
+
+The v7 RPCS3 test still crashed, but the stack fix worked: execution reached the
+wrapper epilogue at `0x00709894` with `r1=0xd000f310`, and a complete 96-byte
+record was written. The fault changed to a read at `0x6c` because the wrapper
+restored volatile `r9=0x60` and then incorrectly replayed `lbz r0,0xc(r9)`.
+That load had already executed at `0x002fa75c`; the hook replaces only the
+following `cmpwi` at `0x002fa760`.
+
+The v8 wrapper therefore restores the original `r0` and executes only the
+replaced `cmpwi cr7,r0,0` before returning. Regression coverage rejects either
+form of repeated `lbz`. `go test ./cmd/mw2-qos-patcher` and
+`go vet ./cmd/mw2-qos-patcher` pass.
+
+Generated test artifacts:
+
+- `files/default_mp_tu0_qos_v8.elf` — SHA-256
+  `e005ed0057f32fd27ce8026b29a6099308c0bc34bbb803dbac9803cb9288bd73`
+- `files/default_mp_qos_v8.self` — SHA-256
+  `f0b9534ab3bc41812f842eb88d6f2b2e21571071a91eda8694eb316fff8741e2`
+
+The v8 RPCS3 run produced one complete 96-byte decision record, resumed the
+matchmaking loop, and reached the same hook again about eight seconds later. The
+second invocation crashed during `cellFsOpen` before another record was appended.
+The diagnostic has therefore been made one-shot: unused writable tail space at
+`0x0075e340` holds a zero-initialized guard; the first hook sets it before opening
+the file, while later hooks skip directly to register restoration and the original
+`cmpwi cr7,r0,0`. Regression coverage verifies the guard load/store and its branch
+target. `go test ./cmd/mw2-qos-patcher`, `go vet ./cmd/mw2-qos-patcher`, and
+`git diff --check` pass.
+
+Generated and installed test artifacts:
+
+- `files/default_mp_tu0_qos_v9.elf` — SHA-256
+  `fa0324a482ac08a7a66a2b8f61cb3b692b22548f90708ff672fdc46e22d6888f`
+- `files/default_mp_qos_v9.self` — SHA-256
+  `58e3594e6ce04d509a67630d82a65640113e1822696b32089fd0f5f102919c1c`
+
+The v9 RPCS3 run again terminated during the first `cellFsOpen`. The log ends
+after `sys_fs_open()` successfully returns fd 12; there is no emulated PPU fault,
+write, or close entry. Nevertheless, the host file contains the complete 96-byte
+record, so the captured gate state is valid: live `r0` at `0x002fa760` was `1`.
+The original `cmpwi cr7,r0,0` therefore permits the call to `sub_2F7660`; the
+promotion veto is not the reason the accepted candidate returns to searching.
+The other captured values were `r18=0x008c1750`, `r19=0x01f15fd0`,
+`r20=0x01f15174`, `r21=0x01f14ed8`, `r22=1`, `r24=0x01f16044`,
+`r27=0x01f15174`, and `r31=1`; the six inspected controller/search fields were
+`0, 1, 1, 0, 0, 0`, and `*(u32 *)(r21+0x2100)=0x01c8b538`.
+
+Because RPCS3 can terminate inside the filesystem HLE import before wrapper code
+can regain control, no further live build should use this in-process file probe.
+`files/default_mp.self` has been restored to the clean retail TU0 SELF, SHA-256
+`f89abebbbfd36e5f4552a3fe40a32c072be3146923ce175f5ea03e662c2d23e6`.
+The next investigation should move past the now-confirmed promotion call and use
+non-filesystem observation (RPCS3 debugger/watchpoints or server/network-visible
+behavior) around `sub_2F7660` and its downstream lobby handoff.
 
 ## Reference material
 

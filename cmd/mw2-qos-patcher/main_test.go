@@ -134,28 +134,45 @@ func TestBuildDecisionWrapperCapturesPromotionStateAndRestoresComparison(t *test
 	if len(wrapper) > int(wrapperLimitVMA-decisionWrapperVMA) {
 		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-decisionWrapperVMA)
 	}
-	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
-	if !bytes.HasSuffix(wrapper, path) {
-		t.Fatal("wrapper is missing the telemetry path")
-	}
-	pathAddress := decisionWrapperVMA + uint64(bytes.LastIndex(wrapper, path))
-	loadPath := make([]byte, 8)
-	binary.BigEndian.PutUint32(loadPath[:4], 0x3c600000|uint32(pathAddress>>16))
-	binary.BigEndian.PutUint32(loadPath[4:], 0x60630000|uint32(pathAddress&0xffff))
-	if !bytes.Contains(wrapper, loadPath) {
-		t.Fatal("wrapper does not load the embedded telemetry path")
+	if bytes.Contains(wrapper, []byte("/dev_hdd0/tmp/qos.bin")) {
+		t.Fatal("decision wrapper must not perform filesystem telemetry")
 	}
 	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
-		branchOffsetToFrom(t, wrapper, decisionWrapperVMA, target)
+		for offset := 0; offset+4 <= len(wrapper); offset += 4 {
+			instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4])
+			if instruction>>26 != 18 || instruction&1 == 0 {
+				continue
+			}
+			displacement := int64(int32(instruction<<6) >> 6)
+			if uint64(int64(decisionWrapperVMA+uint64(offset))+displacement) == target {
+				t.Fatalf("decision wrapper calls filesystem import 0x%x", target)
+			}
+		}
 	}
-	if bytes.Contains(wrapper, []byte{0x88, 0x00, 0x00, 0x0c}) {
-		t.Fatal("decision wrapper retains unsafe nested controller dereference")
+	guardLoad := wordsToBytes([]uint32{0x3d800075, 0x618ce340, 0x800c0000, 0x2f800000})
+	guardOffset := bytes.Index(wrapper, guardLoad)
+	if guardOffset < 0 || guardOffset+20 > len(wrapper) {
+		t.Fatal("wrapper is missing the one-shot telemetry guard")
+	}
+	guardBranch := binary.BigEndian.Uint32(wrapper[guardOffset+16 : guardOffset+20])
+	if guardBranch&0xffff0003 != 0x409e0000 {
+		t.Fatalf("one-shot guard branch=%08x want bne", guardBranch)
+	}
+	guardTarget := guardOffset + 16 + int(int16(guardBranch&0xfffc))
+	firstRestore := bytes.Index(wrapper, []byte{0xe8, 0x01, 0x00, 0x30})
+	if guardTarget != firstRestore {
+		t.Fatalf("one-shot guard target=%d want restore offset=%d", guardTarget, firstRestore)
+	}
+	if !bytes.Contains(wrapper, wordsToBytes([]uint32{0x38000001, 0x900c0000, 0x398c0008})) {
+		t.Fatal("wrapper does not arm the one-shot guard and select the snapshot buffer")
+	}
+	if bytes.Contains(wrapper, []byte{0x88, 0x00, 0x00, 0x0c}) || bytes.Contains(wrapper, []byte{0x88, 0x09, 0x00, 0x0c}) {
+		t.Fatal("decision wrapper repeats the load that already ran before the hook")
 	}
 	for _, instruction := range []uint32{
-		0x3c00514f, 0x60005331, 0x38000005, 0x98010106, 0x98010107,
+		0x3c00514f, 0x60005331, 0x38000005, 0x980c0006, 0x980c0007,
 		0x801b05b0, 0x801b0e4c, 0x801b0e50, 0x801b0e1c, 0x801b0e20,
-		0x80152100, 0x38a00060, 0x7c0903a6, 0x7c0103a6,
-		0x7c0ff120, 0x7c0803a6, 0x38210180, 0x2f800000, 0x4e800020,
+		0x80152100, 0x7c0ff120, 0x38210040, 0x2f800000, 0x4e800020,
 	} {
 		var encoded [4]byte
 		binary.BigEndian.PutUint32(encoded[:], instruction)

@@ -326,11 +326,11 @@ func run(inputPath, outputPath string, force bool) error {
 	}
 	outputHash := fmt.Sprintf("%x", sha256.Sum256(patched))
 	fmt.Printf("QoS wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
-	fmt.Printf("decision wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", decisionWrapperVMA, wrapperFileOffset+decisionWrapperOffset, len(decisionWrapper))
+	fmt.Printf("decision snapshot wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", decisionWrapperVMA, wrapperFileOffset+decisionWrapperOffset, len(decisionWrapper))
 	fmt.Printf("abort call 0x%x -> wrapper, tag 1\n", abortCallVMA)
 	fmt.Printf("accept call 0x%x -> wrapper, tag 2 phase 0\n", acceptCallVMA)
 	fmt.Printf("CFF call 0x%x -> wrapper, tag 2 phases 1 and 2\n", cffCallVMA)
-	fmt.Printf("promotion decision 0x%x -> wrapper, version 5 tag 5 stage 1\n", decisionHookVMA)
+	fmt.Printf("promotion decision 0x%x -> in-memory snapshot, version 5 tag 5 stage 1\n", decisionHookVMA)
 	fmt.Printf("record: %d-byte records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
 	fmt.Printf("input SHA-256:  %s\n", inputHash)
 	fmt.Printf("output SHA-256: %s\n", outputHash)
@@ -485,42 +485,28 @@ func buildWrapper() ([]byte, error) {
 }
 
 func buildDecisionWrapper() ([]byte, error) {
-	words := []uint32{
-		0xf821fe81, 0xf8010020, 0xf8410028, 0xf8610030, 0xf8810038, 0xf8a10040, 0xf8c10048, 0xf8e10050,
-		0xf9010058, 0xf9210060, 0xf9410068, 0xf9610070, 0xf9810078, 0x7c0802a6, 0xf8010080, 0x7c000026,
-		0xf8010088, 0x7c0102a6, 0xf8010090, 0x7c0902a6, 0xf8010098, 0x3c00514f, 0x60005331, 0x90010100,
-		0x38000005, 0xb0010104, 0x98010106, 0x38000001, 0x98010107, 0x3c00002f, 0x6000a760, 0x90010108,
-		0xe8010080, 0x9001010c, 0x92410110, 0x92610114, 0x92810118, 0x92a1011c, 0x92c10120, 0x93010124,
-		0x93610128, 0x93e1012c, 0xe8010020, 0x90010130, 0x801b05b0, 0x90010134, 0x801b0e4c, 0x90010138,
-		0x801b0e50, 0x9001013c, 0x801b0e1c, 0x90010140, 0x801b0e20, 0x90010144, 0x80152100, 0x90010148,
-		0x38000000, 0x9001014c, 0x38000000, 0x90010150, 0x90010154, 0x90010158, 0x9001015c, 0x90010160,
-		0x90010164, 0x3c600070, 0x60630000, 0x38800441, 0x38a100f0, 0x38c00000, 0x38e00000, 0x39000000,
+	wrapper := wordsToBytes([]uint32{
+		0xf821ffc1, 0xf8010020, 0xf9810028, 0x7c000026, 0xf8010030,
+		0x3d800075, 0x618ce340, 0x800c0000, 0x2f800000, 0x409e0000,
+		0x38000001, 0x900c0000, 0x398c0008, 0x3c00514f, 0x60005331, 0x900c0000,
+		0x38000005, 0xb00c0004, 0x980c0006, 0x38000001, 0x980c0007, 0x3c00002f, 0x6000a760, 0x900c0008,
+		0x7c0802a6, 0x900c000c, 0x924c0010, 0x926c0014, 0x928c0018, 0x92ac001c, 0x92cc0020, 0x930c0024,
+		0x936c0028, 0x93ec002c, 0xe8010020, 0x900c0030, 0x801b05b0, 0x900c0034, 0x801b0e4c, 0x900c0038,
+		0x801b0e50, 0x900c003c, 0x801b0e1c, 0x900c0040, 0x801b0e20, 0x900c0044, 0x80152100, 0x900c0048,
+		0x38000000, 0x900c004c, 0x900c0050, 0x900c0054, 0x900c0058, 0x900c005c,
+	})
+	guardBranchOffset := bytes.Index(wrapper, []byte{0x40, 0x9e, 0x00, 0x00})
+	if guardBranchOffset < 0 || bytes.Count(wrapper, []byte{0x40, 0x9e, 0x00, 0x00}) != 1 {
+		return nil, errors.New("locate decision telemetry guard branch")
 	}
-	wrapper := wordsToBytes(words)
-	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
-		callVMA := decisionWrapperVMA + uint64(len(wrapper))
-		wrapper = appendWord(wrapper, encodeBranch(callVMA, target, true))
-		switch target {
-		case cellFsOpenVMA:
-			wrapper = appendWords(wrapper, 0x806100f0, 0x38810100, 0x38a00060, 0x38c100e0)
-		case cellFsWriteVMA:
-			wrapper = appendWords(wrapper, 0x806100f0)
-		}
+	restoreOffset := len(wrapper)
+	guardBranchVMA := decisionWrapperVMA + uint64(guardBranchOffset)
+	guardDisplacement := int64(decisionWrapperVMA+uint64(restoreOffset)) - int64(guardBranchVMA)
+	if guardDisplacement < -0x8000 || guardDisplacement > 0x7ffc || guardDisplacement%4 != 0 {
+		return nil, errors.New("decision telemetry guard branch is out of range")
 	}
-	wrapper = appendWords(wrapper,
-		0xe8610030, 0xe8810038, 0xe8a10040, 0xe8c10048, 0xe8e10050, 0xe9010058, 0xe9210060, 0xe9410068,
-		0xe9610070, 0xe9810078, 0xe8010098, 0x7c0903a6, 0xe8010090, 0x7c0103a6, 0xe8010088, 0x7c0ff120,
-		0xe8010080, 0x7c0803a6, 0xe8410028, 0xe8010020, 0x38210180, 0x2f800000, 0x4e800020,
-	)
-	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
-	for len(wrapper)%4 != 0 {
-		wrapper = append(wrapper, 0)
-	}
-	pathOffset := len(wrapper)
-	wrapper = append(wrapper, path...)
-	pathAddress := decisionWrapperVMA + uint64(pathOffset)
-	binary.BigEndian.PutUint32(wrapper[264:268], 0x3c600000|uint32(pathAddress>>16))
-	binary.BigEndian.PutUint32(wrapper[268:272], 0x60630000|uint32(pathAddress&0xffff))
+	binary.BigEndian.PutUint32(wrapper[guardBranchOffset:guardBranchOffset+4], 0x409e0000|uint32(guardDisplacement)&0xfffc)
+	wrapper = appendWords(wrapper, 0xe8010030, 0x7c0ff120, 0xe9810028, 0xe8010020, 0x38210040, 0x2f800000, 0x4e800020)
 	if decisionWrapperVMA+uint64(len(wrapper)) > wrapperLimitVMA {
 		return nil, fmt.Errorf("decision wrapper exceeds verified cave: end 0x%x", decisionWrapperVMA+uint64(len(wrapper)))
 	}

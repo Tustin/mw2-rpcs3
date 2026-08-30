@@ -6,3 +6,5 @@ captures/*
 compose.override.yaml
 
 tools/*
+*.self
+*.elf
