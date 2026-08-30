@@ -19,6 +19,7 @@ const (
 	expectedInputSHA256  = "5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041"
 	abortCallVMA         = uint64(0x2fa390)
 	acceptCallVMA        = uint64(0x2fa7a0)
+	decisionHookVMA      = uint64(0x2fa760)
 	cffCallVMA           = uint64(0x2fa7b8)
 	joinTestCallVMA      = uint64(0x2fdc00)
 	joinHostOneCallVMA   = uint64(0x2fdc30)
@@ -41,6 +42,7 @@ const (
 	gateSecondCalleeVMA  = uint64(0x30cc40)
 	gateJoinCalleeVMA    = uint64(0x2fd758)
 	wrapperVMA           = uint64(0x709280)
+	decisionWrapperVMA   = uint64(0x709660)
 	joinWrapperVMA       = uint64(0x709660)
 	gateWrapperVMA       = uint64(0x7098a0)
 	wrapperLimitVMA      = uint64(0x709a40)
@@ -71,6 +73,13 @@ var (
 		0x60, 0x00, 0x00, 0x00,
 		0x7e, 0x63, 0x9b, 0x78,
 		0x4b, 0xee, 0xae, 0x15,
+	}
+	decisionContext = []byte{
+		0x81, 0x35, 0x21, 0x20,
+		0x88, 0x09, 0x00, 0x0c,
+		0x2f, 0x80, 0x00, 0x00,
+		0x40, 0x9e, 0x03, 0x3c,
+		0x83, 0xbb, 0x05, 0xb0,
 	}
 	cffContext = []byte{
 		0x7a, 0x43, 0x00, 0x20,
@@ -220,6 +229,9 @@ func run(inputPath, outputPath string, force bool) error {
 	if err := validateCallSite(data, file, cffCallVMA, cffContext, cffCalleeVMA); err != nil {
 		return fmt.Errorf("CFF call: %w", err)
 	}
+	if err := validateInstructionSite(data, file, decisionHookVMA, decisionContext, 0x2f800000); err != nil {
+		return fmt.Errorf("promotion decision: %w", err)
+	}
 	for _, site := range []struct {
 		name    string
 		vma     uint64
@@ -260,23 +272,15 @@ func run(inputPath, outputPath string, force bool) error {
 	if err != nil {
 		return fmt.Errorf("build wrapper: %w", err)
 	}
-	joinWrapper, err := buildJoinWrapper()
+	decisionWrapper, err := buildDecisionWrapper()
 	if err != nil {
-		return fmt.Errorf("build join wrapper: %w", err)
+		return fmt.Errorf("build decision wrapper: %w", err)
 	}
-	gateWrapper, err := buildGateWrapper()
-	if err != nil {
-		return fmt.Errorf("build gate wrapper: %w", err)
+	decisionWrapperOffset := decisionWrapperVMA - wrapperVMA
+	if uint64(len(wrapper)) > decisionWrapperOffset {
+		return fmt.Errorf("QoS wrapper overlaps decision wrapper: end 0x%x, decision start 0x%x", wrapperVMA+uint64(len(wrapper)), decisionWrapperVMA)
 	}
-	joinWrapperOffset := joinWrapperVMA - wrapperVMA
-	gateWrapperOffset := gateWrapperVMA - wrapperVMA
-	if uint64(len(wrapper)) > joinWrapperOffset {
-		return fmt.Errorf("QoS wrapper overlaps join wrapper: end 0x%x, join start 0x%x", wrapperVMA+uint64(len(wrapper)), joinWrapperVMA)
-	}
-	if joinWrapperOffset+uint64(len(joinWrapper)) > gateWrapperOffset {
-		return fmt.Errorf("join wrapper overlaps gate wrapper: end 0x%x, gate start 0x%x", joinWrapperVMA+uint64(len(joinWrapper)), gateWrapperVMA)
-	}
-	payloadSize := gateWrapperOffset + uint64(len(gateWrapper))
+	payloadSize := decisionWrapperOffset + uint64(len(decisionWrapper))
 	newFirstSize := wrapperFileOffset + payloadSize
 	if wrapperVMA+payloadSize > wrapperLimitVMA {
 		return fmt.Errorf("wrappers exceed verified cave: end 0x%x, limit 0x%x", wrapperVMA+payloadSize, wrapperLimitVMA)
@@ -293,8 +297,7 @@ func run(inputPath, outputPath string, force bool) error {
 
 	patched := append([]byte(nil), data...)
 	copy(patched[wrapperFileOffset:], wrapper)
-	copy(patched[wrapperFileOffset+joinWrapperOffset:], joinWrapper)
-	copy(patched[wrapperFileOffset+gateWrapperOffset:], gateWrapper)
+	copy(patched[wrapperFileOffset+decisionWrapperOffset:], decisionWrapper)
 	binary.BigEndian.PutUint64(patched[programFileSizeOff:programFileSizeOff+8], newFirstSize)
 	binary.BigEndian.PutUint64(patched[programMemorySizeOff:programMemorySizeOff+8], newFirstSize)
 	for _, site := range []struct {
@@ -305,17 +308,7 @@ func run(inputPath, outputPath string, force bool) error {
 		{abortCallVMA, wrapperVMA, true},
 		{acceptCallVMA, wrapperVMA, true},
 		{cffCallVMA, wrapperVMA, true},
-		{joinTestCallVMA, joinWrapperVMA, true},
-		{joinHostOneCallVMA, joinWrapperVMA, true},
-		{joinHostTwoCallVMA, joinWrapperVMA, true},
-		{joinStartCallVMA, joinWrapperVMA, true},
-		{joinRejectCallVMA, joinWrapperVMA, false},
-		{gateEntryCallVMA, gateWrapperVMA, true},
-		{gateStateCallVMA, gateWrapperVMA + 16, true},
-		{gatePrimaryCallVMA, gateWrapperVMA + 32, true},
-		{gateSecondaryCallVMA, gateWrapperVMA + 48, true},
-		{gateFallbackCallVMA, gateWrapperVMA + 64, false},
-		{gateCandidateCallVMA, gateWrapperVMA + 80, true},
+		{decisionHookVMA, decisionWrapperVMA, true},
 	} {
 		offset, err := vmaToFileOffset(file, site.vma, uint64(len(data)))
 		if err != nil {
@@ -333,13 +326,12 @@ func run(inputPath, outputPath string, force bool) error {
 	}
 	outputHash := fmt.Sprintf("%x", sha256.Sum256(patched))
 	fmt.Printf("QoS wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
-	fmt.Printf("join wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", joinWrapperVMA, wrapperFileOffset+joinWrapperOffset, len(joinWrapper))
-	fmt.Printf("gate wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", gateWrapperVMA, wrapperFileOffset+gateWrapperOffset, len(gateWrapper))
+	fmt.Printf("decision wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", decisionWrapperVMA, wrapperFileOffset+decisionWrapperOffset, len(decisionWrapper))
 	fmt.Printf("abort call 0x%x -> wrapper, tag 1\n", abortCallVMA)
 	fmt.Printf("accept call 0x%x -> wrapper, tag 2 phase 0\n", acceptCallVMA)
 	fmt.Printf("CFF call 0x%x -> wrapper, tag 2 phases 1 and 2\n", cffCallVMA)
-	fmt.Printf("join pipeline 0x%x..0x%x -> wrapper, tag 3 stages 1..5\n", joinTestCallVMA, joinRejectCallVMA)
-	fmt.Printf("record: %d-byte version-3 records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
+	fmt.Printf("promotion decision 0x%x -> wrapper, version 5 tag 5 stage 1\n", decisionHookVMA)
+	fmt.Printf("record: %d-byte records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
 	fmt.Printf("input SHA-256:  %s\n", inputHash)
 	fmt.Printf("output SHA-256: %s\n", outputHash)
 	fmt.Printf("wrote %s\n", outputPath)
@@ -364,6 +356,20 @@ func validateCallSite(data []byte, file *elf.File, vma uint64, context []byte, e
 	}
 	if binary.BigEndian.Uint32(data[offset+8:offset+12]) != 0x60000000 {
 		return fmt.Errorf("instruction after call at VMA 0x%x is not the verified nop", vma)
+	}
+	return nil
+}
+
+func validateInstructionSite(data []byte, file *elf.File, vma uint64, context []byte, expectedInstruction uint32) error {
+	offset, err := vmaToFileOffset(file, vma-8, uint64(len(data)))
+	if err != nil {
+		return err
+	}
+	if offset+uint64(len(context)) > uint64(len(data)) || !bytes.Equal(data[offset:offset+uint64(len(context))], context) {
+		return fmt.Errorf("context at VMA 0x%x does not match the verified build", vma-8)
+	}
+	if instruction := binary.BigEndian.Uint32(data[offset+8 : offset+12]); instruction != expectedInstruction {
+		return fmt.Errorf("instruction %08x at VMA 0x%x does not match %08x", instruction, vma, expectedInstruction)
 	}
 	return nil
 }
@@ -476,6 +482,65 @@ func buildWrapper() ([]byte, error) {
 	}
 	binary.BigEndian.PutUint32(wrapper[flagsOffset:flagsOffset+4], 0x38800441)
 	return wrapper, nil
+}
+
+func buildDecisionWrapper() ([]byte, error) {
+	words := []uint32{
+		0xf821fe81, 0xf8010020, 0xf8410028, 0xf8610030, 0xf8810038, 0xf8a10040, 0xf8c10048, 0xf8e10050,
+		0xf9010058, 0xf9210060, 0xf9410068, 0xf9610070, 0xf9810078, 0x7c0802a6, 0xf8010080, 0x7c000026,
+		0xf8010088, 0x7c0102a6, 0xf8010090, 0x7c0902a6, 0xf8010098, 0x3c00514f, 0x60005331, 0x90010100,
+		0x38000005, 0xb0010104, 0x98010106, 0x38000001, 0x98010107, 0x3c00002f, 0x6000a760, 0x90010108,
+		0xe8010080, 0x9001010c, 0x92410110, 0x92610114, 0x92810118, 0x92a1011c, 0x92c10120, 0x93010124,
+		0x93610128, 0x93e1012c, 0xe8010020, 0x90010130, 0x801b05b0, 0x90010134, 0x801b0e4c, 0x90010138,
+		0x801b0e50, 0x9001013c, 0x801b0e1c, 0x90010140, 0x801b0e20, 0x90010144, 0x80152100, 0x90010148,
+		0x8800000c, 0x9001014c, 0x38000000, 0x90010150, 0x90010154, 0x90010158, 0x9001015c, 0x90010160,
+		0x90010164, 0x3c600070, 0x60630000, 0x38800441, 0x38a100f0, 0x38c00000, 0x38e00000, 0x39000000,
+	}
+	wrapper := wordsToBytes(words)
+	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
+		callVMA := decisionWrapperVMA + uint64(len(wrapper))
+		wrapper = appendWord(wrapper, encodeBranch(callVMA, target, true))
+		switch target {
+		case cellFsOpenVMA:
+			wrapper = appendWords(wrapper, 0x806100f0, 0x38810100, 0x38a00060, 0x38c100e0)
+		case cellFsWriteVMA:
+			wrapper = appendWords(wrapper, 0x806100f0)
+		}
+	}
+	wrapper = appendWords(wrapper,
+		0xe8610030, 0xe8810038, 0xe8a10040, 0xe8c10048, 0xe8e10050, 0xe9010058, 0xe9210060, 0xe9410068,
+		0xe9610070, 0xe9810078, 0xe8010098, 0x7c0903a6, 0xe8010090, 0x7c0103a6, 0xe8010088, 0x7c0ff120,
+		0xe8010080, 0x7c0803a6, 0xe8410028, 0xe8010020, 0x38210180, 0x2f800000, 0x4e800020,
+	)
+	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
+	for len(wrapper)%4 != 0 {
+		wrapper = append(wrapper, 0)
+	}
+	pathOffset := len(wrapper)
+	wrapper = append(wrapper, path...)
+	pathAddress := decisionWrapperVMA + uint64(pathOffset)
+	binary.BigEndian.PutUint32(wrapper[264:268], 0x3c600000|uint32(pathAddress>>16))
+	binary.BigEndian.PutUint32(wrapper[268:272], 0x60630000|uint32(pathAddress&0xffff))
+	if decisionWrapperVMA+uint64(len(wrapper)) > wrapperLimitVMA {
+		return nil, fmt.Errorf("decision wrapper exceeds verified cave: end 0x%x", decisionWrapperVMA+uint64(len(wrapper)))
+	}
+	return wrapper, nil
+}
+
+func wordsToBytes(words []uint32) []byte {
+	result := make([]byte, 0, len(words)*4)
+	return appendWords(result, words...)
+}
+
+func appendWord(data []byte, word uint32) []byte {
+	return appendWords(data, word)
+}
+
+func appendWords(data []byte, words ...uint32) []byte {
+	for _, word := range words {
+		data = binary.BigEndian.AppendUint32(data, word)
+	}
+	return data
 }
 
 func buildJoinWrapper() ([]byte, error) {

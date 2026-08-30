@@ -1183,6 +1183,52 @@ IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
 `0x2FD850`, `0x2FDC00`, `0x2FDC6C`, `0x2F9598`, `0x2F9908`, `0x2FC8F4`,
 `0x2F94C0`, `0x3182C8`, `0x3184E8`, and `0x30CC78`.
 
+### Focused Promotion-Decision Telemetry (2026-08-29)
+
+Implemented the next diagnostic in `cmd/mw2-qos-patcher` and produced
+`files/EBOOT.QOSDIAG.SELF`. Deployable SELF build artifacts belong under
+`files/`; `captures/` is reserved for packet captures, logs, telemetry, and
+other debugging or reverse-engineering inputs.
+
+The new hook replaces `cmpwi cr7,r0,0` at `0x2FA760`, immediately before the
+branch that decides whether to invoke `sub_2F7660`. The wrapper records a
+version-5, tag-5, stage-1 96-byte snapshot and then re-executes the overwritten
+comparison so control flow is unchanged.
+
+Captured fields:
+
+- `0x0C`: LR / return site
+- `0x10..0x2C`: live `r18`, `r19`, `r20`, `r21`, `r22`, `r24`, `r27`, `r31`
+- `0x30`: live `r0`, the exact value tested by `cmpwi cr7,r0,0`
+- `0x34`: `*(u32 *)(r27 + 0x5B0)`
+- `0x38`: `*(u32 *)(r27 + 0xE4C)`
+- `0x3C`: `*(u32 *)(r27 + 0xE50)`
+- `0x40`: `*(u32 *)(r27 + 0xE1C)`
+- `0x44`: `*(u32 *)(r27 + 0xE20)`
+- `0x48`: `*(u32 *)(r21 + 0x2100)`
+- `0x4C`: `*(u8 *)(*(u32 *)(r21 + 0x2100) + 0x0C)`
+
+The existing version-3 abort/accept/CFF records remain enabled. Earlier
+version-4 join and gate hooks were removed from the generated image to keep this
+test focused and reduce instrumentation risk.
+
+Build artifacts:
+
+- clean input: `files/default_mp_tu0_clean.elf`
+- clean input SHA-256: `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`
+- patched ELF SHA-256: `c12d7a20f9a1dd3d1b2db73795f68a021d089c2d325836ba0f737041fa179535`
+- `files/EBOOT.QOSDIAG.SELF` SHA-256: `cda614c867aa946efe27a5a439dcef7d43db8c5a3e59dfd612088aef0d8c712d`
+
+Next RPCS3 test:
+
+1. Deploy `files/EBOOT.QOSDIAG.SELF` as the multiplayer executable.
+2. Delete `/dev_hdd0/tmp/qos.bin` before launch.
+3. Reproduce one failed public-match search.
+4. Preserve `qos.bin`, `RPCS3.log`, and `server_log.log`.
+5. Inspect the version-5 snapshot first. If `r0` is zero, the promotion call is
+   skipped at this exact gate; compare the captured search/controller fields
+   against a successful or later-stage path before instrumenting deeper.
+
 ## Current implementation areas
 
 - `internal/auth/raw_server.go`: retail auth/LSG connection handling, logging,

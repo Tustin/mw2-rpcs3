@@ -126,6 +126,46 @@ func TestBuildWrapperRetainsVersionTwoQoSDispatch(t *testing.T) {
 	}
 }
 
+func TestBuildDecisionWrapperCapturesPromotionStateAndRestoresComparison(t *testing.T) {
+	wrapper, err := buildDecisionWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) > int(wrapperLimitVMA-decisionWrapperVMA) {
+		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), wrapperLimitVMA-decisionWrapperVMA)
+	}
+	path := []byte("/dev_hdd0/tmp/qos.bin\x00")
+	if !bytes.HasSuffix(wrapper, path) {
+		t.Fatal("wrapper is missing the telemetry path")
+	}
+	pathAddress := decisionWrapperVMA + uint64(bytes.LastIndex(wrapper, path))
+	loadPath := make([]byte, 8)
+	binary.BigEndian.PutUint32(loadPath[:4], 0x3c600000|uint32(pathAddress>>16))
+	binary.BigEndian.PutUint32(loadPath[4:], 0x60630000|uint32(pathAddress&0xffff))
+	if !bytes.Contains(wrapper, loadPath) {
+		t.Fatal("wrapper does not load the embedded telemetry path")
+	}
+	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
+		branchOffsetToFrom(t, wrapper, decisionWrapperVMA, target)
+	}
+	for _, instruction := range []uint32{
+		0x3c00514f, 0x60005331, 0x38000005, 0x98010106, 0x98010107,
+		0x801b05b0, 0x801b0e4c, 0x801b0e50, 0x801b0e1c, 0x801b0e20,
+		0x80152100, 0x8800000c, 0x38a00060, 0x7c0903a6, 0x7c0103a6,
+		0x7c0ff120, 0x7c0803a6, 0x38210180, 0x2f800000, 0x4e800020,
+	} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], instruction)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper is missing instruction %08x", instruction)
+		}
+	}
+	comparison := bytes.LastIndex(wrapper, []byte{0x2f, 0x80, 0x00, 0x00})
+	if comparison < 0 || comparison+8 > len(wrapper) || binary.BigEndian.Uint32(wrapper[comparison+4:comparison+8]) != 0x4e800020 {
+		t.Fatal("overwritten comparison is not immediately followed by blr")
+	}
+}
+
 func TestBuildWrapperCapturesJoinPipeline(t *testing.T) {
 	wrapper, err := buildJoinWrapper()
 	if err != nil {
