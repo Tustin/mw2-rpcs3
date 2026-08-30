@@ -49,6 +49,56 @@ func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 	}
 }
 
+func TestBuildGateWrapperPreservesHookReturnAndCallee(t *testing.T) {
+	wrapper, err := buildGateWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	commonOffset := 96
+	for index, target := range []uint64{gateJoinCalleeVMA, gateStateCalleeVMA, gatePrimaryCalleeVMA, gateSecondCalleeVMA, gateJoinCalleeVMA, gateJoinCalleeVMA} {
+		offset := index * 16
+		if instruction := binary.BigEndian.Uint32(wrapper[offset : offset+4]); instruction != 0x38000000|uint32(index+1) {
+			t.Fatalf("stage %d load=%08x", index+1, instruction)
+		}
+		if instruction := binary.BigEndian.Uint32(wrapper[offset+4 : offset+8]); instruction != 0x3d800000|uint32(target>>16) {
+			t.Fatalf("stage %d callee high=%08x", index+1, instruction)
+		}
+		if instruction := binary.BigEndian.Uint32(wrapper[offset+8 : offset+12]); instruction != 0x618c0000|uint32(target&0xffff) {
+			t.Fatalf("stage %d callee low=%08x", index+1, instruction)
+		}
+		instruction := binary.BigEndian.Uint32(wrapper[offset+12 : offset+16])
+		displacement := int64(instruction & 0x03fffffc)
+		if displacement&0x02000000 != 0 {
+			displacement -= 0x04000000
+		}
+		resolved := uint64(int64(gateWrapperVMA+uint64(offset+12)) + displacement)
+		if instruction>>26 != 18 || instruction&1 != 0 || resolved != gateWrapperVMA+uint64(commonOffset) {
+			t.Fatalf("stage %d common branch=%08x resolved=0x%x", index+1, instruction, resolved)
+		}
+	}
+
+	if instruction := binary.BigEndian.Uint32(wrapper[commonOffset+4 : commonOffset+8]); instruction != 0xf8010020 {
+		t.Fatalf("stage save=%08x want=f8010020", instruction)
+	}
+	if instruction := binary.BigEndian.Uint32(wrapper[commonOffset+8 : commonOffset+12]); instruction != 0xf9810028 {
+		t.Fatalf("callee save=%08x want=f9810028", instruction)
+	}
+	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
+		branchOffsetToFrom(t, wrapper, gateWrapperVMA, target)
+	}
+	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/tmp/qos.bin\x00")) {
+		t.Fatal("wrapper is missing the telemetry path")
+	}
+	for _, instruction := range []uint32{0x38810080, 0x38a00060, 0x80610070, 0xe86100b8, 0xe8010040, 0x7c0ff120, 0xe8010030, 0x7c0803a6, 0x38210180, 0x4e800020} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], instruction)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper is missing instruction %08x", instruction)
+		}
+	}
+}
+
 func TestBuildWrapperRetainsVersionTwoQoSDispatch(t *testing.T) {
 	wrapper, err := buildWrapper()
 	if err != nil {

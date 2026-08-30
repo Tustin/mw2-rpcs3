@@ -225,9 +225,9 @@ The following should not be changed without new MW2 evidence:
 
 ## Investigation plan
 
-### Step 1: Run version-4 telemetry unchanged
+### Step 1: Run repaired version-4 file telemetry
 
-Build, deploy, and hash-verify the prepared version-4 SELF, clear stale telemetry, and run the same physical-PS3/RPCS3 two-client scenario.
+The first version-4 SELF did not append gate records: its gate wrapper wrote only to executable-segment scratch memory, so the resulting `qos.bin` contained 78 version-2 records and zero version-4 records. Build, deploy, and hash-verify `files/default_mp_tu0_qos_v4_file.self`, clear stale telemetry, and run the same physical-PS3/RPCS3 two-client scenario.
 
 For every version-4 record, correlate:
 

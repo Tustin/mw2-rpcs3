@@ -1073,8 +1073,17 @@ real WSL/scetool end-to-end run produced the expected ELF SHA-256
 `73c26462820244f80829b474c04b5b4391380bb32d536385752f62d7e3283ce8` and
 passed the internal decrypt round-trip. The packaged `files/default_mp.self`
 has SHA-256 `f89abebbbfd36e5f4552a3fe40a32c072be3146923ce175f5ea03e662c2d23e6`.
-The next step is to install that file at
-`/dev_hdd0/game/BLUS30377/USRDIR/default_mp.self` and rerun RPCS3.
+The SELF was installed at `/dev_hdd0/game/BLUS30377/USRDIR/default_mp.self` and
+successfully executed under RPCS3 on 2026-08-29. RPCS3 created
+`/dev_hdd0/tmp/qos.bin` with 7,488 bytes: 78 complete 96-byte records. All are
+version-2/tag-2 QoS records, consisting of 26 identical phase cycles at hook
+addresses `0x30A7A0` (phase 0) and `0x30A7B8` (phases 1 and 2). No version-3
+join-pipeline or version-4 early-gate record was emitted. This proves the
+packaged telemetry SELF works and the QoS acceptance/CFF path repeatedly runs,
+but none of the instrumented `sub_2FD758` entry/caller/gate sites executes in
+this test. The next diagnostic must trace the path leaving `0x2FA7B8` and locate
+the actual caller/state transition used after successful QoS processing rather
+than moving further inside the currently unvisited `sub_2FD758` path.
 
 The newly added World at War PS3 Demonware documentation has now been
 cross-referenced against this remaining issue in
@@ -1131,12 +1140,24 @@ Both clients created one valid session, repeatedly received operation-5 find
 replies from the shared store, and accepted QoS packets; no lower join-pipeline
 hook then fired. The earliest likely blocker remains the local NP predicate
 `sub_30CC78` immediately after the now-confirmed state-2 write, or a later local
-controller/object predicate inside `sub_2FD758`. The prepared version-4 telemetry run reportedly crashed during the latest
-manual test, so it must not be rerun unchanged. The next actionable step is to
-capture and diagnose that crash from the corresponding RPCS3 log/register dump,
-then reduce or repair the version-4 wrapper before testing hook `0xB3F9C` and the
-`0x2FD7C4`/`0x2FD838` NP-gate result. Matchmaking replies should remain unchanged
-while the diagnostic-only crash is isolated.
+controller/object predicate inside `sub_2FD758`. The 2026-08-29 version-4 telemetry run completed without a crash and wrote
+`/dev_hdd0/tmp/qos.bin` correctly, but a byte-level review on 2026-08-29 found
+that the 7,488-byte file contains 78 version-2 records and zero version-4
+records. The original gate wrapper serialized its snapshot into an executable-
+segment scratch area and never called `cellFsOpen`/`cellFsWrite`/`cellFsClose`;
+therefore the absence of version-4 records does not prove that the gate sites
+were unvisited. The patcher now uses six full 16-byte gate stubs, preserves each
+original callee and hook ID, calls the original target first, captures its
+return value and condition register, and appends a 96-byte version-4 record to
+`/dev_hdd0/tmp/qos.bin`. Regression tests verify the six entry targets, file-I/O
+branches, path, record address, size, and return-state restoration. The repaired
+artifact is `files/default_mp_tu0_qos_v4_file.self`, SHA-256
+`ca7a3def7ec81e1c8a4dccf03b05eca71834bf29cd7187948120639dcf389064`; its ELF
+is `files/default_mp_tu0_qos_v4_file.elf`, SHA-256
+`bd1c245dd6a5e047bc4a13d2a13b0ab214a0050097347b4c5d606be65e2e4f70`.
+The next required test is to install that SELF, delete stale `qos.bin`, repeat
+the same two-client scenario, and return the new file. Matchmaking replies
+should remain unchanged.
 IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
 `0x2FDD98`, and `0x2FE95C`, alongside `0x2FDE58`, `0x2FE700`, `0x2FD7C0`,
 `0x2FD850`, `0x2FDC00`, `0x2FDC6C`, `0x2F9598`, `0x2F9908`, `0x2FC8F4`,
