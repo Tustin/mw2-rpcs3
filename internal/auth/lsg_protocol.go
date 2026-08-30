@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -95,10 +94,7 @@ type lsgConnection struct {
 	bandwidthConfigured     bool
 	lastBandwidthPhase      string
 	matchmakingSessions     *mw2MatchmakingStore
-	matchmakingFindWait     time.Duration
-	matchmakingFindReplies  int
 	lastMatchmakingSessions []mw2StoredMatchmakingSession
-	activeLSGConnections    *atomic.Int64
 }
 
 type lsgInitialRequest struct {
@@ -166,7 +162,6 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 		key:                 key,
 		pendingKey:          pendingKey,
 		matchmakingSessions: newMW2MatchmakingStore(),
-		matchmakingFindWait: mw2InitialFindWait,
 	}
 	var random [12]byte
 	if _, err := rand.Read(random[:]); err != nil {

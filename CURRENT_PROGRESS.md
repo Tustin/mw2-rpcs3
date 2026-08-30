@@ -25,14 +25,15 @@ exchanging direct traversal and QoS, and accepting service-17 performance replie
 but the first public find returned before the reciprocal advertisement existed.
 This produced mismatched initial directory snapshots and symmetric peer testing,
 unlike retail, where both 289-byte two-result replies arrive before traversal.
-The server now delays only a connection's first self-only public find for up to
-five seconds when another authenticated LSG client is active, and wakes immediately
-when store mutations make two eligible results available. The 2026-08-03
-physical-PS3/RPCS3 retest confirmed both initial finds return the same two-session
-snapshot. Their serialized result arrays are byte-identical after the transaction
-ID and ordered by advertisement creation: RPCS3 first, physical PS3 second for
-both requesters. The next live task is the already-isolated downstream post-QoS
-join/secure-association transition; changing operation-5 order is not indicated.
+The 2026-08-03 physical-PS3/RPCS3 retest confirmed that delaying the first
+self-only public find produced the same two-session snapshot for both clients.
+Their serialized result arrays were byte-identical after the transaction ID and
+ordered by advertisement creation: RPCS3 first, physical PS3 second for both
+requesters. That blocking server-side delay has now been removed: operation `5`
+always returns the current creation-ordered snapshot immediately, so the LSG
+reader can continue servicing the connection without an artificial five-second
+pause. The next live task is the already-isolated downstream post-QoS
+join/secure-association transition.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -765,8 +766,10 @@ difference: retail held the initial public find until both advertisements existe
 then delivered both 289-byte two-result replies before traversal. The custom server
 returned a 161-byte self-only reply to the first client immediately, while the
 second client advertised 1.67 seconds later and began peer testing against a
-different snapshot. A connection's first self-only find now waits up to five
-seconds when another LSG client is active and wakes on store changes.
+different snapshot. A temporary first-self-only wait was added to reproduce the
+retail snapshot, but it blocked the per-connection LSG reader for up to five
+seconds. That workaround has now been removed; operation `5` returns the current
+snapshot immediately and later client searches observe subsequent advertisements.
 
 The 2026-08-03 no-games retest confirmed the over-filter directly. The physical
 PS3 repeatedly advertised/searched game mode `1`, netcode `139`, while RPCS3
@@ -1060,7 +1063,8 @@ patched `0x6F9A38`; there was no `/dev_hdd0/tmp/qos.bin` open and no telemetry
 file. The observed roughly five-second pause was not a wrapper freeze: the
 server received RPCS3's first matchmaking operation-5 request at
 `19:56:04.812028Z` and deliberately returned it at `19:56:09.813493Z` under the
-first-self-only-find delay.
+first-self-only-find delay. That delay has since been removed because it blocks
+LSG request processing while waiting for a store mutation.
 
 SELF packaging is now part of every successful `cmd/mw2-qos-patcher` CLI run.
 The patcher invokes the repository-local `files/self/tool/scetool.exe` with its
@@ -1485,6 +1489,76 @@ can regain control, no further live build should use this in-process file probe.
 The next investigation should move past the now-confirmed promotion call and use
 non-filesystem observation (RPCS3 debugger/watchpoints or server/network-visible
 behavior) around `sub_2F7660` and its downstream lobby handoff.
+
+### Matchmaking Identity and Bidirectional QoS Retest (2026-08-30)
+
+The new two-client run conclusively removes the advertised session identity,
+`shrinkSecId`, listener registration, and asymmetric QoS response hypotheses.
+The physical client at `192.168.0.199` created session ID
+`f1a6340259199a59` with short ID `0x0234a6f1`; RPCS3 at `192.168.0.117`
+created `d4bed225c00a9e3c` with short ID `0x25d2bed4`. Every operation-5 reply
+returned those exact IDs and the corresponding 16-byte keys remained stable.
+
+RPCS3's network trace then shows both directions using the correct advertised
+identity. Its outgoing type-`0x28` probes to the physical client end in
+`f1 a6 34 02`, while incoming physical-client probes end in `d4 be d2 25`.
+Both clients answered every observed probe with an 18-byte type-`0x29` reply,
+`enabled=1`, zero data bytes, and the matching probe ID. The trace contains
+probe sequences `0` through `14` in both directions, so this was sustained
+bidirectional QoS rather than a single successful exchange.
+
+Both clients subsequently issued service-17 operation-2 performance requests,
+but continued issuing operation-5 searches instead of beginning peer DTLS or a
+lobby handoff. Near the end, the physical client sent matchmaking operation `3`
+and its advertisement disappeared; RPCS3's next search contained only its own
+session, then its LSG connection closed and that final session was reclaimed.
+
+A fresh static pass confirms that `sub_2F7660` is not the candidate-commit or
+lobby-handoff function. It is a small selector that maps a match-type index plus
+one of five criteria to one of four offsets in the matchmaking dvar block. Its
+callers at `0x2F78A8` through `0x2F7A78` are dvar get/set wrappers, not the
+post-QoS state transition. The earlier filesystem probe proved only that an
+accepted candidate path invokes one of these accessors; it did not prove that a
+promotion or join routine ran. The next reverse-engineering target must therefore
+move back to the accepted branch in `sub_2FA008`/`sub_2FE2C0`, identify the actual
+candidate state write and the consumer that should reach the existing search-
+session/lobby join path, and avoid treating `sub_2F7660` as the handoff boundary.
+
+Static tracing now eliminates another misleading state path. `sub_2FE2C0` reads
+the controller record at `dword_74C860 + 0x28` through `sub_2F8CD8(0)` and
+compares it with `sub_2F93B0(0)`. That desired value is entirely local: controller
+0 returns state `2` only when `sub_30CCB8` and `sub_30CC78` report NP readiness,
+otherwise state `1`; nonzero controllers return `0`. The matching producers are
+in `sub_2FD5A8`: state `1` dispatches to `sub_2F9898`, state `2` dispatches to
+`sub_2FC888`, and both ultimately call `sub_2F9598`, which writes the 72-byte
+controller record's `+0x28` field. The accepted-QoS path at `0x002fa7b8` instead
+calls `sub_CFF28`, which only clears 80-byte candidate entries whose signed
+`+0x44` status is `-1`; it does not write this controller state. Therefore the
+controller `+0x28` synchronization and its `sub_2FD758` gate are not the missing
+candidate-to-join handoff.
+
+The accepted branch in `sub_2FA008` has now been separated from the later
+selection state as well. Matchmaking task state `1` owns the QoS evaluation:
+`MatchmakingQoSEvaluationStatus` returns `0` while pending, `1` on completion,
+and `2` on failure/inconsistency. On acceptance, `sub_2FA008` logs the completed
+count, clears the QoS object and task slot, and calls `sub_CFF28` only to
+invalidate candidates whose signed `+0x44` metric remains `-1`. It does not write
+the task state or directly invoke a join routine. The state transition into this
+branch is external to `sub_2FA008`: the per-slot task object is created/advanced
+elsewhere from state `1` to state `2`, and `sub_2F9DB8`/`sub_320C20` poll that
+remote task completion. Thus case `2` is only the asynchronous completion poll,
+not an accepted-candidate promotion.
+
+The concrete local post-QoS write occurs in case `4`, which is a separate
+selection/aggregation stage. After its internal selector reports result `7`, it
+stores two scaled metrics at matchmaking context offsets `+0x150` and `+0x154`,
+sets byte `+0x2108` to `1`, clears dword `+0x210C`, resets the selector, and
+clears the task slot. If the selector has no accepted result, the same case
+clears byte `+0x2108` and arms `+0x210C` with `now + random(0, 10000)` before
+resetting. These fields are therefore the actual accepted-selection latch and
+retry deadline produced by `sub_2FA008`; the next static target is their
+consumers (or the code that advances a task from state `2` into state `4`), not
+the NP/controller record or `sub_2F7660`.
 
 ## Reference material
 

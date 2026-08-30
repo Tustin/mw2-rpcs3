@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 )
 
 const (
@@ -37,7 +36,6 @@ type mw2MatchmakingStore struct {
 	maxSessions       int
 	nextCreationOrder uint64
 	sessions          map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession
-	changed           chan struct{}
 }
 
 func newMW2MatchmakingStore() *mw2MatchmakingStore {
@@ -51,7 +49,6 @@ func newMW2MatchmakingStoreWithLimit(maxSessions int) *mw2MatchmakingStore {
 	return &mw2MatchmakingStore{
 		maxSessions: maxSessions,
 		sessions:    make(map[[mw2MatchmakingSessionIDSize]byte]mw2StoredMatchmakingSession),
-		changed:     make(chan struct{}),
 	}
 }
 
@@ -116,7 +113,6 @@ func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (m
 			s.nextCreationOrder++
 			session.creationOrder = s.nextCreationOrder
 			s.sessions[session.sessionID] = session
-			s.signalChangedLocked()
 			s.mu.Unlock()
 			return session, nil
 		}
@@ -144,7 +140,6 @@ func (s *mw2MatchmakingStore) update(info mw2MatchmakingInfo, ownerID uint64) (m
 	current.filledPrivate = info.filledPrivate
 	current.attributes = info.attributes
 	s.sessions[sessionID] = current
-	s.signalChangedLocked()
 	return current, true
 }
 
@@ -162,7 +157,6 @@ func (s *mw2MatchmakingStore) delete(sessionIDValue []byte, ownerID uint64) bool
 		return false
 	}
 	delete(s.sessions, sessionID)
-	s.signalChangedLocked()
 	return true
 }
 
@@ -178,9 +172,6 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 			delete(s.sessions, sessionID)
 			removed++
 		}
-	}
-	if removed > 0 {
-		s.signalChangedLocked()
 	}
 	return removed
 }
@@ -199,48 +190,6 @@ func (s *mw2MatchmakingStore) findForSearch(
 ) []mw2StoredMatchmakingSession {
 	usePrivateSlots := search.gameType != 0
 	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, 0, false)
-}
-
-func (s *mw2MatchmakingStore) findWaitingForSearchResults(
-	maxResults int32,
-	search mw2MatchmakingSearch,
-	minimumResults int,
-	timeout time.Duration,
-) []mw2StoredMatchmakingSession {
-	if s == nil || minimumResults < 1 || timeout <= 0 {
-		return s.findForSearch(maxResults, search)
-	}
-	deadline := time.Now().Add(timeout)
-	for {
-		s.mu.RLock()
-		changed := s.changed
-		s.mu.RUnlock()
-		results := s.findForSearch(maxResults, search)
-		if len(results) >= minimumResults {
-			return results
-		}
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return results
-		}
-		timer := time.NewTimer(remaining)
-		select {
-		case <-changed:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-		case <-timer.C:
-			return s.findForSearch(maxResults, search)
-		}
-	}
-}
-
-func (s *mw2MatchmakingStore) signalChangedLocked() {
-	close(s.changed)
-	s.changed = make(chan struct{})
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(

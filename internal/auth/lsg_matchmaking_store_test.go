@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestMW2MatchmakingStoreDeepCopiesSessionData(t *testing.T) {
@@ -252,65 +251,6 @@ func TestMW2MatchmakingStoreRejectsInvalidDirectInput(t *testing.T) {
 	}
 	if _, ok := store.update(invalid, 1); ok {
 		t.Fatal("update accepted a short common-address blob")
-	}
-}
-
-func TestMW2MatchmakingStoreWaitsForSecondEligibleSession(t *testing.T) {
-	store := newMW2MatchmakingStore()
-	info := mw2MatchmakingInfo{
-		commonAddress: bytes.Repeat([]byte{0x11}, mw2MatchmakingCommonAddressSize),
-		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
-		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
-		openPrivate:   8,
-		attributes:    [9]int32{1},
-	}
-	first, err := store.create(info, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := make(chan []mw2StoredMatchmakingSession, 1)
-	go func() {
-		result <- store.findWaitingForSearchResults(50, mw2MatchmakingSearch{requiredFreeSlots: 1, gameType: 1}, 2, time.Second)
-	}()
-	select {
-	case found := <-result:
-		t.Fatalf("find returned before second session: %x", found)
-	case <-time.After(20 * time.Millisecond):
-	}
-	second, err := store.create(info, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case found := <-result:
-		if len(found) != 2 || found[0].sessionID != first.sessionID || found[1].sessionID != second.sessionID {
-			t.Fatalf("found=%x want=%x,%x", found, first.sessionID, second.sessionID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("find did not wake after second session")
-	}
-}
-
-func TestMW2MatchmakingStoreWaitTimesOutWithSoloSession(t *testing.T) {
-	store := newMW2MatchmakingStore()
-	info := mw2MatchmakingInfo{
-		commonAddress: bytes.Repeat([]byte{0x11}, mw2MatchmakingCommonAddressSize),
-		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
-		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
-		openPrivate:   8,
-		attributes:    [9]int32{1},
-	}
-	created, err := store.create(info, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := time.Now()
-	found := store.findWaitingForSearchResults(50, mw2MatchmakingSearch{requiredFreeSlots: 1, gameType: 1}, 2, 20*time.Millisecond)
-	if elapsed := time.Since(start); elapsed < 15*time.Millisecond {
-		t.Fatalf("find returned too early after %s", elapsed)
-	}
-	if len(found) != 1 || found[0].sessionID != created.sessionID {
-		t.Fatalf("found=%x want=%x", found, created.sessionID)
 	}
 }
 
