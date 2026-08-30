@@ -211,6 +211,16 @@ func TestCapturedMW2SuccessResponse(t *testing.T) {
 	}
 }
 
+func TestReadLSGFrameAcceptsKeepalive(t *testing.T) {
+	frame, err := readLSGFrame(bytes.NewReader([]byte{0, 0, 0, 0}), RetailRequestSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(frame, []byte{0, 0, 0, 0}) {
+		t.Fatalf("keepalive=%x", frame)
+	}
+}
+
 func TestRawServerHandlesServiceTaskAfterHello(t *testing.T) {
 	client, server := net.Pipe()
 	service := NewRawServer("", slog.New(slog.NewTextHandler(io.Discard, nil)), capture.New(false, "", RetailRequestSize), time.Second, time.Second)
@@ -227,6 +237,9 @@ func TestRawServerHandlesServiceTaskAfterHello(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := readLSGFrame(client, RetailRequestSize); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write([]byte{0, 0, 0, 0}); err != nil {
 		t.Fatal(err)
 	}
 

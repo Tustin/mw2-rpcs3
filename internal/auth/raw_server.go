@@ -313,6 +313,10 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		if err := s.recordLSGFrame(log, remote, frame); err != nil {
 			return
 		}
+		if len(frame) == 4 {
+			log.Info("retail LSG keepalive received", "step", step)
+			continue
+		}
 		messageType, payload, err := session.decryptRequest(frame)
 		if err != nil {
 			log.Warn("retail LSG request rejected", "step", step, "error", err)
@@ -651,7 +655,7 @@ func readLSGFrame(reader io.Reader, maxBodySize uint32) ([]byte, error) {
 
 func readLSGFrameWithPrefix(reader io.Reader, prefix [4]byte, maxBodySize uint32) ([]byte, error) {
 	bodySize := binary.LittleEndian.Uint32(prefix[:])
-	if bodySize == 0 || bodySize > maxBodySize {
+	if bodySize > maxBodySize {
 		return nil, fmt.Errorf("unexpected retail LSG body size: %d", bodySize)
 	}
 	frame := make([]byte, 4+bodySize)

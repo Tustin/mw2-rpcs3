@@ -1158,6 +1158,26 @@ is `files/default_mp_tu0_qos_v4_file.elf`, SHA-256
 The next required test is to install that SELF, delete stale `qos.bin`, repeat
 the same two-client scenario, and return the new file. Matchmaking replies
 should remain unchanged.
+
+A separate 2026-08-30 two-client failure was traced to LSG connection handling,
+not shared matchmaking ownership. RPCS3 (`192.168.0.117`) and the physical PS3
+(`192.168.0.199`) had distinct LSG connection IDs and independently owned
+sessions; closing the PS3 reclaimed only its own session, while RPCS3 continued
+to receive valid service-4 replies. At `01:37:00.300548470Z`, RPCS3 sent a
+four-byte `00 00 00 00` LSG record after 90 seconds of inactivity. The server
+rejected body size zero and closed the otherwise healthy connection, after which
+the client reconnect loop produced invalid-HMAC step-2 requests and displayed
+"Communication with the Activision servers has been interrupted." The same
+zero-length LSG packet appears in the earlier
+`captures/mw2_rpcs3_ps3_no_games_found.pcapng` at frame 164, confirming it is a
+client keepalive. `readLSGFrame` now accepts the four-byte keepalive, and the LSG
+loop logs and consumes it without decrypting, incrementing frame state, replying,
+or closing the connection. Parser and live-loop regression coverage was added;
+`go test ./...` passes. The next live test is to leave one client idle for more
+than 90 seconds, quit the other client, then start matchmaking on the idle client
+and confirm the original LSG connection remains active. This transport fix is
+independent of the unresolved post-QoS join-pipeline gate.
+
 IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
 `0x2FDD98`, and `0x2FE95C`, alongside `0x2FDE58`, `0x2FE700`, `0x2FD7C0`,
 `0x2FD850`, `0x2FDC00`, `0x2FDC6C`, `0x2F9598`, `0x2F9908`, `0x2FC8F4`,
