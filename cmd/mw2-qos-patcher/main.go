@@ -160,7 +160,7 @@ func main() {
 	output := flag.String("output", "/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf", "QoS telemetry ELF output")
 	selfOutput := flag.String("self-output", "", "retail SELF output; defaults to default_mp.self beside the ELF output")
 	scetoolDir := flag.String("scetool-dir", "files/self", "directory containing tool/scetool.exe and data")
-	template := flag.String("self-template", "files/default_mp.self", "retail SELF template")
+	template := flag.String("self-template", "files/default_mp_tu0_clean.self", "retail SELF template")
 	force := flag.Bool("force", false, "accept a non-reference input SHA-256 if all byte and ELF checks pass")
 	flag.Parse()
 
@@ -493,7 +493,7 @@ func buildDecisionWrapper() ([]byte, error) {
 		0xe8010080, 0x9001010c, 0x92410110, 0x92610114, 0x92810118, 0x92a1011c, 0x92c10120, 0x93010124,
 		0x93610128, 0x93e1012c, 0xe8010020, 0x90010130, 0x801b05b0, 0x90010134, 0x801b0e4c, 0x90010138,
 		0x801b0e50, 0x9001013c, 0x801b0e1c, 0x90010140, 0x801b0e20, 0x90010144, 0x80152100, 0x90010148,
-		0x8800000c, 0x9001014c, 0x38000000, 0x90010150, 0x90010154, 0x90010158, 0x9001015c, 0x90010160,
+		0x38000000, 0x9001014c, 0x38000000, 0x90010150, 0x90010154, 0x90010158, 0x9001015c, 0x90010160,
 		0x90010164, 0x3c600070, 0x60630000, 0x38800441, 0x38a100f0, 0x38c00000, 0x38e00000, 0x39000000,
 	}
 	wrapper := wordsToBytes(words)

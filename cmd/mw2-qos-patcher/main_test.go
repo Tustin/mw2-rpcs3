@@ -148,10 +148,13 @@ func TestBuildDecisionWrapperCapturesPromotionStateAndRestoresComparison(t *test
 	for _, target := range []uint64{cellFsOpenVMA, cellFsWriteVMA, cellFsCloseVMA} {
 		branchOffsetToFrom(t, wrapper, decisionWrapperVMA, target)
 	}
+	if bytes.Contains(wrapper, []byte{0x88, 0x00, 0x00, 0x0c}) {
+		t.Fatal("decision wrapper retains unsafe nested controller dereference")
+	}
 	for _, instruction := range []uint32{
 		0x3c00514f, 0x60005331, 0x38000005, 0x98010106, 0x98010107,
 		0x801b05b0, 0x801b0e4c, 0x801b0e50, 0x801b0e1c, 0x801b0e20,
-		0x80152100, 0x8800000c, 0x38a00060, 0x7c0903a6, 0x7c0103a6,
+		0x80152100, 0x38a00060, 0x7c0903a6, 0x7c0103a6,
 		0x7c0ff120, 0x7c0803a6, 0x38210180, 0x2f800000, 0x4e800020,
 	} {
 		var encoded [4]byte

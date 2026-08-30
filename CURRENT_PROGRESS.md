@@ -1186,7 +1186,8 @@ IDA comments/bookmarks now also mark `0x2F8DF0`, `0x2F8E10`, `0xB3F9C`,
 ### Focused Promotion-Decision Telemetry (2026-08-29)
 
 Implemented the next diagnostic in `cmd/mw2-qos-patcher` and produced
-`files/EBOOT.QOSDIAG.SELF`. Deployable SELF build artifacts belong under
+`files/default_mp.self`. The clean retail packaging template is preserved as
+`files/default_mp_tu0_clean.self`. Deployable SELF build artifacts belong under
 `files/`; `captures/` is reserved for packet captures, logs, telemetry, and
 other debugging or reverse-engineering inputs.
 
@@ -1206,7 +1207,13 @@ Captured fields:
 - `0x40`: `*(u32 *)(r27 + 0xE1C)`
 - `0x44`: `*(u32 *)(r27 + 0xE20)`
 - `0x48`: `*(u32 *)(r21 + 0x2100)`
-- `0x4C`: `*(u8 *)(*(u32 *)(r21 + 0x2100) + 0x0C)`
+- `0x4C`: reserved and written as zero
+
+The first RPCS3 test crashed at wrapper address `0x709740`. The log showed that
+`*(u32 *)(r21 + 0x2100)` was `0x38A2`, so the attempted nested byte load from
+`0x38AE` raised an invalid-instruction memory fault. The wrapper now records the
+raw `r21 + 0x2100` value at `0x48` without dereferencing it; a regression test
+rejects the unsafe `lbz r0,0x0C(r0)` instruction.
 
 The existing version-3 abort/accept/CFF records remain enabled. Earlier
 version-4 join and gate hooks were removed from the generated image to keep this
@@ -1217,11 +1224,11 @@ Build artifacts:
 - clean input: `files/default_mp_tu0_clean.elf`
 - clean input SHA-256: `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`
 - patched ELF SHA-256: `c12d7a20f9a1dd3d1b2db73795f68a021d089c2d325836ba0f737041fa179535`
-- `files/EBOOT.QOSDIAG.SELF` SHA-256: `cda614c867aa946efe27a5a439dcef7d43db8c5a3e59dfd612088aef0d8c712d`
+- `files/default_mp.self` SHA-256: `a3984ac66ccef6dd06b6b1e349d290dd63a1ccf695bed31981575520b68f9fb1`
 
 Next RPCS3 test:
 
-1. Deploy `files/EBOOT.QOSDIAG.SELF` as the multiplayer executable.
+1. Deploy `files/default_mp.self` as the multiplayer executable.
 2. Delete `/dev_hdd0/tmp/qos.bin` before launch.
 3. Reproduce one failed public-match search.
 4. Preserve `qos.bin`, `RPCS3.log`, and `server_log.log`.
