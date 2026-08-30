@@ -489,6 +489,37 @@ func TestSensitiveLoggingIsExplicitAndIncludesRawEvidence(t *testing.T) {
 	}
 }
 
+func TestMatchmakingResponseLogReportsAdvertisedIdentities(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	matchmakingSession := mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{0xb1, 0x1c, 0x35, 0x8b, 5, 6, 7, 8},
+		securityKey: [mw2MatchmakingSecurityKeySize]byte{1, 2, 3, 4},
+	}
+	connection := &lsgConnection{
+		lastServiceID:           bdServiceMatchmaking,
+		lastOperationID:         bdMatchmakingFindSessions,
+		lastMatchmakingSessions: []mw2StoredMatchmakingSession{matchmakingSession},
+	}
+
+	logLSGResponsePayload(log, 4, lsgTaskReplyType, []byte{1}, connection)
+
+	text := output.String()
+	for _, expected := range []string{
+		"operation_id=5",
+		"result_count=1",
+		"session_ids=[b11c358b05060708]",
+		"short_security_ids=[0x8b351cb1]",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("response log is missing %q: %s", expected, text)
+		}
+	}
+	if strings.Contains(text, "01020304") {
+		t.Fatalf("response log exposes matchmaking security key: %s", text)
+	}
+}
+
 func TestStorageResponseLogReportsTypeCheckingMarker(t *testing.T) {
 	var output bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&output, nil))

@@ -74,30 +74,31 @@ func (s *lsgSessionStore) consume(ticket []byte) (lsgStoredSession, bool) {
 }
 
 type lsgConnection struct {
-	key                    [24]byte
-	pendingKey             [24]byte
-	connectionID           uint64
-	requestIV              uint32
-	responseIV             uint32
-	nextTransaction        uint64
-	lastServiceID          byte
-	lastOperationID        byte
-	lastTaskSupported      bool
-	playlistListReplies    int
-	playlistSHA256         string
-	playlistBytes          int
-	lastStorageFiles       []string
-	lastStorageFileIDs     []string
-	lastStorageGetFile     string
-	lastStorageGetID       string
-	bandwidthIPv4          [4]byte
-	bandwidthPort          uint16
-	bandwidthConfigured    bool
-	lastBandwidthPhase     string
-	matchmakingSessions    *mw2MatchmakingStore
-	matchmakingFindWait    time.Duration
-	matchmakingFindReplies int
-	activeLSGConnections   *atomic.Int64
+	key                     [24]byte
+	pendingKey              [24]byte
+	connectionID            uint64
+	requestIV               uint32
+	responseIV              uint32
+	nextTransaction         uint64
+	lastServiceID           byte
+	lastOperationID         byte
+	lastTaskSupported       bool
+	playlistListReplies     int
+	playlistSHA256          string
+	playlistBytes           int
+	lastStorageFiles        []string
+	lastStorageFileIDs      []string
+	lastStorageGetFile      string
+	lastStorageGetID        string
+	bandwidthIPv4           [4]byte
+	bandwidthPort           uint16
+	bandwidthConfigured     bool
+	lastBandwidthPhase      string
+	matchmakingSessions     *mw2MatchmakingStore
+	matchmakingFindWait     time.Duration
+	matchmakingFindReplies  int
+	lastMatchmakingSessions []mw2StoredMatchmakingSession
+	activeLSGConnections    *atomic.Int64
 }
 
 type lsgInitialRequest struct {

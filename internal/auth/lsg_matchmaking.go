@@ -262,6 +262,7 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 	c.lastServiceID = bdServiceMatchmaking
 	c.lastOperationID = 0
 	c.lastTaskSupported = false
+	c.lastMatchmakingSessions = nil
 	request, err := parseMW2MatchmakingRequest(payload)
 	c.lastOperationID = request.operationID
 	if err != nil {
@@ -275,6 +276,7 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 			return lsgTaskReplyType, c.matchmakingErrorReply(bdErrorServiceNotAvailable), true
 		}
 		c.lastTaskSupported = true
+		c.lastMatchmakingSessions = []mw2StoredMatchmakingSession{session}
 		return lsgTaskReplyType, c.matchmakingCreateReply(session), true
 	case bdMatchmakingUpdateSession:
 		if _, ok := c.matchmakingStore().update(request.info, c.connectionID); !ok {
@@ -303,6 +305,7 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 				)
 			}
 			c.matchmakingFindReplies++
+			c.lastMatchmakingSessions = append([]mw2StoredMatchmakingSession(nil), sessions...)
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}
 	}

@@ -1213,11 +1213,70 @@ Retest artifacts:
 - packaged SELF SHA-256: `057695bae8bc27d839d3c78d4fc9642f7fd69c1741d39e5833066b7966896e6e`
 - installed deployable: `files/default_mp.self`
 
-Next RPCS3 test: launch multiplayer with the installed v10 SELF, run the same
-public-match search through the former `0x2FA764` crash point, and confirm that
-the game remains stable. Preserve `RPCS3.log`, `server_log.log`, and `qos.bin`
-(if produced). If stable, add a safe deferred flush of the `0x75E348` snapshot
-from a proven logger path.
+The v10 live retest completed on 2026-08-30. The final public search involved
+RPCS3 at `192.168.0.117` and the physical client at `192.168.0.200`; a third
+client had also connected during the server lifetime but was not active in the
+final two-session search. RPCS3 passed the former `0x2FA764` crash point and ran
+for about 2 minutes 20 seconds without an access violation, verification
+failure, or fatal emulator error. The game eventually became unresponsive while
+matchmaking remained active, but the trace shows a later peer-network retry
+loop rather than a decision-wrapper crash. The leaf-only in-memory promotion
+snapshot is therefore stable and the previous crash was caused by filesystem
+HLE calls from inside that hook.
+
+`/dev_hdd0/tmp/qos.bin` contains 1,728 bytes, exactly 18 complete 96-byte
+records, SHA-256
+`72161669127ee3fdf1e0fd81b4b4dbd3df3a048e445776baaef5b2b32fa4ca1b`.
+All records are the unchanged version-2/tag-0 filesystem telemetry: six
+abort/accept/CFF cycles at `0x30A7A0` and `0x30A7B8`. No version-5 record is
+expected there because the decision snapshot remains memory-only at `0x75E348`.
+
+Both clients received the same self-inclusive, creation-ordered two-result
+operation-5 reply. Direct traversal completed in both directions. The physical
+client's type-`0x28` QoS request reached RPCS3 and RPCS3 returned type `0x29`,
+but RPCS3 then sent four type-`0x28` probes to the physical client without any
+`0x29` response. No type-1 through type-6 peer-DTLS packet followed. RPCS3
+updated its own advertisement from private slots `8/0` to `7/1`, requested one
+service-17 performance value, continued operation-5 searches, and returned to
+repeated type-`0x0d` traversal after the QoS timeout. The physical client made
+no corresponding slot update and its LSG connection later closed, reclaiming
+its session. RPCS3's next find then contained only its own advertisement and it
+deleted that session shortly afterward.
+
+This run does not justify changing the retail-proven self-inclusive directory,
+creation ordering, QoS serialization, or performance reply. It establishes that
+the immediate live blocker is asymmetric peer QoS responsiveness before local
+promotion and peer DTLS. The next test should instrument or debug the physical
+client's type-`0x28` receive/reply path and capture the in-memory `0x75E348`
+snapshot through an RPCS3 debugger/watchpoint rather than adding another
+in-process filesystem flush.
+
+A follow-up comparison against both successful two-client captures and the ELF
+narrows that target further. The physical PS3 is demonstrably capable of replying
+to RPCS3's identical 17-byte MW2 QoS requests in the successful captures, so the
+wire format, RPCS3 socket, and basic PS3 receive path are not the differentiator.
+The failed v10 trace sent exactly four complete requests to
+`192.168.0.200:3074`; the first was
+`28 46 1c d5 00 00 00 00 00 00 00 00 00 b1 1c 35 8b`, followed at the normal
+approximately 0.9-second retry interval by new request IDs with the same short
+security ID `b1 1c 35 8b`. No type-`0x29` packet returned. ELF analysis confirms
+QoS listening is explicitly enabled for a local session by `sub_3066F0`, which
+registers the session's security ID/key and sets the session byte at `+0x22c` to
+one; `sub_306660` unregisters it and clears that byte. Therefore the leading
+hypotheses are now a physical-client listener lifecycle/state transition or a
+mismatch between its locally registered security ID/key and the advertisement
+returned by operation 5, not packet serialization. The next capture should log
+or inspect the physical client's advertised eight-byte security ID/key, verify
+that `shrinkSecId` equals `b1 1c 35 8b`, and breakpoint the `sub_3066F0`/
+`sub_306660` paths to determine whether the listener was never registered or was
+removed before RPCS3's first probe.
+
+The server now records the exact generated eight-byte session/security ID and its
+`shrinkSecId` little-endian `u32` for service-5 operation-1 replies and every
+operation-5 result. Full 16-byte matchmaking security keys are emitted only by
+the existing explicit sensitive logging mode. This makes the next two-client run
+able to compare the physical client's advertisement, returned find result, and
+observed type-`0x28` probe identity directly.
 
 ### Focused Promotion-Decision Telemetry (2026-08-29)
 

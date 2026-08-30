@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/josh/mw2-rpcs3/internal/capture"
+	"github.com/josh/mw2-rpcs3/internal/peerproto"
 )
 
 const (
@@ -377,6 +378,18 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			}
 		}
 		logLSGResponsePayload(log, step, responseType, responsePayload, session)
+		if session.lastServiceID == bdServiceMatchmaking &&
+			(session.lastOperationID == bdMatchmakingCreateSession || session.lastOperationID == bdMatchmakingFindSessions) {
+			securityKeys := make([]string, 0, len(session.lastMatchmakingSessions))
+			for _, matchmakingSession := range session.lastMatchmakingSessions {
+				securityKeys = append(securityKeys, hex.EncodeToString(matchmakingSession.securityKey[:]))
+			}
+			s.logSensitiveEvent(log, "sensitive matchmaking identities advertised",
+				"step", step,
+				"operation_id", session.lastOperationID,
+				"security_keys", securityKeys,
+			)
+		}
 		s.logSensitiveEvent(log, "sensitive retail LSG response plaintext",
 			"step", step,
 			"message_type", responseType,
@@ -500,6 +513,21 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 	log.Info("retail LSG service request decrypted", attrs...)
 }
 
+func matchmakingIdentityLogValues(sessions []mw2StoredMatchmakingSession) ([]string, []string) {
+	sessionIDs := make([]string, 0, len(sessions))
+	shortSecurityIDs := make([]string, 0, len(sessions))
+	for _, matchmakingSession := range sessions {
+		shortSecurityID, err := peerproto.ShrinkSecurityID(matchmakingSession.sessionID[:])
+		if err != nil {
+			shortSecurityIDs = append(shortSecurityIDs, err.Error())
+		} else {
+			shortSecurityIDs = append(shortSecurityIDs, fmt.Sprintf("0x%08x", shortSecurityID))
+		}
+		sessionIDs = append(sessionIDs, hex.EncodeToString(matchmakingSession.sessionID[:]))
+	}
+	return sessionIDs, shortSecurityIDs
+}
+
 func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload []byte, session *lsgConnection) {
 	attrs := []any{
 		"step", step,
@@ -536,6 +564,16 @@ func logLSGResponsePayload(log *slog.Logger, step int, messageType byte, payload
 					"playlist_sha256", session.playlistSHA256,
 				)
 			}
+		}
+	} else if session.lastServiceID == bdServiceMatchmaking {
+		attrs = append(attrs, "operation_id", session.lastOperationID)
+		if session.lastOperationID == bdMatchmakingCreateSession || session.lastOperationID == bdMatchmakingFindSessions {
+			sessionIDs, shortSecurityIDs := matchmakingIdentityLogValues(session.lastMatchmakingSessions)
+			attrs = append(attrs,
+				"result_count", len(session.lastMatchmakingSessions),
+				"session_ids", sessionIDs,
+				"short_security_ids", shortSecurityIDs,
+			)
 		}
 	} else if session.lastServiceID == bdServiceBandwidth {
 		attrs = append(attrs,
