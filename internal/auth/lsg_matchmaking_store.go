@@ -176,6 +176,20 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 	return removed
 }
 
+func (s *mw2MatchmakingStore) hasOwner(ownerID uint64) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, session := range s.sessions {
+		if session.ownerID == ownerID {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *mw2MatchmakingStore) find(
 	maxResults int32,
 	requiredFreeSlots int32,

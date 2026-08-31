@@ -430,9 +430,13 @@ func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uin
 	writer.writeU8(operationID)
 	writer.writeU32(uint32(len(entityIDs)))
 	for _, entityID := range entityIDs {
+		performanceValue := uint32(0)
+		if c.matchmakingStore().hasOwner(entityID) {
+			performanceValue = 1
+		}
 		writer.writeRawBEU32(0)
 		writer.writeU64(entityID)
-		writer.writeRawBEU32(1)
+		writer.writeRawBEU32(performanceValue)
 	}
 	return writer.bytes()
 }

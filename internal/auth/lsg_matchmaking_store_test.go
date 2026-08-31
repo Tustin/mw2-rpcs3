@@ -239,6 +239,29 @@ func TestMW2MatchmakingStoreReclaimsOnlyClosedConnectionOwner(t *testing.T) {
 	}
 }
 
+func TestMW2MatchmakingStoreFindsAdvertisedOwner(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	info := mw2MatchmakingInfo{
+		commonAddress: make([]byte, mw2MatchmakingCommonAddressSize),
+		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
+		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
+	}
+	const ownerID = uint64(0xb804d13e5ee3dafa)
+	if _, err := store.create(info, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if !store.hasOwner(ownerID) {
+		t.Fatal("created session owner was not found")
+	}
+	if store.hasOwner(0x1cef2987c7049084) {
+		t.Fatal("unknown session owner was found")
+	}
+	store.deleteOwner(ownerID)
+	if store.hasOwner(ownerID) {
+		t.Fatal("deleted session owner was still found")
+	}
+}
+
 func TestMW2MatchmakingStoreRejectsInvalidDirectInput(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	invalid := mw2MatchmakingInfo{

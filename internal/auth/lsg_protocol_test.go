@@ -160,12 +160,20 @@ func TestParseCapturedPerformanceValuesRequest(t *testing.T) {
 	}
 }
 
-func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
+func TestHandlePerformanceValuesReturnsSessionBackedValues(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	entityIDs := []uint64{0xb804d13e5ee3dafa, 0x1cef2987c7049084}
+	info := mw2MatchmakingInfo{
+		commonAddress: make([]byte, mw2MatchmakingCommonAddressSize),
+		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
+		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
+	}
+	if _, err := session.matchmakingStore().create(info, entityIDs[0]); err != nil {
+		t.Fatal(err)
+	}
 	payload := buildPerformanceValuesRequest(0, entityIDs...)
 	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
 	if !ok || !reply || responseType != lsgTaskReplyType {
@@ -190,7 +198,7 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 	if count, err := reader.readU32(); err != nil || count != uint32(len(entityIDs)) {
 		t.Fatalf("count=%d want=%d err=%v", count, len(entityIDs), err)
 	}
-	for _, entityID := range entityIDs {
+	for index, entityID := range entityIDs {
 		status, err := reader.bits.readBits(32)
 		if err != nil || status != 0 {
 			t.Fatalf("status=%d err=%v", status, err)
@@ -206,8 +214,12 @@ func TestHandlePerformanceValuesReturnsOneResultPerEntity(t *testing.T) {
 			}
 			valueBytes[i] = byte(value)
 		}
-		if value := binary.BigEndian.Uint32(valueBytes[:]); value != 1 {
-			t.Fatalf("performance=%d bytes=%x", value, valueBytes)
+		want := uint32(0)
+		if index == 0 {
+			want = 1
+		}
+		if value := binary.BigEndian.Uint32(valueBytes[:]); value != want {
+			t.Fatalf("performance=%d want=%d bytes=%x", value, want, valueBytes)
 		}
 	}
 }

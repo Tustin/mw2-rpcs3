@@ -564,6 +564,16 @@ public slots. Unranked searches therefore use private slots; ranked searches use
 public slots. The corrected server repeatedly returns the other client's
 candidate.
 
+Further IDA analysis on 2026-08-30 confirms that the service-17 result preserves
+the requested entity ID and stores the accompanying U32 at `bdPerformanceValue`
+offset `+8`; no authoritative performance value is present in the operation-5
+session advertisement. The server now resolves performance values against the
+shared matchmaking store: an entity ID that owns an advertised session receives
+the deterministic baseline value `1`, while an unknown or stale entity receives
+`0`. Regression tests cover both paths. This remains an emulation policy rather
+than a retail-derived ranking algorithm and still requires fresh two-client
+RPCS3 validation.
+
 The direct peer sequence is also live-confirmed. RPCS3 sends exact 29-byte
 `0x0d` traversal requests to the PS3's LAN and advertised external addresses,
 receives matching `0x0c` acknowledgements, sends a 17-byte `0x28` QoS request,
