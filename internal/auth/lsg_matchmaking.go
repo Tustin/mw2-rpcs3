@@ -266,7 +266,7 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 
 	switch request.operationID {
 	case bdMatchmakingCreateSession:
-		session, createErr := c.matchmakingStore().create(request.info, c.connectionID)
+		session, createErr := c.matchmakingStore().create(request.info, c.connectionID, c.entityID)
 		if createErr != nil {
 			return lsgTaskReplyType, c.matchmakingErrorReply(bdErrorServiceNotAvailable), true
 		}

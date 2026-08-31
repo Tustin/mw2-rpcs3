@@ -239,26 +239,27 @@ func TestMW2MatchmakingStoreReclaimsOnlyClosedConnectionOwner(t *testing.T) {
 	}
 }
 
-func TestMW2MatchmakingStoreFindsAdvertisedOwner(t *testing.T) {
+func TestMW2MatchmakingStoreFindsAdvertisedEntity(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	info := mw2MatchmakingInfo{
 		commonAddress: make([]byte, mw2MatchmakingCommonAddressSize),
 		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
 		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
 	}
-	const ownerID = uint64(0xb804d13e5ee3dafa)
-	if _, err := store.create(info, ownerID); err != nil {
+	const ownerID = uint64(0x1122334455667788)
+	const entityID = uint64(0xb804d13e5ee3dafa)
+	if _, err := store.create(info, ownerID, entityID); err != nil {
 		t.Fatal(err)
 	}
-	if !store.hasOwner(ownerID) {
-		t.Fatal("created session owner was not found")
+	if !store.hasEntity(entityID) {
+		t.Fatal("created session entity was not found")
 	}
-	if store.hasOwner(0x1cef2987c7049084) {
-		t.Fatal("unknown session owner was found")
+	if store.hasEntity(ownerID) || store.hasEntity(0x1cef2987c7049084) {
+		t.Fatal("unknown session entity was found")
 	}
 	store.deleteOwner(ownerID)
-	if store.hasOwner(ownerID) {
-		t.Fatal("deleted session owner was still found")
+	if store.hasEntity(entityID) {
+		t.Fatal("deleted session entity was still found")
 	}
 }
 

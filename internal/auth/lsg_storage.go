@@ -523,6 +523,7 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 	var reply []byte
 	switch request.operationID {
 	case bdStorageListOwnerFiles:
+		c.entityID = request.ownerID
 		c.lastTaskSupported = true
 		reply = c.storageOwnerListReply()
 	case bdStorageListFiles:

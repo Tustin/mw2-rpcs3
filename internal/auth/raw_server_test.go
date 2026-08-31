@@ -446,7 +446,7 @@ func TestRetailDiagnosticLogsDoNotExposeRawSecrets(t *testing.T) {
 	copy(key[:], secret)
 
 	logTicketKeyDiagnostic(log, ticket, key)
-	logLSGRequest(log, 2, 0xfe, secret)
+	logLSGRequest(log, nil, 2, 0xfe, secret)
 	logLSGResponsePayload(log, 2, 1, secret, &lsgConnection{})
 	logLSGEncryptedResponse(log, 2, 1, secret)
 	frame, err := EncryptLSGRecord(0xfe, secret, 7, key[:])

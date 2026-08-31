@@ -686,3 +686,8 @@
 {"time":"2026-08-31T00:52:40.178968511Z","level":"WARN","msg":"sensitive retail LSG response encrypted","listener":"lsg","remote":"192.168.0.199:50342","sensitive":true,"step":35,"message_type":1,"response_iv":495203204,"frame_hex":"9d000000018433841dbbcaf346c815257455389929b57827da19b2a252bb266742ec737bea1b03ccd3750ad920b8e58ef25a642f9dd36a8a473e62d0e067a23998a73aad89ef78d2283b847dd4129c7c7342afe05c7b17e51418ef35dcbe0fa0d795eaf75618dd0897d584cae49d698ddd9ee2b30a413bffb02790f6dbebc7a7bd9cf6664e1874877c5dbb664ee9f595b098a75a8aa1a377768021c24c835e0e1e"}
 {"time":"2026-08-31T00:52:40.179052538Z","level":"INFO","msg":"dynamic retail LSG response sent","listener":"lsg","remote":"192.168.0.199:50342","step":35,"bytes":161}
 {"time":"2026-08-31T00:52:41.247210192Z","level":"INFO","msg":"reclaimed matchmaking sessions for closed LSG connection","listener":"lsg","remote":"192.168.0.199:50342","sessions":1}
+{"time":"2026-08-30T20:14:03.062311489-05:00","level":"WARN","msg":"sensitive protocol logging enabled; logs contain credentials, keys, decrypted payloads, and raw frames"}
+{"time":"2026-08-30T20:14:03.062821286-05:00","level":"INFO","msg":"listener starting","name":"auth"}
+{"time":"2026-08-30T20:14:03.062923562-05:00","level":"INFO","msg":"listener starting","name":"nat"}
+{"time":"2026-08-30T20:14:03.063026388-05:00","level":"INFO","msg":"listener starting","name":"http"}
+{"time":"2026-08-30T20:14:03.063171905-05:00","level":"INFO","msg":"listener starting","name":"lobby"}

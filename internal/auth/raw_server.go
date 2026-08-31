@@ -327,7 +327,7 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 			"request_iv", session.requestIV,
 			"payload_hex", hex.EncodeToString(payload),
 		)
-		logLSGRequest(log, step, messageType, payload)
+		logLSGRequest(log, session, step, messageType, payload)
 		responseType, responsePayload, handled, reply := handleLSGMessage(session, messageType, payload)
 		if !handled {
 			// Keep the connection open so the client continues to send the rest
@@ -410,7 +410,7 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 	}
 }
 
-func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
+func logLSGRequest(log *slog.Logger, session *lsgConnection, step int, serviceID byte, payload []byte) {
 	attrs := []any{
 		"step", step,
 		"service_id", serviceID,
@@ -455,10 +455,20 @@ func logLSGRequest(log *slog.Logger, step int, serviceID byte, payload []byte) {
 		if !valid {
 			attrs = append(attrs, "performance_parse_error", "invalid performance-values request")
 		} else {
+			values := make([]uint32, len(entityIDs))
+			formattedEntityIDs := make([]string, len(entityIDs))
+			for index, entityID := range entityIDs {
+				formattedEntityIDs[index] = fmt.Sprintf("0x%016x", entityID)
+				if session != nil && session.matchmakingStore().hasEntity(entityID) {
+					values[index] = 1
+				}
+			}
 			attrs = append(attrs,
 				"operation_id", byte(2),
 				"performance_type", performanceType,
 				"entity_count", len(entityIDs),
+				"entity_ids", formattedEntityIDs,
+				"performance_values", values,
 			)
 		}
 	} else if serviceID == bdServiceMatchmaking {

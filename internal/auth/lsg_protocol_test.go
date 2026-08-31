@@ -166,13 +166,16 @@ func TestHandlePerformanceValuesReturnsSessionBackedValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	entityIDs := []uint64{0xb804d13e5ee3dafa, 0x1cef2987c7049084}
-	info := mw2MatchmakingInfo{
-		commonAddress: make([]byte, mw2MatchmakingCommonAddressSize),
-		sessionID:     make([]byte, mw2MatchmakingSessionIDSize),
-		securityKey:   make([]byte, mw2MatchmakingSecurityKeySize),
+	ownerID := uint64(0x1122334455667788)
+	session.connectionID = ownerID
+	session.entityID = entityIDs[0]
+	_, createReply, handled := session.handleMatchmakingTask(buildMW2SessionObjectRequest(bdMatchmakingCreateSession))
+	if !handled || !session.lastTaskSupported {
+		t.Fatalf("create handled=%v supported=%v reply=%x", handled, session.lastTaskSupported, createReply)
 	}
-	if _, err := session.matchmakingStore().create(info, entityIDs[0]); err != nil {
-		t.Fatal(err)
+	created := session.lastMatchmakingSessions[0]
+	if created.ownerID != ownerID || created.entityID != entityIDs[0] {
+		t.Fatalf("created owner=%x entity=%x", created.ownerID, created.entityID)
 	}
 	payload := buildPerformanceValuesRequest(0, entityIDs...)
 	responseType, result, ok, reply := handleLSGMessage(session, bdServicePerformance, payload)
@@ -186,7 +189,7 @@ func TestHandlePerformanceValuesReturnsSessionBackedValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if transactionID, err := reader.readU64(); err != nil || transactionID != 0 {
+	if transactionID, err := reader.readU64(); err != nil || transactionID != 1 {
 		t.Fatalf("transaction=%d err=%v", transactionID, err)
 	}
 	if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {

@@ -76,6 +76,7 @@ type lsgConnection struct {
 	key                     [24]byte
 	pendingKey              [24]byte
 	connectionID            uint64
+	entityID                uint64
 	requestIV               uint32
 	responseIV              uint32
 	nextTransaction         uint64
@@ -431,7 +432,7 @@ func (c *lsgConnection) performanceValuesReply(operationID byte, entityIDs []uin
 	writer.writeU32(uint32(len(entityIDs)))
 	for _, entityID := range entityIDs {
 		performanceValue := uint32(0)
-		if c.matchmakingStore().hasOwner(entityID) {
+		if c.matchmakingStore().hasEntity(entityID) {
 			performanceValue = 1
 		}
 		writer.writeRawBEU32(0)

@@ -109,6 +109,24 @@ func TestParseObservedMW2StorageOwnerListRequest(t *testing.T) {
 	}
 }
 
+func TestStorageOwnerListBindsConnectionEntity(t *testing.T) {
+	connection, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte{
+		0xc7, 0xc1, 0x00, 0x50, 0xfa, 0xda, 0xe3, 0x5e, 0x3e, 0xd1,
+		0x04, 0xb8, 0x08, 0x00, 0x00, 0x00, 0xc0, 0x90, 0x01, 0x00,
+	}
+	_, reply, handled := connection.handleStorageTask(payload)
+	if !handled || !connection.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
+	}
+	if connection.entityID != 0xb804d13e5ee3dafa {
+		t.Fatalf("entity=%x", connection.entityID)
+	}
+}
+
 func TestParseObservedMW2StorageListRequest(t *testing.T) {
 	payload := []byte{
 		0x07, 0xc2, 0x00, 0x40, 0x00, 0x00,

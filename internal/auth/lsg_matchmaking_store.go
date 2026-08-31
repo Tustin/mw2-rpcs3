@@ -28,6 +28,7 @@ type mw2StoredMatchmakingSession struct {
 	filledPrivate int32
 	attributes    [9]int32
 	ownerID       uint64
+	entityID      uint64
 	creationOrder uint64
 }
 
@@ -78,7 +79,7 @@ func (s mw2StoredMatchmakingSession) info() mw2MatchmakingInfo {
 	}
 }
 
-func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (mw2StoredMatchmakingSession, error) {
+func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64, entityIDs ...uint64) (mw2StoredMatchmakingSession, error) {
 	if s == nil {
 		return mw2StoredMatchmakingSession{}, fmt.Errorf("matchmaking store is nil")
 	}
@@ -87,6 +88,9 @@ func (s *mw2MatchmakingStore) create(info mw2MatchmakingInfo, ownerID uint64) (m
 	}
 	session := matchmakingSessionFromInfo(info)
 	session.ownerID = ownerID
+	if len(entityIDs) > 0 {
+		session.entityID = entityIDs[0]
+	}
 	for {
 		if _, err := rand.Read(session.sessionID[:]); err != nil {
 			return mw2StoredMatchmakingSession{}, fmt.Errorf("generate matchmaking session ID: %w", err)
@@ -176,14 +180,14 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 	return removed
 }
 
-func (s *mw2MatchmakingStore) hasOwner(ownerID uint64) bool {
-	if s == nil {
+func (s *mw2MatchmakingStore) hasEntity(entityID uint64) bool {
+	if s == nil || entityID == 0 {
 		return false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, session := range s.sessions {
-		if session.ownerID == ownerID {
+		if session.entityID == entityID {
 			return true
 		}
 	}
