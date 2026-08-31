@@ -30,6 +30,7 @@ type mw2StoredMatchmakingSession struct {
 	ownerID       uint64
 	entityID      uint64
 	creationOrder uint64
+	ready         bool
 }
 
 type mw2MatchmakingStore struct {
@@ -143,6 +144,7 @@ func (s *mw2MatchmakingStore) update(info mw2MatchmakingInfo, ownerID uint64) (m
 	current.openPrivate = info.openPrivate
 	current.filledPrivate = info.filledPrivate
 	current.attributes = info.attributes
+	current.ready = true
 	s.sessions[sessionID] = current
 	return current, true
 }
@@ -205,9 +207,10 @@ func (s *mw2MatchmakingStore) find(
 func (s *mw2MatchmakingStore) findForSearch(
 	maxResults int32,
 	search mw2MatchmakingSearch,
+	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
 	usePrivateSlots := search.gameType != 0
-	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, 0, false)
+	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, false)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -238,6 +241,9 @@ func (s *mw2MatchmakingStore) findMatching(
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
+			continue
+		}
+		if search != nil && session.ownerID != excludedOwnerID && !session.ready {
 			continue
 		}
 		if search != nil && !mw2SessionMatchesSearch(session, *search) {

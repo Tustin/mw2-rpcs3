@@ -311,6 +311,15 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 	if allZero(sessionID) || allZero(securityKey) {
 		t.Fatalf("create returned zero identity: session=%x key=%x", sessionID, securityKey)
 	}
+	updateReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingUpdateSession,
+		hostAddress,
+		sessionID,
+		securityKey,
+		hostCounts,
+		hostAttributes,
+	))
+	assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
 
 	findReply := seeker.exchange(t, bdServiceMatchmaking, buildMW2FindSessionsRequestWithValues(
 		2,
@@ -341,7 +350,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 	if got, want := service.LSGConnections(), uint64(4); got != want {
 		t.Fatalf("LSG connections=%d want=%d", got, want)
 	}
-	if got, want := service.LSGFrames(), uint64(12); got != want {
+	if got, want := service.LSGFrames(), uint64(13); got != want {
 		t.Fatalf("LSG frames=%d want=%d", got, want)
 	}
 

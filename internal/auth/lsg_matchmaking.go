@@ -288,7 +288,7 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 	case bdMatchmakingFindSessions:
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
-			sessions := c.matchmakingStore().findForSearch(request.maxResults, request.search)
+			sessions := c.matchmakingStore().findForSearch(request.maxResults, request.search, c.connectionID)
 			c.lastMatchmakingSessions = append([]mw2StoredMatchmakingSession(nil), sessions...)
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}

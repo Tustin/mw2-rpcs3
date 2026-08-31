@@ -458,11 +458,30 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		[6]int32{101, 102, 103, 104, 105, 1},
 		504,
 	)
+	for _, session := range []struct {
+		client      *fullFlowLSGClient
+		address     []byte
+		sessionID   []byte
+		securityKey []byte
+	}{
+		{client: host, address: hostAddress, sessionID: sessionID, securityKey: securityKey},
+		{client: seeker, address: seekerAddress, sessionID: seekerSessionID, securityKey: seekerSecurityKey},
+	} {
+		updateReply := session.client.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
+			bdMatchmakingUpdateSession,
+			session.address,
+			session.sessionID,
+			session.securityKey,
+			hostCounts,
+			hostAttributes,
+		))
+		assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
+	}
 	for _, client := range []*fullFlowLSGClient{host, seeker} {
 		found := readFullFlowFindReply(
 			t,
 			client.exchange(t, bdServiceMatchmaking, findRequest),
-			4,
+			5,
 		)
 		if len(found) != 2 {
 			t.Fatalf("initial find count=%d", len(found))
@@ -500,12 +519,12 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		updatedCounts,
 		updatedAttributes,
 	))
-	assertFullFlowMutationReply(t, updateReply, 5, bdMatchmakingUpdateSession)
+	assertFullFlowMutationReply(t, updateReply, 6, bdMatchmakingUpdateSession)
 
 	found := readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		5,
+		6,
 	)
 	if len(found) != 2 {
 		t.Fatalf("updated find count=%d", len(found))
@@ -534,11 +553,11 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		bdServiceMatchmaking,
 		buildMW2SessionIDRequestWithValue(bdMatchmakingDeleteSession, sessionID),
 	)
-	assertFullFlowMutationReply(t, deleteReply, 6, bdMatchmakingDeleteSession)
+	assertFullFlowMutationReply(t, deleteReply, 7, bdMatchmakingDeleteSession)
 	found = readFullFlowFindReply(
 		t,
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		6,
+		7,
 	)
 	if len(found) != 1 {
 		t.Fatalf("post-delete find count=%d", len(found))
@@ -556,7 +575,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	// A nonempty retail result hands this exact address/ID/key tuple to the
 	// client's peer router. Peer QoS and traversal begin after this boundary
 	// and are intentionally outside this central-service harness.
-	if service.LSGConnections() != 2 || service.LSGFrames() != 16 {
+	if service.LSGConnections() != 2 || service.LSGFrames() != 18 {
 		t.Fatalf(
 			"LSG connections=%d frames=%d",
 			service.LSGConnections(),

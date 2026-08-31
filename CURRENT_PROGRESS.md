@@ -1,6 +1,6 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-03 after the physical-PS3/RPCS3 reciprocal-find retest.
+_Last updated: 2026-08-31 after fixing create/find session readiness ordering.
 Both clients received byte-identical two-result operation-5 arrays after the
 per-connection transaction ID. Decoding proves entry 0 is the earlier RPCS3
 advertisement (`192.168.0.199`, session `afe27d9a845444a3`) and entry 1 is the
@@ -333,7 +333,13 @@ recovered as unranked flag, selected playlist/game-mode ID, netcode version,
 owned map-pack flags, playlist version, required free slots, and
 performance. The directory uses the recovered unranked flag to select the slot pool:
 nonzero requires `openPrivate >= requiredFreeSlots`, while zero requires
-`openPublic >= requiredFreeSlots`. This is confirmed by the latest two-client
+`openPublic >= requiredFreeSlots`. Newly created records are now hidden from
+operation `5` until their first successful owner operation-`2` refresh, matching
+the client lifecycle in which create assigns the generated identity and update
+publishes the complete advertisement. This removes the create/find race that let
+a requester observe an incomplete peer before that peer's first refresh. A
+later successful update replaces the mutable object without changing readiness.
+This is confirmed by the latest two-client
 trace: both searches carried `unranked=1`, both hosts advertised private slots,
 and the public-only filter incorrectly returned zero. The successful retail
 two-PS3 capture disproves equality filters for game mode, netcode, playlist

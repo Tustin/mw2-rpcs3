@@ -538,6 +538,27 @@ func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	}
 	requesterSessionID := readCreatedSessionID(requesterCreateReply)
 	peerSessionID := readCreatedSessionID(peerCreateReply)
+	requesterCreated := requester.lastMatchmakingSessions[0]
+	peerCreated := peer.lastMatchmakingSessions[0]
+	for _, update := range []struct {
+		connection *lsgConnection
+		session    mw2StoredMatchmakingSession
+	}{
+		{connection: requester, session: requesterCreated},
+		{connection: peer, session: peerCreated},
+	} {
+		info := update.session.info()
+		if _, _, handled := update.connection.handleMatchmakingTask(buildMW2SessionObjectRequestWithValues(
+			bdMatchmakingUpdateSession,
+			info.commonAddress,
+			info.sessionID,
+			info.securityKey,
+			[4]int32{info.openPublic, info.filledPublic, info.openPrivate, info.filledPrivate},
+			info.attributes,
+		)); !handled || !update.connection.lastTaskSupported {
+			t.Fatal("readiness update failed")
+		}
+	}
 
 	findSessionIDs := func(connection *lsgConnection, expectedCount uint32) [][]byte {
 		t.Helper()
@@ -651,11 +672,41 @@ func TestMW2FindSessionsMatchesRetailTwoPS3Searches(t *testing.T) {
 		return count
 	}
 
-	if count := findCount(first, mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1, performance: 1000}); count != 2 {
-		t.Fatalf("first retail search count=%d, want both sessions", count)
+	firstSearch := mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1, performance: 1000}
+	secondSearch := mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 426, requiredFreeSlots: 1}
+	if count := findCount(first, firstSearch); count != 1 {
+		t.Fatalf("first pre-update retail search count=%d, want own session only", count)
 	}
-	if count := findCount(second, mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 426, requiredFreeSlots: 1}); count != 2 {
-		t.Fatalf("second retail search count=%d, want both sessions", count)
+	if count := findCount(second, secondSearch); count != 1 {
+		t.Fatalf("second pre-update retail search count=%d, want own session only", count)
+	}
+	firstCreated := first.lastMatchmakingSessions[0]
+	secondCreated := second.lastMatchmakingSessions[0]
+	if _, _, handled := first.handleMatchmakingTask(buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingUpdateSession,
+		firstCreated.commonAddress[:],
+		firstCreated.sessionID[:],
+		firstCreated.securityKey[:],
+		[4]int32{0, 0, 7, 1},
+		firstCreated.attributes,
+	)); !handled || !first.lastTaskSupported {
+		t.Fatal("first update failed")
+	}
+	if _, _, handled := second.handleMatchmakingTask(buildMW2SessionObjectRequestWithValues(
+		bdMatchmakingUpdateSession,
+		secondCreated.commonAddress[:],
+		secondCreated.sessionID[:],
+		secondCreated.securityKey[:],
+		[4]int32{0, 0, 7, 1},
+		secondCreated.attributes,
+	)); !handled || !second.lastTaskSupported {
+		t.Fatal("second update failed")
+	}
+	if count := findCount(first, firstSearch); count != 2 {
+		t.Fatalf("first post-update retail search count=%d, want both sessions", count)
+	}
+	if count := findCount(second, secondSearch); count != 2 {
+		t.Fatalf("second post-update retail search count=%d, want both sessions", count)
 	}
 }
 
@@ -704,6 +755,7 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		openPrivate: 4,
 		attributes:  [9]int32{101, 12, 105, 106, 103, 104, 102, 18, 19},
 		ownerID:     1,
+		ready:       true,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
 		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
@@ -711,6 +763,7 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		openPrivate: 1,
 		attributes:  [9]int32{101, 92, 105, 106, 103, 104, 102, 98, 99},
 		ownerID:     2,
+		ready:       true,
 	}
 	connection := &lsgConnection{connectionID: 3, matchmakingSessions: store}
 
@@ -788,6 +841,7 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		openPrivate: 4,
 		attributes:  [9]int32{0, 12, 105, 106, 103, 104, 102, 18, 19},
 		ownerID:     1,
+		ready:       true,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
 		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
@@ -795,6 +849,7 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		openPrivate: 1,
 		attributes:  [9]int32{0, 92, 105, 106, 103, 104, 102, 98, 99},
 		ownerID:     2,
+		ready:       true,
 	}
 	if count := resultCount(eligible); count != 1 {
 		t.Fatalf("count=%d, want one ranked session with at least three public slots", count)
