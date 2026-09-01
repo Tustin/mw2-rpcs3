@@ -9,6 +9,7 @@ services:
       MW2_CAPTURE_ENABLED: "false"
       MW2_NAT_ADVERTISED_IP: ${MW2_NAT_ADVERTISED_IP:?set MW2_NAT_ADVERTISED_IP to the client-reachable host IPv4}
       MW2_NAT_RELAY_ENABLED: ${MW2_NAT_RELAY_ENABLED:-false}
+      MW2_MATCHMAKING_SUPPRESS_SELF_ONLY: ${MW2_MATCHMAKING_SUPPRESS_SELF_ONLY:-false}
     ports:
       - "3074:3074/tcp"
       - "3074:3074/udp"

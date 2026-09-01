@@ -861,6 +861,111 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	}
 }
 
+func TestMW2FindSessionsSuppressSelfOnlyCompatibility(t *testing.T) {
+	search := mw2MatchmakingSearch{
+		gameType:          1,
+		gameMode:          7,
+		netcodeVersion:    5,
+		mapPackFlags:      6,
+		playlistVersion:   3,
+		requiredFreeSlots: 0,
+	}
+	findCount := func(t *testing.T, connection *lsgConnection) uint32 {
+		t.Helper()
+		_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(2, 50, search))
+		if !handled || !connection.lastTaskSupported {
+			t.Fatalf("find handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
+		}
+		reader := mustBDTaskReplyReader(t, reply)
+		if _, err := reader.readU64(); err != nil {
+			t.Fatal(err)
+		}
+		if errorCode, err := reader.readU32(); err != nil || errorCode != bdErrorNone {
+			t.Fatalf("error=%d err=%v reply=%x", errorCode, err, reply)
+		}
+		if operationID, err := reader.readU8(); err != nil || operationID != bdMatchmakingFindSessions {
+			t.Fatalf("operation=%d err=%v reply=%x", operationID, err, reply)
+		}
+		count, err := reader.readU32()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
+	store := newMW2MatchmakingStore()
+	owner := &lsgConnection{
+		connectionID:        1,
+		matchmakingSessions: store,
+		suppressSelfOnly:    true,
+	}
+	peer := &lsgConnection{
+		connectionID:        2,
+		matchmakingSessions: store,
+		suppressSelfOnly:    true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic: 1,
+		attributes: [9]int32{1},
+		ownerID:    owner.connectionID,
+		ready:      true,
+	}
+	if count := findCount(t, owner); count != 0 {
+		t.Fatalf("self-only compatibility count=%d, want 0", count)
+	}
+	if len(owner.lastMatchmakingSessions) != 0 {
+		t.Fatalf("self-only compatibility telemetry=%d, want 0", len(owner.lastMatchmakingSessions))
+	}
+	if count := findCount(t, peer); count != 1 {
+		t.Fatalf("peer-only compatibility count=%d, want 1", count)
+	}
+
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic: 1,
+		attributes: [9]int32{1},
+		ownerID:    peer.connectionID,
+		ready:      true,
+	}
+	if count := findCount(t, owner); count != 2 {
+		t.Fatalf("mixed compatibility count=%d, want 2", count)
+	}
+}
+
+func TestMW2FindSessionsKeepsSelfOnlyByDefault(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	connection := &lsgConnection{connectionID: 1, matchmakingSessions: store}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic: 1,
+		attributes: [9]int32{1},
+		ownerID:    connection.connectionID,
+		ready:      true,
+	}
+	_, reply, handled := connection.handleMatchmakingTask(buildMW2FindSessionsRequestWithSearch(
+		2,
+		50,
+		mw2MatchmakingSearch{gameType: 1},
+	))
+	if !handled || !connection.lastTaskSupported {
+		t.Fatalf("find handled=%v supported=%v reply=%x", handled, connection.lastTaskSupported, reply)
+	}
+	reader := mustBDTaskReplyReader(t, reply)
+	if _, err := reader.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU32(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU8(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := reader.readU32(); err != nil || count != 1 {
+		t.Fatalf("default self-only count=%d err=%v reply=%x", count, err, reply)
+	}
+}
+
 func TestMW2MissingMutationKeepsUnsupportedError(t *testing.T) {
 	connection := &lsgConnection{matchmakingSessions: newMW2MatchmakingStore()}
 	for _, payload := range [][]byte{

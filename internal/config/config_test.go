@@ -8,6 +8,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_NAT_ALT_ADDR", "")
 	t.Setenv("MW2_NAT_ADVERTISED_IP", "")
 	t.Setenv("MW2_NAT_RELAY_ENABLED", "")
+	t.Setenv("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", "")
 	t.Setenv("MW2_LOG_SENSITIVE", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
 	cfg, err := Load()
@@ -20,6 +21,7 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.NATAlternateAddr != ":3075" ||
 		cfg.NATAdvertisedIP != "" ||
 		cfg.NATRelayEnabled ||
+		cfg.SuppressSelfOnly ||
 		cfg.LogSensitive ||
 		cfg.MaxFrameBytes != 1<<20 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
@@ -97,6 +99,24 @@ func TestLoadRejectsInvalidNATRelayFlag(t *testing.T) {
 	t.Setenv("MW2_NAT_RELAY_ENABLED", "sometimes")
 	if _, err := Load(); err == nil {
 		t.Fatal("accepted invalid MW2_NAT_RELAY_ENABLED")
+	}
+}
+
+func TestLoadSuppressSelfOnlyOverride(t *testing.T) {
+	t.Setenv("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.SuppressSelfOnly {
+		t.Fatal("SuppressSelfOnly = false, want explicit true")
+	}
+}
+
+func TestLoadRejectsInvalidSuppressSelfOnlyFlag(t *testing.T) {
+	t.Setenv("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", "sometimes")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid MW2_MATCHMAKING_SUPPRESS_SELF_ONLY")
 	}
 }
 

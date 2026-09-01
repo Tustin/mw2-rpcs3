@@ -1,15 +1,19 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-31 after fixing create/find session readiness ordering.
-Both clients received byte-identical two-result operation-5 arrays after the
-per-connection transaction ID. Decoding proves entry 0 is the earlier RPCS3
+_Last updated: 2026-08-31 after adding a flag-gated operation-5 compatibility
+path. Both clients received byte-identical two-result operation-5 arrays after
+the per-connection transaction ID. Decoding proves entry 0 is the earlier RPCS3
 advertisement (`192.168.0.199`, session `afe27d9a845444a3`) and entry 1 is the
 later physical-PS3 advertisement (`192.168.0.117`, session
-`5af12eafbb698c81`), so the current backend is self-inclusive and globally
+`5af12eafbb698c81`), so the default backend remains self-inclusive and globally
 creation-ordered rather than requester-relative. The supplied production PCAP
 contains the same two 289-byte operation-5 reply frames but cannot reveal their
 plaintext sequence: it has no pcapng secrets block and MW2's 24-byte LSG key
-exists only inside the PSN ticket. The next unresolved task remains the
+exists only inside the PSN ticket. `MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` now
+changes only a public find whose sole eligible result belongs to the requesting
+LSG connection into the normal successful zero-result reply. Peer-only and mixed
+result sets are unchanged. This opt-in live diagnostic does not reintroduce
+blocking or alter the shared directory. The next unresolved task remains the
 downstream post-QoS join/secure-association transition._
 
 ## Executive summary
@@ -30,10 +34,12 @@ self-only public find produced the same two-session snapshot for both clients.
 Their serialized result arrays were byte-identical after the transaction ID and
 ordered by advertisement creation: RPCS3 first, physical PS3 second for both
 requesters. That blocking server-side delay has now been removed: operation `5`
-always returns the current creation-ordered snapshot immediately, so the LSG
-reader can continue servicing the connection without an artificial five-second
-pause. The next live task is the already-isolated downstream post-QoS
-join/secure-association transition.
+returns the current creation-ordered snapshot immediately, so the LSG reader can continue
+servicing the connection without an artificial five-second pause. An opt-in
+`MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` compatibility flag can instead turn
+only a requester-owned single-result snapshot into an immediate successful
+zero-result reply. Default behavior remains unchanged. The next live task is the
+already-isolated downstream post-QoS join/secure-association transition.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -1565,16 +1571,22 @@ elsewhere from state `1` to state `2`, and `sub_2F9DB8`/`sub_320C20` poll that
 remote task completion. Thus case `2` is only the asynchronous completion poll,
 not an accepted-candidate promotion.
 
-The concrete local post-QoS write occurs in case `4`, which is a separate
-selection/aggregation stage. After its internal selector reports result `7`, it
-stores two scaled metrics at matchmaking context offsets `+0x150` and `+0x154`,
-sets byte `+0x2108` to `1`, clears dword `+0x210C`, resets the selector, and
-clears the task slot. If the selector has no accepted result, the same case
-clears byte `+0x2108` and arms `+0x210C` with `now + random(0, 10000)` before
-resetting. These fields are therefore the actual accepted-selection latch and
-retry deadline produced by `sub_2FA008`; the next static target is their
-consumers (or the code that advances a task from state `2` into state `4`), not
-the NP/controller record or `sub_2F7660`.
+Further IDA typing corrects the interpretation of case `4`: it is not a
+post-candidate selection/aggregation stage and is not reached by advancing a
+type-1 task. It owns the independent global `QoSProbeEvaluation` object at
+matchmaking context `+0x198`. `StartQoSProbeEvaluationIfIdle` starts that object,
+performs its initial update, and creates a task whose type is `4`. The case-4
+pump waits for evaluator state `7`; success copies the primary and secondary
+48-byte probe-stat blocks into the context, stores their scaled metrics at
+`+0x150` and `+0x154`, sets byte `+0x2108` to `1`, and clears dword `+0x210C`.
+Failure clears `+0x2108` and arms `+0x210C` with the retry deadline. The evaluator
+layout is now typed in the IDB (`active +0x0C`, `state +0x10`, `error +0x14`,
+probe stats `+0x48` and `+0x78`), and the task pump, start/retry helpers, and
+state-machine routines are named and annotated. Therefore these fields describe
+the client's own network-probe readiness, not accepted-candidate promotion. The
+post-QoS target remains the external owner/consumer of the type-1 result-list
+state and the code that should turn its retained successful entry into
+join/secure-association work.
 
 ## Reference material
 

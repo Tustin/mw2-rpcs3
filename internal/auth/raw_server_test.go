@@ -334,6 +334,24 @@ func TestRawServerInjectsSharedMatchmakingStore(t *testing.T) {
 	}
 }
 
+func TestRawServerInjectsMatchmakingSuppressSelfOnly(t *testing.T) {
+	service := NewRawServer(
+		"",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		capture.New(false, "", RetailRequestSize),
+		time.Second,
+		time.Second,
+	)
+	service.SetMatchmakingSuppressSelfOnly(true)
+	connection, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !connection.suppressSelfOnly {
+		t.Fatal("LSG connection did not inherit matchmaking self-only suppression")
+	}
+}
+
 func buildLSGInitialRecord(gameID, randomNumber uint32, ticket [legacyTicketLen]byte) []byte {
 	payload := newLSBBitWriter(1 + 5 + 32 + 5 + 32 + legacyTicketLen*8)
 	payload.writeBit(true)

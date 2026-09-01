@@ -15,6 +15,7 @@ type Config struct {
 	NATAlternateAddr string
 	NATAdvertisedIP  string
 	NATRelayEnabled  bool
+	SuppressSelfOnly bool
 	HTTPAddr         string
 	LogLevel         string
 	LogSensitive     bool
@@ -52,6 +53,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.NATRelayEnabled, err = envBool("MW2_NAT_RELAY_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.SuppressSelfOnly, err = envBool("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFrameBytes, err = envUint32("MW2_MAX_FRAME_BYTES", cfg.MaxFrameBytes); err != nil {
