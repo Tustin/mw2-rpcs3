@@ -38,11 +38,22 @@ func TestBuildMapCommitWrapperTargetsVerifiedCalleesAndRecord(t *testing.T) {
 	if !bytes.Contains(wrapper, path) {
 		t.Fatalf("wrapper does not contain telemetry path")
 	}
-	for _, word := range []uint32{0x3d40514f, 0x614a5331, 0x39400006, 0xb14b0004} {
+	for _, word := range []uint32{0x3d40514f, 0x614a5331, 0x39400006, 0xb14b0004, 0x814b0004, 0x914b0004} {
 		var encoded [4]byte
 		binary.BigEndian.PutUint32(encoded[:], word)
 		if !bytes.Contains(wrapper, encoded[:]) {
 			t.Fatalf("wrapper missing record instruction %08x", word)
+		}
+	}
+	for _, check := range []struct {
+		offset int
+		word   uint32
+	}{
+		{0x160, 0x814b0004},
+		{0x22c, 0x914b0004},
+	} {
+		if got := binary.BigEndian.Uint32(wrapper[check.offset : check.offset+4]); got != check.word {
+			t.Fatalf("wrapper word at offset %#x=%08x want=%08x", check.offset, got, check.word)
 		}
 	}
 }
