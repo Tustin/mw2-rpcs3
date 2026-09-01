@@ -1,24 +1,18 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-09-01 after tracing the accepted-QoS candidate owner and
-post-filter selector. The 80-byte entries are party connection candidates owned
-by the session/party object, not secure-association records. `+0x44` is the total
-QoS latency/value written by `CommitCandidateQoSResult` (`0x000cd998`), `+0x48`
-is its probe count, and `+0x4C` is the normalized selection metric.
-`InvalidateCandidatesWithoutQoS` (`0x000cff28`) only deactivates entries whose
-`+0x44` remains `-1`. The later independent party-state path
-`SelectJoinablePartyCandidate` (`0x000d5750`) chooses the lowest `+0x4C` survivor,
-probes it through `ProbeSelectedPartyCandidate` (`0x000d2468`), copies its tuple
-into party join state through `CopySelectedCandidateToPartyJoinState`
-(`0x000d26e0`), and calls `sub_CED10`. This matches World at War's
-QoS-callback/filter -> best-host selector -> party/session copy -> network-start
-pipeline. The supplied `qos.bin` therefore identifies the failure earlier: the
-sole candidate never receives its QoS metric before cleanup. The next diagnostic
-should trace the ID mapping at `sub_CB538` (`0x000cb538`) and the following
-`CommitCandidateQoSResult` call at `0x002fa300`, recording the completed QoS
-session/security ID, mapped candidate index, candidate active byte, and `+0x44`
-before and after the commit. Do not instrument `sub_2FD758` or rerun the broad
-accepted-QoS dump first._
+_Last updated: 2026-09-01 after the selector target trace identified the
+remaining directory-policy failure. Both clients successfully committed QoS,
+selected index zero, passed `ProbeSelectedPartyCandidate`, and copied the chosen
+tuple into party join state. The first console selected its own oldest operation-5
+result, while the second selected that first console, so the self-inclusive
+creation-ordered snapshot produced conflicting roles despite both screens showing
+"Joining." Operation `5` now restores the previously tested asymmetric policy:
+a requester receives only ready compatible sessions owned by another connection
+and created before its own earliest advertisement. The first advertiser therefore
+receives zero candidates and remains host; a later advertiser receives the first
+host and joins it. Ownerless search connections still receive all ready compatible
+sessions. The next live RPCS3/physical-PS3 retest should confirm one console remains
+in the lobby while the later console reaches peer secure-association/join traffic._
 
 ## Executive summary
 
@@ -37,16 +31,15 @@ The 2026-08-03 physical-PS3/RPCS3 retest confirmed that delaying the first
 self-only public find produced the same two-session snapshot for both clients.
 Their serialized result arrays were byte-identical after the transaction ID and
 ordered by advertisement creation: RPCS3 first, physical PS3 second for both
-requesters. That blocking server-side delay has now been removed: operation `5`
-returns the current creation-ordered snapshot immediately, so the LSG reader can
-continue servicing the connection without an artificial five-second pause. An
-opt-in `MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` compatibility flag can instead
-turn only a requester-owned single-result snapshot into an immediate successful
-zero-result reply. The 2026-09-01 live test proved this behavior but did not
-change the outcome: both clients still reached reciprocal two-result finds,
-direct traversal/QoS, and accepted performance reports without joining. Default
-behavior remains unchanged. The next task is the already-isolated downstream
-post-QoS client-local promotion and secure-association transition.
+requesters. The 2026-09-01 selector trace now proves that symmetric snapshot is
+itself the failure: both clients committed QoS and selected result index zero, so
+the first console selected its own advertisement while the second selected the
+first console. Both displayed "Joining," but they did not agree on host/joiner
+roles. Operation `5` now returns only ready compatible non-owned sessions created
+before the requester's own earliest advertisement. This is immediate and does
+not block the LSG reader: the first advertiser receives zero results and remains
+host, while each later advertiser receives the already-established host. The
+next task is a live two-console retest of this asymmetric result policy.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 

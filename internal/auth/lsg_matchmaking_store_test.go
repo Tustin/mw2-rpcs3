@@ -109,6 +109,46 @@ func TestMW2MatchmakingStoreReturnsSelfInclusiveSessionsInCreationOrder(t *testi
 	}
 }
 
+func TestMW2MatchmakingStoreFindForSearchReturnsOnlyEarlierReadyOwners(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	search := mw2MatchmakingSearch{gameType: 1}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
+		openPrivate:   1,
+		attributes:    [9]int32{1},
+		ownerID:       7,
+		creationOrder: 1,
+		ready:         true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
+		openPrivate:   1,
+		attributes:    [9]int32{1},
+		ownerID:       8,
+		creationOrder: 2,
+		ready:         true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{3}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{3},
+		openPrivate:   1,
+		attributes:    [9]int32{1},
+		ownerID:       9,
+		creationOrder: 3,
+	}
+
+	if found := store.findForSearch(50, search, 7); len(found) != 0 {
+		t.Fatalf("first owner sessions=%+v", found)
+	}
+	found := store.findForSearch(50, search, 8)
+	if len(found) != 1 || found[0].ownerID != 7 {
+		t.Fatalf("second owner sessions=%+v", found)
+	}
+	found = store.findForSearch(50, search, 9)
+	if len(found) != 2 || found[0].ownerID != 7 || found[1].ownerID != 8 {
+		t.Fatalf("third owner sessions=%+v", found)
+	}
+}
+
 func TestMW2MatchmakingStoreExcludesOwnerBeforeCapping(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
