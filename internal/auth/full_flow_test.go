@@ -486,13 +486,20 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		if len(found) != 2 {
 			t.Fatalf("initial find count=%d", len(found))
 		}
+		hostResultCounts := hostCounts
+		seekerResultCounts := hostCounts
+		if client == host {
+			seekerResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
+		} else {
+			hostResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
+		}
 		assertFullFlowCandidate(
 			t,
 			found[0],
 			hostAddress,
 			sessionID,
 			securityKey,
-			hostCounts,
+			hostResultCounts,
 			hostAttributes,
 		)
 		assertFullFlowCandidate(
@@ -501,7 +508,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 			seekerAddress,
 			seekerSessionID,
 			seekerSecurityKey,
-			hostCounts,
+			seekerResultCounts,
 			hostAttributes,
 		)
 	}
@@ -529,13 +536,15 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	if len(found) != 2 {
 		t.Fatalf("updated find count=%d", len(found))
 	}
+	updatedResultCounts := updatedCounts
+	updatedResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
 	assertFullFlowCandidate(
 		t,
 		found[0],
 		updatedAddress,
 		sessionID,
 		securityKey,
-		updatedCounts,
+		updatedResultCounts,
 		updatedAttributes,
 	)
 	assertFullFlowCandidate(

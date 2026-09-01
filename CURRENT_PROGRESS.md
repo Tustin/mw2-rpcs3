@@ -1695,6 +1695,22 @@ rejection; `commit_result=1` with unchanged `post_total=-1` would indicate a
 wrapper/layout error, while populated post fields would move the investigation
 to the subsequent cleanup/selector scheduling.
 
+The retrieved version-6 record is internally consistent: map index zero targets
+an active unresolved entry (`pre_active=1`, `pre_total=-1`), the positive QoS
+arguments are passed unchanged (`qos_value=35`, `probe_count=10`), and
+`CommitCandidateQoSResult` returns zero without changing the entry. Rechecking the
+exact branch at `0x000cdaa8..0x000cdac4` narrows this to the only remaining reject:
+when `iwnet_searching` is false, the function compares candidate
+`(+0x3C - +0x34)` against `sub_C3D28(party)`. `sub_C3D28` is not a QoS threshold;
+it returns the current populated-party count by counting the 18 party slots whose
+state byte at `party+0x40+n*216` is greater than two (and returns zero if
+`party+0x16B8` is zero). The candidate's observed delta is `1`, so the live party
+count must be at least `2` for this call to reject. The next focused diagnostic
+should capture the two raw candidate fields `+0x34/+0x3C`, the computed delta,
+`iwnet_searching`, `party+0x16B8`, and the 18 party slot-state bytes at commit time.
+This will show whether the candidate advertises too few players or the local party
+state is unexpectedly counting a stale/additional populated slot.
+
 `go test ./...`, `go vet ./...`, `gofmt -d`, and `git diff --check` pass.
 
 ## Live selector candidate-array snapshot
@@ -1745,6 +1761,8 @@ and `files/default_mp_tu0_qos_selector_fixed.self` (SHA-256
 The 2026-09-01 RPCS3 retest reached `cellFsWrite` but froze with `r5=0xd000e208` instead of the selector snapshot size. The wrapper kept that size only in volatile `r10`; `cellFsOpen` legitimately clobbered it before the write. The selector wrapper now spills the capped byte count to `0x44(r1)` before building the snapshot and reloads it into `r5` immediately before `cellFsWrite`. The copy loop also decrements `r10` directly, avoiding the previous temporary-register dependency. Regression tests assert both spill/reload instructions, and `go test ./...` passes. Generated `files/default_mp_tu0_qos_selector_size_fixed.elf` (SHA-256 `98c957b617ee5299e88717acc2507d25d8e4b84b4938e71248eecf313f401514`) and `files/default_mp_tu0_qos_selector_size_fixed.self` (SHA-256 `cc892668bb131aa2bbdf212f1a0157b632dadbd40ad7702a899b88efad43ade6`); the patcher verified the decrypted SELF byte-for-byte against the ELF. The malformed 3.25 GiB `/dev_hdd0/tmp/qos-selector.bin` was removed and the new SELF was deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; its installed SHA-256 is `cc892668bb131aa2bbdf212f1a0157b632dadbd40ad7702a899b88efad43ade6`. An RPCS3 matchmaking retest is still required.
 
 The latest retrieved `qos-map.bin` contained exactly one version-6 map-stage record with `map_index=0`, `candidate_active=1`, `pre_total/pre_count/pre_normalized=-1`, and all commit/post fields still `-1`. That proves the completed QoS identity maps to candidate zero, so the remaining fault is after identity mapping. It did not prove that the commit call was skipped: the map wrapper set the shared telemetry one-shot flag immediately, causing the later commit wrapper to bypass its record unconditionally. The commit wrapper now uses an independent flag at `0x0075e344` while the map wrapper retains `0x0075e340`. Regression tests assert the exact commit flag load/store opcodes at wrapper offsets `0x160` and `0x22c`. The next two-client run must delete both telemetry files first; `qos-map.bin` should then contain a map record followed by a commit record, exposing `commit_result` and post-commit candidate fields. `go test ./...`, `go vet ./...`, and `git diff --check` pass. The new round-trip-verified test artifacts are `files/default_mp_tu0_qos_commit_split.elf` (SHA-256 `1c9930aa9ce3028b12591b5ef9114f3f74761cc0693f6187aac80a48f1993c89`) and `files/default_mp_tu0_qos_commit_split.self` (SHA-256 `5b91380aac372cc273c628ed9a136f75a6f22179e4eede81c786ebdba25694ef`).
+
+A temporary server-only A/B experiment now floors `openPublic` at `2` when serializing remote operation-5 results. Self results and stored advertisements remain unchanged, so a typical stored `0/0/7/1` remote session is returned as `2/0/7/1`. This directly tests whether candidate `+0x3c - +0x34` must cover the two populated local party slots before `CommitCandidateQoSResult` succeeds. Focused and full-flow tests cover the remote-only wire override. `go test ./...`, `go vet ./...`, and `git diff --check` pass. A two-client RPCS3 retest is required.
 
 ## Patched SELF build runbook
 

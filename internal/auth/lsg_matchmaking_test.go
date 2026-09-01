@@ -332,6 +332,54 @@ func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	}
 }
 
+func TestMW2FindSessionsFloorsRemoteOpenPublicSlots(t *testing.T) {
+	connection := &lsgConnection{connectionID: 1}
+	self := mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
+		openPrivate: 7,
+		ownerID:     1,
+	}
+	remote := mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
+		openPrivate: 7,
+		ownerID:     2,
+	}
+
+	reader := mustBDTaskReplyReader(t, connection.matchmakingFindReply([]mw2StoredMatchmakingSession{self, remote}))
+	if _, err := reader.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU32(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.readU8(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := reader.readU32(); err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	selfResult, err := readMW2MatchmakingInfo(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteResult, err := readMW2MatchmakingInfo(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selfResult.openPublic != 0 {
+		t.Fatalf("self open public=%d, want stored value 0", selfResult.openPublic)
+	}
+	if remoteResult.openPublic != mw2RemoteFindOpenPublicSlotFloor {
+		t.Fatalf("remote open public=%d, want floor %d", remoteResult.openPublic, mw2RemoteFindOpenPublicSlotFloor)
+	}
+	if remoteResult.openPrivate != remote.openPrivate {
+		t.Fatalf("remote open private=%d, want stored value %d", remoteResult.openPrivate, remote.openPrivate)
+	}
+	if remote.openPublic != 0 {
+		t.Fatalf("stored remote open public=%d, want unchanged value 0", remote.openPublic)
+	}
+}
+
 func TestMW2MutationRepliesMatchRecoveredGoldenBits(t *testing.T) {
 	goldens := map[byte]string{
 		bdMatchmakingUpdateSession: "150000000000000000020000001802",
