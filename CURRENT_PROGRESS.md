@@ -1,20 +1,24 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-08-31 after adding a flag-gated operation-5 compatibility
-path. Both clients received byte-identical two-result operation-5 arrays after
-the per-connection transaction ID. Decoding proves entry 0 is the earlier RPCS3
-advertisement (`192.168.0.199`, session `afe27d9a845444a3`) and entry 1 is the
-later physical-PS3 advertisement (`192.168.0.117`, session
-`5af12eafbb698c81`), so the default backend remains self-inclusive and globally
-creation-ordered rather than requester-relative. The supplied production PCAP
-contains the same two 289-byte operation-5 reply frames but cannot reveal their
-plaintext sequence: it has no pcapng secrets block and MW2's 24-byte LSG key
-exists only inside the PSN ticket. `MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` now
-changes only a public find whose sole eligible result belongs to the requesting
-LSG connection into the normal successful zero-result reply. Peer-only and mixed
-result sets are unchanged. This opt-in live diagnostic does not reintroduce
-blocking or alter the shared directory. The next unresolved task remains the
-downstream post-QoS join/secure-association transition._
+_Last updated: 2026-09-01 after tracing the accepted-QoS candidate owner and
+post-filter selector. The 80-byte entries are party connection candidates owned
+by the session/party object, not secure-association records. `+0x44` is the total
+QoS latency/value written by `CommitCandidateQoSResult` (`0x000cd998`), `+0x48`
+is its probe count, and `+0x4C` is the normalized selection metric.
+`InvalidateCandidatesWithoutQoS` (`0x000cff28`) only deactivates entries whose
+`+0x44` remains `-1`. The later independent party-state path
+`SelectJoinablePartyCandidate` (`0x000d5750`) chooses the lowest `+0x4C` survivor,
+probes it through `ProbeSelectedPartyCandidate` (`0x000d2468`), copies its tuple
+into party join state through `CopySelectedCandidateToPartyJoinState`
+(`0x000d26e0`), and calls `sub_CED10`. This matches World at War's
+QoS-callback/filter -> best-host selector -> party/session copy -> network-start
+pipeline. The supplied `qos.bin` therefore identifies the failure earlier: the
+sole candidate never receives its QoS metric before cleanup. The next diagnostic
+should trace the ID mapping at `sub_CB538` (`0x000cb538`) and the following
+`CommitCandidateQoSResult` call at `0x002fa300`, recording the completed QoS
+session/security ID, mapped candidate index, candidate active byte, and `+0x44`
+before and after the commit. Do not instrument `sub_2FD758` or rerun the broad
+accepted-QoS dump first._
 
 ## Executive summary
 
@@ -34,12 +38,15 @@ self-only public find produced the same two-session snapshot for both clients.
 Their serialized result arrays were byte-identical after the transaction ID and
 ordered by advertisement creation: RPCS3 first, physical PS3 second for both
 requesters. That blocking server-side delay has now been removed: operation `5`
-returns the current creation-ordered snapshot immediately, so the LSG reader can continue
-servicing the connection without an artificial five-second pause. An opt-in
-`MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` compatibility flag can instead turn
-only a requester-owned single-result snapshot into an immediate successful
-zero-result reply. Default behavior remains unchanged. The next live task is the
-already-isolated downstream post-QoS join/secure-association transition.
+returns the current creation-ordered snapshot immediately, so the LSG reader can
+continue servicing the connection without an artificial five-second pause. An
+opt-in `MW2_MATCHMAKING_SUPPRESS_SELF_ONLY=true` compatibility flag can instead
+turn only a requester-owned single-result snapshot into an immediate successful
+zero-result reply. The 2026-09-01 live test proved this behavior but did not
+change the outcome: both clients still reached reciprocal two-result finds,
+direct traversal/QoS, and accepted performance reports without joining. Default
+behavior remains unchanged. The next task is the already-isolated downstream
+post-QoS client-local promotion and secure-association transition.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -610,19 +617,17 @@ an unknown post-performance decision: at least one candidate remains unaccounted
 for, or none is promoted into the accepted-candidate count, at the type-1 QoS
 completion boundary.
 
-Further TU0 analysis corrects the meaning of the selected 80-byte entry's
-`+0x44` field. `QoSEntry_Init` (`0x2FC4A0`) initializes it to `0`, not `-1`.
-`CommonAddr_ComputeHash` (`0x281340`) computes the canonical 32-bit hash from a
-CommonAddr; both establishment paths store that result into `+0x44` at
-`0x301E9C` and `0x302368`. `SecureAssoc_FindByEntryHash` (`0x2FD288`) then reads
-`+0x44` as its lookup key, and `SecureAssoc_CreateForEntry` (`0x2FD408`) copies
-it into the newly allocated association object. Consequently the cleanup check
-`+0x44 == -1` means "invalid/unassigned lookup key," while `0` is only the
-pre-assignment initializer. If phase 2 never obtains a nonzero/non-`-1` value,
-the failure is before secure-association lookup: the selected entry never
-receives the CommonAddr hash. If it does obtain a hash, the next diagnostic
-boundary is `SecureAssoc_FindByEntryHash`/`SecureAssoc_CreateForEntry`, not the
-operation-5 reply codec.
+Later TU0 analysis corrected an earlier structure conflation. The 80-byte
+party candidate appended by `AddPartyConnectionEndpoint` (`0xCB1F0`) starts
+with `+0x44=-1`, `+0x48=-1`, and `+0x4C=INT_MAX`. These are the candidate's QoS
+total, probe count, and normalized selection metric. The hash operations at
+`0x301E9C` and `0x302368` belong to a different networking structure and do not
+explain `sub_CFF28`. `CommitCandidateQoSResult` (`0xCD998`) is the producer for
+the candidate fields: it writes `+0x44/+0x48/+0x4C` after `sub_CB538` maps a
+completed QoS session/security ID to the 80-byte entry. Therefore `+0x44==-1`
+means that this candidate never received a committed QoS result, and the next
+diagnostic boundary is `sub_CB538`/`CommitCandidateQoSResult`, not secure-
+association lookup or the operation-5 reply codec.
 
 A surgical RPCS3 diagnostic ELF is now available at
 `/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf`; its
@@ -1560,16 +1565,17 @@ controller `+0x28` synchronization and its `sub_2FD758` gate are not the missing
 candidate-to-join handoff.
 
 The accepted branch in `sub_2FA008` has now been separated from the later
-selection state as well. Matchmaking task state `1` owns the QoS evaluation:
+selection state as well. Matchmaking task type `1` owns the QoS evaluation:
 `MatchmakingQoSEvaluationStatus` returns `0` while pending, `1` on completion,
-and `2` on failure/inconsistency. On acceptance, `sub_2FA008` logs the completed
-count, clears the QoS object and task slot, and calls `sub_CFF28` only to
-invalidate candidates whose signed `+0x44` metric remains `-1`. It does not write
-the task state or directly invoke a join routine. The state transition into this
-branch is external to `sub_2FA008`: the per-slot task object is created/advanced
-elsewhere from state `1` to state `2`, and `sub_2F9DB8`/`sub_320C20` poll that
-remote task completion. Thus case `2` is only the asynchronous completion poll,
-not an accepted-candidate promotion.
+and `2` on failure/inconsistency. Before acceptance, the pump maps each completed
+QoS result through `sub_CB538` and calls `CommitCandidateQoSResult` to populate
+the matching candidate's `+0x44/+0x48/+0x4C` metrics. It then logs the completed
+count, clears the QoS object and task slot, and calls
+`InvalidateCandidatesWithoutQoS` only to remove candidates that remain
+unresolved. It does not directly invoke the later selector or join routine. The
+asynchronous backend task state is created and advanced elsewhere, while
+`sub_2F9DB8`/`sub_320C20` only poll its completion; that task-state transition is
+not itself accepted-candidate promotion.
 
 Further IDA typing corrects the interpretation of case `4`: it is not a
 post-candidate selection/aggregation stage and is not reached by advancing a
@@ -1584,9 +1590,166 @@ layout is now typed in the IDB (`active +0x0C`, `state +0x10`, `error +0x14`,
 probe stats `+0x48` and `+0x78`), and the task pump, start/retry helpers, and
 state-machine routines are named and annotated. Therefore these fields describe
 the client's own network-probe readiness, not accepted-candidate promotion. The
-post-QoS target remains the external owner/consumer of the type-1 result-list
-state and the code that should turn its retained successful entry into
-join/secure-association work.
+external owner/consumer is now identified below as the party candidate array and
+`SelectJoinablePartyCandidate`; the remaining failure occurs before that selector
+because the sole entry is never populated by `CommitCandidateQoSResult`.
+
+## Accepted-QoS candidate owner and selector comparison
+
+Static reconstruction now closes the ownership gap left by the version-2 QoS
+capture. `AddPartyConnectionEndpoint` (`0x000cb1f0`) appends each 80-byte
+candidate to the party/session object's array at object `+0x38`, stores the
+candidate count at `+0x3C`, and initializes `+0x44=-1`, `+0x48=-1`, and
+`+0x4C=INT_MAX`. These fields are QoS-selection state, not a CommonAddr hash.
+During type-1 task pumping, `sub_CB538` (`0x000cb538`) maps each completed QoS
+result's 8-byte session/security ID back to this candidate array. The call at
+`0x002fa300` then enters `CommitCandidateQoSResult` (`0x000cd998`), which accepts
+only an active unresolved entry and writes total latency/value to `+0x44`, probe
+count to `+0x48`, and a normalized metric to `+0x4C`. The accepted branch later
+calls `InvalidateCandidatesWithoutQoS` (`0x000cff28`), which only clears the
+active byte of entries that still have `+0x44==-1`.
+
+Candidate selection belongs to a separate party-state owner. The large party
+pump `sub_D5C40` (`0x000d5c40`) calls `SelectJoinablePartyCandidate`
+(`0x000d5750`). That selector rejects unresolved candidates, compares their
+normalized `+0x4C` values, and retains the lowest-metric survivor. It then calls
+`ProbeSelectedPartyCandidate` (`0x000d2468`); on success,
+`CopySelectedCandidateToPartyJoinState` (`0x000d26e0`) copies the selected
+candidate's 49-byte endpoint tuple and metrics into the party join-state fields,
+followed by `sub_CED10`. On probe failure it invalidates the candidate and
+continues selection. `sub_2FE2C0` reaches this party pump independently through
+`sub_CF038`, so the type-1 task callback is not expected to call the selector
+directly.
+
+This is the MW2 equivalent of the recovered World at War sequence:
+
+- candidate insertion: WaW `0x001e30f8` -> MW2 `AddPartyConnectionEndpoint`;
+- QoS callbacks/filtering: WaW `0x00477e98`/`0x00477dd8` and `0x001e5b30` ->
+  MW2 `sub_CB538`, `CommitCandidateQoSResult`, and
+  `InvalidateCandidatesWithoutQoS`;
+- best-host selection: WaW `0x001e92d8` -> MW2
+  `SelectJoinablePartyCandidate`;
+- party/session copy: WaW `0x00448588` -> MW2
+  `CopySelectedCandidateToPartyJoinState`;
+- network start: WaW `0x001f0b50` -> MW2's `sub_CED10` path.
+
+The live version-2 result is therefore narrower than previously stated. The
+candidate count and completed-QoS count both reach one, but the candidate still
+has `+0x44==-1`, so `sub_CB538` either fails to map the completed QoS identity or
+`CommitCandidateQoSResult` rejects/skips the mapped entry. Cleanup correctly
+removes that unresolved candidate; the selector consequently has nothing to
+promote. The next diagnostic should hook around `0x002fa2c0..0x002fa304` and
+record the completed QoS session/security ID, `sub_CB538` return index, candidate
+active byte, candidate `+0x44/+0x48/+0x4C`, and the return value from
+`CommitCandidateQoSResult`. This should distinguish an identity mismatch from a
+candidate-state rejection without another broad matchmaking dump.
+
+Verified IDA names and comments were applied for the functions above, and
+`captures/ida/default_mp_tu0.i64` was saved in place.
+
+## Focused QoS identity-map diagnostic
+
+`cmd/mw2-qos-patcher` now replaces only the verified calls at `0x002fa2c0`
+(`sub_CB538`) and `0x002fa300` (`CommitCandidateQoSResult`). The wrappers preserve
+the original calls and emit one 96-byte version-6 record to
+`/dev_hdd0/tmp/qos-map.bin`. A failed identity map writes immediately; a
+successful map waits for the commit call and records both the pre-commit and
+post-commit candidate fields. The record contains the completed QoS 8-byte
+session/security ID, mapped index, party object and candidate-array pointers,
+commit arguments, candidate active byte, `+0x44/+0x48/+0x4C` before and after,
+and the commit return value. `mw2-inspect -qos` decodes version-6 records.
+
+The diagnostic was built from `files/default_mp_tu0_clean.elf` without modifying
+that source. Its SHA-256 remains
+`5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`.
+The first generated build crashed at `0x007d6de0` after a successful QoS probe.
+RPCS3 reported LR `0x0070944c`, identifying the commit wrapper call at offset
+`0x1c8`. The patcher had relocated the original commit branch at offset `0x1f4`
+instead; consequently the unrelocated instruction at `0x1c8` retained the
+original relative displacement and resolved from the code cave to the crash
+address. The relocation now patches `wrapperVMA+0x1c8` to `0x000cd998`, and the
+focused test validates every wrapper call at its exact instruction offset.
+
+Corrected generated artifacts:
+
+- `files/default_mp_tu0_qos_map_fixed.elf` — SHA-256
+  `d9f2aea3c4b93cfe0f37eb1043c62f5a635b4e00c2ef33dd5584f46621adef2c`
+- `files/default_mp_qos_map_fixed.self` — SHA-256
+  `ad415d3becd51edb8c0af3293e1e0d3b696c9e72dfc95c4690f5c61c45987989`
+- `files/default_mp_qos_map.self` and the RPCS3-installed
+  `default_mp.self` now contain that same corrected SELF.
+
+The SELF was decrypted after packaging and matched the corrected ELF exactly.
+Before the RPCS3 run, delete any stale
+`/dev_hdd0/tmp/qos-map.bin`, and repeat the physical-PS3/RPCS3 matchmaking test.
+Retrieve the resulting file and decode it with:
+
+```text
+go run ./cmd/mw2-inspect -qos PATH/TO/qos-map.bin
+```
+
+Interpretation is direct: `map_index=-1` indicates that the completed QoS ID did
+not match a party candidate and points back to session/security-ID serialization
+or selection; a nonnegative map with `commit_result=0` indicates candidate-state
+rejection; `commit_result=1` with unchanged `post_total=-1` would indicate a
+wrapper/layout error, while populated post fields would move the investigation
+to the subsequent cleanup/selector scheduling.
+
+`go test ./...`, `go vet ./...`, `gofmt -d`, and `git diff --check` pass.
+
+## Live selector candidate-array snapshot
+
+`cmd/mw2-qos-patcher` now also replaces the verified
+`SelectJoinablePartyCandidate` call at `0x000d6924` inside the live party pump
+`sub_D5C40`. The transparent wrapper calls the original selector first, then
+writes `/dev_hdd0/tmp/qos-selector.bin`. Its `QSE1` version-1 snapshot contains
+the party object pointer, candidate-array pointer, candidate count, and up to 32
+complete 80-byte candidate entries. The wrapper lives in verified zero padding
+at VMA `0x00709b00` and preserves LR, TOC, condition state, the selector return
+value, and the original party-object argument. This directly reveals whether the
+party pump sees no candidates, an inactive/unresolved entry, or a populated
+candidate whose metric should be selectable.
+
+The selector snapshot format is big-endian: 16-byte header (`QSE1`, version,
+record count, party pointer, candidate-array pointer, candidate count) followed
+by the captured 80-byte entries. Before the next RPCS3 run, delete stale
+`/dev_hdd0/tmp/qos-selector.bin` along with `qos-map.bin`; retrieve both files
+after the matchmaking attempt. Tests validate the selector callsite context,
+wrapper relocation targets, 80-byte copy loop, output path, and cave bounds.
+The verified TU0 selector context ends with branch `0x482305CD`; the patcher now
+extends the executable LOAD through the complete selector wrapper so SELF
+packaging preserves it. Generated `files/default_mp_tu0_qos_selector.elf` and
+`files/default_mp_tu0_qos_selector.self`, with a successful decrypted-SELF
+round-trip comparison against the patched ELF.
+
+`go test ./cmd/mw2-qos-patcher` passes.
+
+The 2026-09-01 RPCS3 run reached the selector call but crashed at unmapped CIA
+`0x00c30af0`, with LR `0x00709c04` and stack frames through wrapper
+`0x00709b20` and selector return `0x000d6928`. Inspection of the generated ELF
+showed that the selector wrapper's filesystem relocations were four bytes late
+for `cellFsOpen`, eight bytes late for `cellFsWrite`, and eight bytes late for
+`cellFsClose`. They overwrote the TOC restore, `cellFsWrite` argument load, and
+selector-return restore respectively; the first corrupted TOC caused the
+filesystem thunk to branch to `0x00c30af0`.
+
+The relocations are corrected to wrapper offsets `0x100`, `0x120`, and `0x12c`.
+Regression tests now assert the neighboring TOC and argument/return-preservation
+instructions so a branch cannot silently replace them again. `go test
+./cmd/mw2-qos-patcher`, `go vet ./cmd/mw2-qos-patcher`, and `git diff --check`
+pass. New round-trip-verified artifacts are
+`files/default_mp_tu0_qos_selector_fixed.elf` (SHA-256
+`135af486b0a96f81ea0e990303c7066d08c20d4baa425a8a7cc7ed26806f648c`)
+and `files/default_mp_tu0_qos_selector_fixed.self` (SHA-256
+`241ee293dce06ef313535265a57732d2aedaedcf6c949196cd6af1ad52a010d4`).
+The 2026-09-01 RPCS3 retest reached `cellFsWrite` but froze with `r5=0xd000e208` instead of the selector snapshot size. The wrapper kept that size only in volatile `r10`; `cellFsOpen` legitimately clobbered it before the write. The selector wrapper now spills the capped byte count to `0x44(r1)` before building the snapshot and reloads it into `r5` immediately before `cellFsWrite`. The copy loop also decrements `r10` directly, avoiding the previous temporary-register dependency. Regression tests assert both spill/reload instructions, and `go test ./...` passes. Generated `files/default_mp_tu0_qos_selector_size_fixed.elf` (SHA-256 `98c957b617ee5299e88717acc2507d25d8e4b84b4938e71248eecf313f401514`) and `files/default_mp_tu0_qos_selector_size_fixed.self` (SHA-256 `cc892668bb131aa2bbdf212f1a0157b632dadbd40ad7702a899b88efad43ade6`); the patcher verified the decrypted SELF byte-for-byte against the ELF. The malformed 3.25 GiB `/dev_hdd0/tmp/qos-selector.bin` was removed and the new SELF was deployed to `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`; its installed SHA-256 is `cc892668bb131aa2bbdf212f1a0157b632dadbd40ad7702a899b88efad43ade6`. An RPCS3 matchmaking retest is still required.
+
+## Patched SELF build runbook
+
+`docs/BUILD_PATCHED_SELF.md` documents the repeatable patch-and-sign workflow.
+It requires `files/default_mp_tu0_clean.elf` to remain an immutable input, uses
+distinct ELF and SELF output paths, packages with the tools and key data under
+`files/self`, and retains the patcher's decrypted-SELF byte-for-byte verification.
 
 ## Reference material
 

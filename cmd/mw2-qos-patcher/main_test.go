@@ -8,6 +8,99 @@ import (
 	"testing"
 )
 
+func TestBuildMapCommitWrapperTargetsVerifiedCalleesAndRecord(t *testing.T) {
+	wrapper, err := buildMapCommitWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) != 0x2d8 {
+		t.Fatalf("wrapper size=%#x want=0x2d8", len(wrapper))
+	}
+	for _, call := range []struct {
+		offset int
+		target uint64
+	}{
+		{0x1c, mapCalleeVMA},
+		{0xfc, emitWrapperVMA},
+		{0x1c8, commitCalleeVMA},
+		{0x21c, emitWrapperVMA},
+		{0x27c, cellFsOpenVMA},
+		{0x29c, cellFsWriteVMA},
+		{0x2a4, cellFsCloseVMA},
+	} {
+		instruction := binary.BigEndian.Uint32(wrapper[call.offset : call.offset+4])
+		resolved, err := branchTarget(wrapperVMA+uint64(call.offset), instruction)
+		if err != nil || resolved != call.target {
+			t.Fatalf("branch at offset %#x resolves to %#x, want %#x: %v", call.offset, resolved, call.target, err)
+		}
+	}
+	path := []byte("/dev_hdd0/tmp/qos-map.bin\x00")
+	if !bytes.Contains(wrapper, path) {
+		t.Fatalf("wrapper does not contain telemetry path")
+	}
+	for _, word := range []uint32{0x3d40514f, 0x614a5331, 0x39400006, 0xb14b0004} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], word)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper missing record instruction %08x", word)
+		}
+	}
+}
+
+func TestBuildSelectorWrapperCapturesLiveCandidateArray(t *testing.T) {
+	wrapper, err := buildSelectorWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) > int(selectorWrapperLimit-selectorWrapperVMA) {
+		t.Fatalf("wrapper size=%d exceeds cave size=%d", len(wrapper), selectorWrapperLimit-selectorWrapperVMA)
+	}
+	for _, call := range []struct {
+		offset int
+		target uint64
+	}{
+		{28, selectorCalleeVMA},
+		{256, cellFsOpenVMA},
+		{288, cellFsWriteVMA},
+		{300, cellFsCloseVMA},
+	} {
+		instruction := binary.BigEndian.Uint32(wrapper[call.offset : call.offset+4])
+		resolved, err := branchTarget(selectorWrapperVMA+uint64(call.offset), instruction)
+		if err != nil || resolved != call.target {
+			t.Fatalf("branch at offset %#x resolves to %#x, want %#x: %v", call.offset, resolved, call.target, err)
+		}
+	}
+	if !bytes.HasSuffix(wrapper, []byte("/dev_hdd0/tmp/qos-selector.bin\x00")) {
+		t.Fatal("wrapper is missing the selector telemetry path")
+	}
+	for offset, instruction := range map[int]uint32{
+		96:  0x91410044,
+		260: 0xe8410028,
+		280: 0x80a10044,
+		292: 0xe8410028,
+		296: 0x80610048,
+		304: 0xe8610040,
+		308: 0xe8010030,
+	} {
+		if actual := binary.BigEndian.Uint32(wrapper[offset : offset+4]); actual != instruction {
+			t.Fatalf("wrapper instruction at offset %#x=%08x want=%08x", offset, actual, instruction)
+		}
+	}
+	for _, instruction := range []uint32{
+		0x81230038, 0x8143003c, 0x1d4a0050, 0x394a0050,
+		0x3d605153, 0x616b4531, 0x91610050, 0x90610058,
+		0x81630038, 0x9161005c, 0x8163003c, 0x91610060,
+		0x1d6b0050, 0x892c0000, 0x99280000, 0x91410044,
+		0x80a10044, 0xe8610040, 0x7c0ff120, 0x38210b00, 0x4e800020,
+	} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], instruction)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper is missing instruction %08x", instruction)
+		}
+	}
+}
+
 func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 	wrapper, err := buildJoinWrapper()
 	if err != nil {

@@ -59,6 +59,30 @@ func inspectQoS(r io.Reader) {
 		}
 		version := binary.BigEndian.Uint16(record[4:6])
 		tag := binary.BigEndian.Uint16(record[6:8])
+		if version == 6 {
+			fmt.Printf("record=%d version=%d stage=%d map_index=%d session_id=%016x party_object=%08x candidate_array=%08x commit_index=%d qos_value=%d probe_count=%d pre_active=%d pre_total=%d pre_count=%d pre_normalized=%d commit_result=%d post_active=%d post_total=%d post_count=%d post_normalized=%d reserved=%d\n",
+				index,
+				version,
+				tag,
+				int32(binary.BigEndian.Uint32(record[12:16])),
+				binary.BigEndian.Uint64(record[16:24]),
+				binary.BigEndian.Uint32(record[24:28]),
+				binary.BigEndian.Uint32(record[28:32]),
+				int32(binary.BigEndian.Uint32(record[32:36])),
+				int32(binary.BigEndian.Uint32(record[36:40])),
+				int32(binary.BigEndian.Uint32(record[40:44])),
+				binary.BigEndian.Uint32(record[44:48]),
+				int32(binary.BigEndian.Uint32(record[48:52])),
+				int32(binary.BigEndian.Uint32(record[52:56])),
+				int32(binary.BigEndian.Uint32(record[56:60])),
+				int32(binary.BigEndian.Uint32(record[60:64])),
+				binary.BigEndian.Uint32(record[64:68]),
+				int32(binary.BigEndian.Uint32(record[68:72])),
+				int32(binary.BigEndian.Uint32(record[72:76])),
+				int32(binary.BigEndian.Uint32(record[76:80])),
+				int32(binary.BigEndian.Uint32(record[80:84])))
+			continue
+		}
 		if version != 3 || tag != 3 {
 			fmt.Printf("record=%d version=%d tag=%d raw=%s\n", index, version, tag, hex.EncodeToString(record))
 			continue

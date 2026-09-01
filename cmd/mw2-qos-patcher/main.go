@@ -19,8 +19,12 @@ const (
 	expectedInputSHA256  = "5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041"
 	abortCallVMA         = uint64(0x2fa390)
 	acceptCallVMA        = uint64(0x2fa7a0)
+	mapCallVMA           = uint64(0x2fa2c0)
+	commitCallVMA        = uint64(0x2fa300)
 	decisionHookVMA      = uint64(0x2fa760)
 	cffCallVMA           = uint64(0x2fa7b8)
+	mapCalleeVMA         = uint64(0xcb538)
+	commitCalleeVMA      = uint64(0xcd998)
 	joinTestCallVMA      = uint64(0x2fdc00)
 	joinHostOneCallVMA   = uint64(0x2fdc30)
 	joinHostTwoCallVMA   = uint64(0x2fdc50)
@@ -32,6 +36,11 @@ const (
 	gateSecondaryCallVMA = uint64(0x2fd850)
 	gateFallbackCallVMA  = uint64(0x2fdd98)
 	gateCandidateCallVMA = uint64(0x2fe95c)
+	selectorCallVMA      = uint64(0xd6924)
+	selectorCalleeVMA    = uint64(0xd5750)
+	selectorWrapperVMA   = uint64(0x709b00)
+	selectorWrapperOff   = uint64(0x6f9b00)
+	selectorWrapperLimit = uint64(0x70a000)
 	clearQoSCalleeVMA    = uint64(0x320048)
 	cffCalleeVMA         = uint64(0xcff28)
 	joinTestCalleeVMA    = uint64(0xd2468)
@@ -42,10 +51,12 @@ const (
 	gateSecondCalleeVMA  = uint64(0x30cc40)
 	gateJoinCalleeVMA    = uint64(0x2fd758)
 	wrapperVMA           = uint64(0x709280)
+	commitWrapperVMA     = wrapperVMA + 0x130
+	emitWrapperVMA       = wrapperVMA + 0x250
+	wrapperLimitVMA      = uint64(0x709a40)
 	decisionWrapperVMA   = uint64(0x709660)
 	joinWrapperVMA       = uint64(0x709660)
 	gateWrapperVMA       = uint64(0x7098a0)
-	wrapperLimitVMA      = uint64(0x709a40)
 	wrapperFileOffset    = uint64(0x6f9280)
 	firstLoadFileSize    = uint64(0x6f9160)
 	firstLoadVAddr       = uint64(0x10000)
@@ -148,16 +159,32 @@ var (
 		0x4b, 0xff, 0xf9, 0xc0,
 		0x60, 0x00, 0x00, 0x00,
 	}
+	selectorContext = []byte{
+		0x7e, 0xc3, 0xb3, 0x78,
+		0x4b, 0xff, 0xee, 0x2d,
+		0x4b, 0xff, 0xf6, 0xdc,
+		0x48, 0x23, 0x05, 0xcd,
+	}
 	gateCandidateContext = []byte{
 		0x7c, 0x63, 0x07, 0xb4,
 		0x4b, 0xff, 0xed, 0xfd,
 		0x4b, 0xff, 0xfd, 0xcc,
 	}
+	mapContext = []byte{
+		0x7b, 0xa4, 0x00, 0x20,
+		0x4b, 0xdd, 0x12, 0x79,
+		0x60, 0x00, 0x00, 0x00,
+	}
+	commitContext = []byte{
+		0x7f, 0xe5, 0xfb, 0x78,
+		0x4b, 0xdd, 0x36, 0x99,
+		0x60, 0x00, 0x00, 0x00,
+	}
 )
 
 func main() {
 	input := flag.String("input", "/mnt/d/Reversing/PS3/self resigner/self/default_mp.elf", "playlist-patched MW2 multiplayer ELF")
-	output := flag.String("output", "/mnt/d/Reversing/PS3/self resigner/self/default_mp.qos-telemetry.elf", "QoS telemetry ELF output")
+	output := flag.String("output", "files/default_mp_tu0_qos_map.elf", "QoS identity-map telemetry ELF output")
 	selfOutput := flag.String("self-output", "", "retail SELF output; defaults to default_mp.self beside the ELF output")
 	scetoolDir := flag.String("scetool-dir", "files/self", "directory containing tool/scetool.exe and data")
 	template := flag.String("self-template", "files/default_mp_tu0_clean.self", "retail SELF template")
@@ -220,6 +247,12 @@ func run(inputPath, outputPath string, force bool) error {
 	if !allZero(data[first.Off+first.Filesz : wrapperFileOffset]) {
 		return errors.New("executable LOAD tail before wrapper is not zero padding")
 	}
+	if err := validateCallSite(data, file, mapCallVMA, mapContext, mapCalleeVMA); err != nil {
+		return fmt.Errorf("candidate ID map call: %w", err)
+	}
+	if err := validateCallSite(data, file, commitCallVMA, commitContext, commitCalleeVMA); err != nil {
+		return fmt.Errorf("candidate QoS commit call: %w", err)
+	}
 	if err := validateCallSite(data, file, abortCallVMA, abortContext, clearQoSCalleeVMA); err != nil {
 		return fmt.Errorf("abort call: %w", err)
 	}
@@ -228,6 +261,9 @@ func run(inputPath, outputPath string, force bool) error {
 	}
 	if err := validateCallSite(data, file, cffCallVMA, cffContext, cffCalleeVMA); err != nil {
 		return fmt.Errorf("CFF call: %w", err)
+	}
+	if err := validateBranchSite(data, file, selectorCallVMA, selectorContext, selectorCalleeVMA, false); err != nil {
+		return fmt.Errorf("live selector call: %w", err)
 	}
 	if err := validateInstructionSite(data, file, decisionHookVMA, decisionContext, 0x2f800000); err != nil {
 		return fmt.Errorf("promotion decision: %w", err)
@@ -268,25 +304,13 @@ func run(inputPath, outputPath string, force bool) error {
 		}
 	}
 
-	wrapper, err := buildWrapper()
+	wrapper, err := buildMapCommitWrapper()
 	if err != nil {
-		return fmt.Errorf("build wrapper: %w", err)
+		return fmt.Errorf("build candidate map/commit wrapper: %w", err)
 	}
-	decisionWrapper, err := buildDecisionWrapper()
-	if err != nil {
-		return fmt.Errorf("build decision wrapper: %w", err)
-	}
-	decisionWrapperOffset := decisionWrapperVMA - wrapperVMA
-	if uint64(len(wrapper)) > decisionWrapperOffset {
-		return fmt.Errorf("QoS wrapper overlaps decision wrapper: end 0x%x, decision start 0x%x", wrapperVMA+uint64(len(wrapper)), decisionWrapperVMA)
-	}
-	payloadSize := decisionWrapperOffset + uint64(len(decisionWrapper))
-	newFirstSize := wrapperFileOffset + payloadSize
+	payloadSize := uint64(len(wrapper))
 	if wrapperVMA+payloadSize > wrapperLimitVMA {
-		return fmt.Errorf("wrappers exceed verified cave: end 0x%x, limit 0x%x", wrapperVMA+payloadSize, wrapperLimitVMA)
-	}
-	if newFirstSize > secondLoadFileOff {
-		return fmt.Errorf("wrappers overlap the writable LOAD: executable end 0x%x, writable offset 0x%x", newFirstSize, secondLoadFileOff)
+		return fmt.Errorf("wrapper exceeds verified cave: end 0x%x, limit 0x%x", wrapperVMA+payloadSize, wrapperLimitVMA)
 	}
 	if secondLoadFileOff-wrapperFileOffset < payloadSize {
 		return errors.New("insufficient file padding for wrappers")
@@ -295,20 +319,42 @@ func run(inputPath, outputPath string, force bool) error {
 		return fmt.Errorf("wrapper target file range 0x%x..0x%x is not zero padding", wrapperFileOffset, wrapperFileOffset+payloadSize)
 	}
 
+	selectorWrapper, err := buildSelectorWrapper()
+	if err != nil {
+		return err
+	}
+	if selectorWrapperVMA != first.Vaddr+selectorWrapperOff {
+		return errors.New("selector wrapper constants do not match the executable LOAD mapping")
+	}
+	if selectorWrapperVMA+uint64(len(selectorWrapper)) > selectorWrapperLimit {
+		return fmt.Errorf("selector wrapper exceeds verified cave: end 0x%x, limit 0x%x", selectorWrapperVMA+uint64(len(selectorWrapper)), selectorWrapperLimit)
+	}
+	selectorEnd := selectorWrapperOff + uint64(len(selectorWrapper))
+	if selectorEnd > uint64(len(data)) {
+		return fmt.Errorf("selector wrapper file range 0x%x..0x%x exceeds file size 0x%x", selectorWrapperOff, selectorEnd, len(data))
+	}
+	if !allZero(data[selectorWrapperOff:selectorEnd]) {
+		return fmt.Errorf("selector wrapper target file range 0x%x..0x%x is not zero padding", selectorWrapperOff, selectorEnd)
+	}
+	newFirstSize := selectorEnd
+	if newFirstSize > secondLoadFileOff {
+		return fmt.Errorf("wrappers overlap the writable LOAD: executable end 0x%x, writable offset 0x%x", newFirstSize, secondLoadFileOff)
+	}
+
 	patched := append([]byte(nil), data...)
 	copy(patched[wrapperFileOffset:], wrapper)
-	copy(patched[wrapperFileOffset+decisionWrapperOffset:], decisionWrapper)
+	copy(patched[selectorWrapperOff:], selectorWrapper)
 	binary.BigEndian.PutUint64(patched[programFileSizeOff:programFileSizeOff+8], newFirstSize)
 	binary.BigEndian.PutUint64(patched[programMemorySizeOff:programMemorySizeOff+8], newFirstSize)
+
 	for _, site := range []struct {
 		vma    uint64
 		target uint64
 		link   bool
 	}{
-		{abortCallVMA, wrapperVMA, true},
-		{acceptCallVMA, wrapperVMA, true},
-		{cffCallVMA, wrapperVMA, true},
-		{decisionHookVMA, decisionWrapperVMA, true},
+		{mapCallVMA, wrapperVMA, true},
+		{commitCallVMA, commitWrapperVMA, true},
+		{selectorCallVMA, selectorWrapperVMA, true},
 	} {
 		offset, err := vmaToFileOffset(file, site.vma, uint64(len(data)))
 		if err != nil {
@@ -325,13 +371,12 @@ func run(inputPath, outputPath string, force bool) error {
 		return err
 	}
 	outputHash := fmt.Sprintf("%x", sha256.Sum256(patched))
-	fmt.Printf("QoS wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
-	fmt.Printf("decision snapshot wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", decisionWrapperVMA, wrapperFileOffset+decisionWrapperOffset, len(decisionWrapper))
-	fmt.Printf("abort call 0x%x -> wrapper, tag 1\n", abortCallVMA)
-	fmt.Printf("accept call 0x%x -> wrapper, tag 2 phase 0\n", acceptCallVMA)
-	fmt.Printf("CFF call 0x%x -> wrapper, tag 2 phases 1 and 2\n", cffCallVMA)
-	fmt.Printf("promotion decision 0x%x -> in-memory snapshot, version 5 tag 5 stage 1\n", decisionHookVMA)
-	fmt.Printf("record: %d-byte records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
+	fmt.Printf("candidate map/commit wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
+	fmt.Printf("candidate ID map call 0x%x -> wrapper\n", mapCallVMA)
+	fmt.Printf("candidate QoS commit call 0x%x -> wrapper\n", commitCallVMA)
+	fmt.Printf("live selector call 0x%x -> wrapper at 0x%x\n", selectorCallVMA, selectorWrapperVMA)
+	fmt.Printf("record: one %d-byte version-6 record appended to /dev_hdd0/tmp/qos-map.bin\n", recordSize)
+	fmt.Printf("selector snapshot: /dev_hdd0/tmp/qos-selector.bin\n")
 	fmt.Printf("input SHA-256:  %s\n", inputHash)
 	fmt.Printf("output SHA-256: %s\n", outputHash)
 	fmt.Printf("wrote %s\n", outputPath)
@@ -398,6 +443,61 @@ func validateBranchSite(data []byte, file *elf.File, vma uint64, context []byte,
 		return fmt.Errorf("instruction after branch at VMA 0x%x is not the verified nop", vma)
 	}
 	return nil
+}
+
+func buildMapCommitWrapper() ([]byte, error) {
+	wrapper := wordsToBytes([]uint32{
+		0xf821ff81, 0x7c0802a6, 0xf8010090, 0xf8410028, 0x7c000026, 0xf8010030, 0xf8810038, 0x480cb539,
+		0xf8610040, 0x3d600075, 0x616be340, 0x814b0000, 0x2c0a0000, 0x408200dc, 0x396b0008, 0x3d40514f,
+		0x614a5331, 0x914b0000, 0x39400006, 0xb14b0004, 0x39400001, 0xb14b0006, 0x39400001, 0x914b0008,
+		0xe9810040, 0x918b000c, 0xe9410038, 0xe94a0000, 0xf94b0010, 0x92eb0018, 0x81570038, 0x914b001c,
+		0x3920ffff, 0x912b0020, 0x912b0024, 0x912b0028, 0x912b002c, 0x912b0030, 0x912b0034, 0x912b0038,
+		0x912b003c, 0x912b0040, 0x912b0044, 0x912b0048, 0x912b004c, 0x912b0050, 0x912b0054, 0x912b0058,
+		0x912b005c, 0x2c0c0000, 0x41800034, 0x1d4c0050, 0x81370038, 0x7d4a4a14, 0x892a0000, 0x912b002c,
+		0x812a0044, 0x912b0030, 0x812a0048, 0x912b0034, 0x812a004c, 0x912b0038, 0x48000018, 0x48000001,
+		0x3d600075, 0x616be340, 0x39400001, 0x914b0000, 0xe8610040, 0xe8010030, 0x7c0ff120, 0xe8410028,
+		0xe8010090, 0x7c0803a6, 0x38210080, 0x4e800020,
+		0xf821ff61, 0x7c0802a6, 0xf80100b0, 0xf8410028, 0x7c000026, 0xf8010030, 0xf8610038, 0xf8810040,
+		0xf8a10048, 0xf8c10050, 0x3d600075, 0x616be340, 0x814b0000, 0x91410058, 0x2c0a0000, 0x4082004c,
+		0x396b0008, 0x39400002, 0xb14b0006, 0x914b0008, 0x908b0020, 0x90ab0024, 0x90cb0028, 0x1d440050,
+		0x81230038, 0x7d4a4a14, 0x892a0000, 0x912b002c, 0x812a0044, 0x912b0030, 0x812a0048, 0x912b0034,
+		0x812a004c, 0x912b0038, 0xe8610038, 0xe8810040, 0xe8a10048, 0xe8c10050, 0x480cd999, 0xf8610060,
+		0x81410058, 0x2c0a0000, 0x40820058, 0x3d600075, 0x616be348, 0x906b003c, 0xe8810040, 0xe8610038,
+		0x1d440050, 0x81230038, 0x7d4a4a14, 0x892a0000, 0x912b0040, 0x812a0044, 0x912b0044, 0x812a0048,
+		0x912b0048, 0x812a004c, 0x912b004c, 0x48000001, 0x3d600075, 0x616be340, 0x39400001, 0x914b0000,
+		0xe8610060, 0xe8010030, 0x7c0ff120, 0xe8410028, 0xe80100b0, 0x7c0803a6, 0x382100a0, 0x4e800020,
+		0xf821ff81, 0x7c0802a6, 0xf8010090, 0xf8410028, 0x3c600000, 0x38630000, 0x38800441, 0x38a10040,
+		0x38c00000, 0x38e00000, 0x39000000, 0x48526275, 0x2c030000, 0x40820024, 0x80610040, 0x3c800075,
+		0x6084e348, 0x38a00060, 0x38c10048, 0x48526335, 0x80610040, 0x485261f5, 0xe8410028, 0xe8010090,
+		0x7c0803a6, 0x38210080, 0x4e800020, 0x2f646576, 0x5f686464, 0x302f746d, 0x702f716f, 0x732d6d61,
+		0x702e6269, 0x6e000000,
+	})
+	for _, relocation := range []struct {
+		offset int
+		from   uint64
+		to     uint64
+		link   bool
+	}{
+		{0x1c, wrapperVMA + 0x1c, mapCalleeVMA, true},
+		{0xfc, wrapperVMA + 0xfc, emitWrapperVMA, true},
+		{0x1c8, wrapperVMA + 0x1c8, commitCalleeVMA, true},
+		{0x21c, wrapperVMA + 0x21c, emitWrapperVMA, true},
+		{0x27c, wrapperVMA + 0x27c, cellFsOpenVMA, true},
+		{0x29c, wrapperVMA + 0x29c, cellFsWriteVMA, true},
+		{0x2a4, wrapperVMA + 0x2a4, cellFsCloseVMA, true},
+	} {
+		binary.BigEndian.PutUint32(wrapper[relocation.offset:relocation.offset+4], encodeBranch(relocation.from, relocation.to, relocation.link))
+	}
+	pathVMA := wrapperVMA + 0x2bc
+	binary.BigEndian.PutUint32(wrapper[0x260:0x264], 0x3c600000|uint32((pathVMA+0x8000)>>16))
+	binary.BigEndian.PutUint32(wrapper[0x264:0x268], 0x38630000|uint32(pathVMA&0xffff))
+	if len(wrapper) != 0x2d8 {
+		return nil, fmt.Errorf("candidate map/commit wrapper size 0x%x, expected 0x2d8", len(wrapper))
+	}
+	if wrapperVMA+uint64(len(wrapper)) > wrapperLimitVMA {
+		return nil, fmt.Errorf("candidate map/commit wrapper exceeds verified cave: end 0x%x", wrapperVMA+uint64(len(wrapper)))
+	}
+	return wrapper, nil
 }
 
 func buildWrapper() ([]byte, error) {
@@ -612,6 +712,47 @@ func buildJoinWrapper() ([]byte, error) {
 			continue
 		}
 		binary.BigEndian.PutUint32(wrapper[offset:offset+4], encodeBranch(joinWrapperVMA+uint64(offset), target, instruction&1 != 0))
+	}
+	return wrapper, nil
+}
+
+func buildSelectorWrapper() ([]byte, error) {
+	wrapper := []byte{
+		0xf8, 0x21, 0xf5, 0x01, 0x7c, 0x08, 0x02, 0xa6, 0xf8, 0x01, 0x0b, 0x10, 0xf8, 0x41, 0x00, 0x28,
+		0x7c, 0x00, 0x00, 0x26, 0xf8, 0x01, 0x00, 0x30, 0xf8, 0x61, 0x00, 0x38, 0x48, 0x0d, 0x57, 0x51,
+		0xf8, 0x61, 0x00, 0x40, 0xe8, 0x61, 0x00, 0x38, 0x81, 0x23, 0x00, 0x38, 0x81, 0x43, 0x00, 0x3c,
+		0x2c, 0x0a, 0x00, 0x00, 0x40, 0x81, 0x00, 0x24, 0x2c, 0x09, 0x00, 0x00, 0x41, 0x82, 0x00, 0x1c,
+		0x2c, 0x0a, 0x00, 0x20, 0x40, 0x81, 0x00, 0x08, 0x39, 0x40, 0x00, 0x20, 0x1d, 0x4a, 0x00, 0x50,
+		0x39, 0x4a, 0x00, 0x50, 0x48, 0x00, 0x00, 0x08, 0x39, 0x40, 0x00, 0x50, 0x39, 0x60, 0x00, 0x00,
+		0x91, 0x41, 0x00, 0x44, 0x39, 0x01, 0x00, 0x50, 0x99, 0x68, 0x00, 0x00, 0x39, 0x08, 0x00, 0x01,
+		0x35, 0x4a, 0xff, 0xff, 0x40, 0x82, 0xff, 0xf4, 0x3d, 0x60, 0x51, 0x53, 0x61, 0x6b, 0x45, 0x31,
+		0x91, 0x61, 0x00, 0x50, 0x39, 0x60, 0x00, 0x01, 0xb1, 0x61, 0x00, 0x54, 0xb1, 0x61, 0x00, 0x56,
+		0x90, 0x61, 0x00, 0x58, 0x81, 0x63, 0x00, 0x38, 0x91, 0x61, 0x00, 0x5c, 0x81, 0x63, 0x00, 0x3c,
+		0x91, 0x61, 0x00, 0x60, 0x2c, 0x0b, 0x00, 0x00, 0x40, 0x81, 0x00, 0x3c, 0x81, 0x83, 0x00, 0x38,
+		0x2c, 0x0c, 0x00, 0x00, 0x41, 0x82, 0x00, 0x30, 0x2c, 0x0b, 0x00, 0x20, 0x40, 0x81, 0x00, 0x08,
+		0x39, 0x60, 0x00, 0x20, 0x1d, 0x6b, 0x00, 0x50, 0x39, 0x01, 0x00, 0x70, 0x7d, 0x69, 0x03, 0xa6,
+		0x89, 0x2c, 0x00, 0x00, 0x99, 0x28, 0x00, 0x00, 0x39, 0x8c, 0x00, 0x01, 0x39, 0x08, 0x00, 0x01,
+		0x42, 0x00, 0xff, 0xf0, 0x3c, 0x60, 0x00, 0x70, 0x60, 0x63, 0x9c, 0x50, 0x38, 0x80, 0x04, 0x41,
+		0x38, 0xa1, 0x00, 0x48, 0x38, 0xc0, 0x00, 0x00, 0x38, 0xe0, 0x00, 0x00, 0x39, 0x00, 0x00, 0x00,
+		0x48, 0x52, 0x6e, 0xf1, 0xe8, 0x41, 0x00, 0x28, 0x2c, 0x03, 0x00, 0x00, 0x40, 0x82, 0x00, 0x24,
+		0x80, 0x61, 0x00, 0x48, 0x38, 0x81, 0x00, 0x50, 0x80, 0xa1, 0x00, 0x44, 0x38, 0xc1, 0x00, 0x4c,
+		0x48, 0x52, 0x70, 0x11, 0xe8, 0x41, 0x00, 0x28, 0x80, 0x61, 0x00, 0x48, 0x48, 0x52, 0x6e, 0xe1,
+		0xe8, 0x61, 0x00, 0x40, 0xe8, 0x01, 0x00, 0x30, 0x7c, 0x0f, 0xf1, 0x20, 0xe8, 0x41, 0x00, 0x28,
+		0xe8, 0x01, 0x0b, 0x10, 0x7c, 0x08, 0x03, 0xa6, 0x38, 0x21, 0x0b, 0x00, 0x4e, 0x80, 0x00, 0x20,
+		0x2f, 0x64, 0x65, 0x76, 0x5f, 0x68, 0x64, 0x64, 0x30, 0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x71,
+		0x6f, 0x73, 0x2d, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x2e, 0x62, 0x69, 0x6e, 0x00,
+	}
+	for _, relocation := range []struct {
+		offset int
+		from   uint64
+		to     uint64
+	}{
+		{28, selectorWrapperVMA + 28, selectorCalleeVMA},
+		{256, selectorWrapperVMA + 256, cellFsOpenVMA},
+		{288, selectorWrapperVMA + 288, cellFsWriteVMA},
+		{300, selectorWrapperVMA + 300, cellFsCloseVMA},
+	} {
+		binary.BigEndian.PutUint32(wrapper[relocation.offset:relocation.offset+4], encodeBranch(relocation.from, relocation.to, true))
 	}
 	return wrapper, nil
 }
