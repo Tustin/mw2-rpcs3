@@ -26,15 +26,14 @@ The 2026-08-03 physical-PS3/RPCS3 retest confirmed that delaying the first
 self-only public find produced the same two-session snapshot for both clients.
 Their serialized result arrays were byte-identical after the transaction ID and
 ordered by advertisement creation: RPCS3 first, physical PS3 second for both
-requesters. The 2026-09-01 selector trace now proves that symmetric snapshot is
-itself the failure: both clients committed QoS and selected result index zero, so
-the first console selected its own advertisement while the second selected the
-first console. Both displayed "Joining," but they did not agree on host/joiner
-roles. Operation `5` now returns only ready compatible non-owned sessions created
-before the requester's own earliest advertisement. This is immediate and does
-not block the LSG reader: the first advertiser receives zero results and remains
-host, while each later advertiser receives the already-established host. The
-next task is a live two-console retest of this asymmetric result policy.
+requesters. The 2026-09-01 selector trace showed that both clients selected result index zero,
+but the resulting asymmetric-operation-5 hypothesis is now reverted. It invented
+owner exclusion and creation-order filtering not supported by the successful
+retail capture, which returned the same self-inclusive creation-ordered two-result
+snapshot to both consoles. Operation `5` again returns that symmetric snapshot by
+default; the existing optional first-self-only delay remains available solely as
+a timing compatibility switch. The next task remains the instrumented two-console
+retest and retrieval of `qos.bin` plus any accompanying probe/join records.
 
 Static analysis of `default_mp.elf` has now corrected the storage reply layouts:
 
@@ -79,9 +78,16 @@ The service-5 audit recovered operations `1` create, `2` update, `3` delete,
 statically proven create/update/delete/find lifecycle with a process-wide
 thread-safe directory shared by retail LSG connections, generated session
 ID/key material, and exact zero/nonempty find-result serializers. Operation
-`4` and the retail backend's seven-field search-filter policy remain
-unimplemented because their exact semantics are below the requested confidence
-threshold.
+`4` and any broader retail backend search-filter policy remain unimplemented
+because their exact semantics are below the requested confidence threshold.
+Successful retail two-console evidence limits enforced operation-5 matching to
+game type, slot pool, and required free slots.
+
+The asymmetric operation-5 filtering experiment was reverted on 2026-09-02.
+Focused regressions now require self-inclusive creation-order results for both
+requesters and prove that the retail two-console equality mismatches for game
+mode, netcode, playlist version, and performance do not filter either session.
+`go test ./internal/auth` and `git diff --check` pass.
 
 The latest preserved RPCS3 trace did not reach either publisher-file parser.
 It repeatedly received service-18 error `108`, never sent the five UDP
@@ -348,6 +354,13 @@ version, and performance. Map-pack comparison remains unproven; only game type,
 slot pool, and free slots are currently enforced. Full schemas and confidence
 boundaries are in
 `docs/demonware-matchmaking.md`.
+
+Public find replies are self-inclusive by default and sorted by creation order,
+matching the successful retail two-console capture. The optional
+`suppress_self_only` compatibility switch suppresses only a sole self result; it
+does not exclude the requester once a peer advertisement is present. Candidate
+results still require readiness for non-owned sessions, the requested game type,
+the selected public/private slot pool, and sufficient free slots.
 
 An active host forces operation `2` every 180 seconds. Dirty create/join/leave
 state is coalesced for at least three seconds, and an update failure re-dirties
@@ -658,26 +671,19 @@ record (`672d64d80a1923fc` / `5c052b8242998ead43affe55ef28f279` on RPCS3;
 
 The server-side timeline further localizes the loop after acceptance. Operation
 `5` responses were self-inclusive: one solo session produced one result, and two
-connected sessions produced two results in session-ID sort order. Both clients
-sent operation `2` updates from `openPrivate=8, filledPrivate=0` to
+connected sessions produced two results in creation order. Both clients sent
+operation `2` updates from `openPrivate=8, filledPrivate=0` to
 `openPrivate=7, filledPrivate=1`; both sent correctly framed service-17
 operation `2` requests for their own account entity ID; then both continued
 operation `5` every roughly two seconds. After RPCS3 disconnected, its session
 was reclaimed and the PS3's next find reply dropped from two results to its own
-single result before it deleted that session. Combined with every accepted-path
-telemetry record carrying the local client's own session ID and security key,
-this made self-results the strongest testable cause of the post-`sub_CFF28`
-loop. Owner exclusion alone still leaves a symmetric two-client result: each
-client receives the other and can independently select itself as host after peer
-QoS. Operation `5` now records a monotonic creation order and returns only
-compatible non-owned sessions created before the requester's own session. The
-first creator therefore receives zero candidates and remains host; the later
-creator receives the first creator and becomes the joiner. The existing result
-object, address/session/key tuple, slot filtering, sorting, and peer QoS path are
-unchanged. Connections with no owned session retain the broad directory search
-used by non-host callers. Store, handler, and encrypted full-flow regressions
-cover the asymmetric policy. A live RPCS3/physical-PS3 retest is still required
-to establish whether this reaches peer DTLS and a lobby join.
+single result before it deleted that session. Although this motivated testing
+owner exclusion plus an earlier-owner cutoff, that policy is now rejected: the
+successful retail capture explicitly returned both advertisements to both
+requesters in the same creation order. The server preserves that self-inclusive
+symmetric directory and leaves host/joiner resolution to the instrumented client
+path. A live RPCS3/physical-PS3 retest is still required to establish whether the
+current QoS-gate retry instrumentation reaches peer DTLS and a lobby join.
 
 The first telemetry ELF did reach both hook sites: RPCS3 opened
 `/dev_hdd0/tmp/mw2_qos.bin` at the abort hook and later at the accepted hook.
@@ -808,23 +814,21 @@ invented. Operation-5 matching now retains only equal unranked/ranked game type,
 the selected slot pool, and required free slots. The regression test uses the
 successful retail values and requires both searches to receive both sessions.
 
-The 2026-08-01 live retest confirms the asymmetric result policy reaches the
-peer network stage. RPCS3 received the physical PS3's exact common address,
-session ID, and security key, then exchanged repeated `0x0d`/`0x0c` traversal
-and `0x28`/`0x29` QoS packets with `192.168.0.199:3074`. The RPCS3 probe used
-the advertised PS3 session ID's shrunken value, so the candidate identity and
-address serialization are working. No peer DTLS packet followed.
+The 2026-08-01 live retest of the now-reverted asymmetric experiment still
+confirmed that peer candidate serialization reaches the network stage. RPCS3
+received the physical PS3's exact common address, session ID, and security key,
+then exchanged repeated `0x0d`/`0x0c` traversal and `0x28`/`0x29` QoS packets
+with `192.168.0.199:3074`. The RPCS3 probe used the advertised PS3 session ID's
+shrunken value, so candidate identity and address serialization are working. No
+peer DTLS packet followed.
 
-The stable-ordering retest confirms that this policy behaves as intended when
-the physical PS3 starts first. The PS3 created session `eac3f3f94e2bb9ba`; RPCS3
-created second and repeatedly received only that PS3 session. The PS3 received
-zero candidates throughout and remained the host. RPCS3 used the returned
-identity for traversal and QoS: the `0x28` security value was the first four
-bytes of the PS3 session ID, and every observed `0x29` reply matched the current
-probe. RPCS3 consumed 29 successful QoS replies, ending with probe 28, but sent
-no type-1..6 peer-DTLS packet afterward. At the end of the run the PS3 explicitly
-deleted its session and did not recreate it; RPCS3's later zero-result searches
-are therefore expected and do not indicate unstable rank reuse.
+A stable-ordering experiment with the physical PS3 starting first likewise
+showed the PS3 session reaching RPCS3 traversal and QoS under the asymmetric
+filter. The PS3 created session `eac3f3f94e2bb9ba`; RPCS3 used that identity for
+29 successful QoS probes but sent no type-1..6 peer-DTLS packet afterward. This
+remains useful path evidence, not justification for the reverted directory
+policy. At the end of the run the PS3 explicitly deleted its session and did not
+recreate it; RPCS3's later zero-result searches were therefore expected.
 
 The supplied telemetry captures are definitively version-1, not malformed
 version-2 data. Their size and every `"QOS1"` marker advance by 52 bytes, each
@@ -1761,6 +1765,8 @@ The follow-up diagnostic is now implemented. IDA confirms the caller copies the 
 The guard-overlap fix passes `go test ./...`, `go vet ./...`, and `git diff --check`. The corrected round-trip-verified artifacts are `files/default_mp_tu0_qos_join_guard_fixed.elf` (SHA-256 `85462859667cb22ee3ef98cdffe93327f3b2e16ebc0ce830386da8800a3e8a2f`) and `files/default_mp_tu0_qos_join_guard_fixed.self` (SHA-256 `de124f081912f7821efc5ee36ceaf93a4be339cb3d76bf89c117108ae0d338dd`); the clean ELF retained SHA-256 `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`. The new SELF was installed at RPCS3 `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self`, where its SHA-256 is `de124f081912f7821efc5ee36ceaf93a4be339cb3d76bf89c117108ae0d338dd`; RPCS3's stale `qos-map.bin`, `qos-probe.bin`, `qos-selector.bin`, and `qos-join.bin` were removed. Before the next test, remove the same stale files from the physical PS3, then retrieve the new `JST1` record from the client that performs the join transition.
 
 The 2026-09-02 two-client retest again reached the RPCS3 selected-party path: `qos-probe.bin` is a valid `PRB1` record for PS3 session `d8c8a096dc47ebad`, and RPCS3's selector stream contains candidate zero for that same session with `candidate+0x34=0`, `candidate+0x38=1`, and metric `8`. The physical PS3 selector stream likewise contains candidate zero for RPCS3 session `54e022c8d892dd8b` with the same count fields and metric. The server returned each peer's session to the other client. RPCS3 logged the patched join call `0x002fdc6c -> 0x00709e80`, but no `qos-join.bin` was opened; this proves the join wrapper was entered and its pre-capture branch skipped writing because the supposedly unused guard word at `0x0075e34c` was already nonzero at runtime. The wrapper now NOPs only that initial guard branch, so every selected-party join call captures the pre-state; its existing stage transition still gates the post-call capture. Regression coverage asserts the unconditional NOP. `go test ./...`, `go vet ./...`, `gofmt -d`, and `git diff --check` pass. Round-trip-verified artifacts are `files/default_mp_tu0_qos_join_unconditional.elf` (SHA-256 `86862c4c266a870c39373a0b3be2092969d1fa01f83e0d0213e07d993086ba7f`) and `files/default_mp_tu0_qos_join_unconditional.self` (SHA-256 `902e9efe66772fca7a072859e3fc52f68238836bc7eea8581c2427691116aa2c`); the clean ELF remains `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`. The new SELF is installed in RPCS3 with matching SHA-256, and stale RPCS3 `qos-map.bin`, `qos-probe.bin`, and `qos-selector.bin` were removed. The next focused step is one two-client matchmaking run, then retrieve `qos-join.bin` from RPCS3; if the physical PS3 performs its join transition first, retrieve its `qos-join.bin` too.
+
+That run produced `qos-probe.bin` but neither `qos-join.bin` nor `qos.bin`, so the focused hypothesis changed to an earlier matchmaking gate. The patcher now reinstalls the six previously implemented gate hooks at `0x000b3f9c`, `0x002fd830`, `0x002fd838`, `0x002fd850`, `0x002fdd98`, and `0x002fe95c`, targeting the existing gate wrapper at `0x007098a0`. This appends six 96-byte version-4 records to `/dev_hdd0/tmp/qos.bin` without removing the proven candidate map/commit, selector, selected-party probe, or unconditional join-state diagnostics. `go test ./...`, `go vet ./cmd/mw2-qos-patcher`, and `git diff --check` pass. The clean ELF remains `5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041`; round-trip-verified artifacts are `files/default_mp_tu0_qos_gate_retry.elf` (SHA-256 `5f46b269bd45b2d996a42544a5e8901ae60a1d6298863c7b3eb7109f4f53e96d`) and `files/default_mp_tu0_qos_gate_retry.self` (SHA-256 `73ad0d927acc5544dfc2ac65b51ef06b98377b859249997d8840ba3f0ac475f0`). The SELF is installed at RPCS3 `dev_hdd0/game/BLUS30377/USRDIR/default_mp.self` with the matching SHA-256; the previous join-unconditional SELF is backed up as `default_mp.self.pre-qos-gate-retry-20260902`, and stale `qos.bin`, `qos-map.bin`, `qos-probe.bin`, `qos-selector.bin`, and `qos-join.bin` were removed. The next focused step is one two-client run and retrieval of `qos.bin` plus any accompanying probe/join records.
 
 ## Patched SELF build runbook
 

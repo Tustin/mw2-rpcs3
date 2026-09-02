@@ -63,6 +63,7 @@ const (
 	decisionWrapperVMA         = uint64(0x709660)
 	joinWrapperVMA             = uint64(0x709660)
 	gateWrapperVMA             = uint64(0x7098a0)
+	gateWrapperOff             = uint64(0x6f98a0)
 	wrapperFileOffset          = uint64(0x6f9280)
 	firstLoadFileSize          = uint64(0x6f9160)
 	firstLoadVAddr             = uint64(0x10000)
@@ -336,6 +337,27 @@ func run(inputPath, outputPath string, force bool) error {
 		return fmt.Errorf("wrapper target file range 0x%x..0x%x is not zero padding", wrapperFileOffset, wrapperFileOffset+payloadSize)
 	}
 
+	gateWrapper, err := buildGateWrapper()
+	if err != nil {
+		return fmt.Errorf("build gate wrapper: %w", err)
+	}
+	if gateWrapperVMA != first.Vaddr+gateWrapperOff {
+		return errors.New("gate wrapper constants do not match the executable LOAD mapping")
+	}
+	gateEnd := gateWrapperOff + uint64(len(gateWrapper))
+	if gateWrapperVMA+uint64(len(gateWrapper)) > wrapperLimitVMA {
+		return fmt.Errorf("gate wrapper exceeds verified cave: end 0x%x, limit 0x%x", gateWrapperVMA+uint64(len(gateWrapper)), wrapperLimitVMA)
+	}
+	if gateWrapperOff < wrapperFileOffset+payloadSize {
+		return fmt.Errorf("gate wrapper overlaps candidate map/commit wrapper: start 0x%x, wrapper end 0x%x", gateWrapperOff, wrapperFileOffset+payloadSize)
+	}
+	if gateEnd > uint64(len(data)) {
+		return fmt.Errorf("gate wrapper file range 0x%x..0x%x exceeds file size 0x%x", gateWrapperOff, gateEnd, len(data))
+	}
+	if !allZero(data[gateWrapperOff:gateEnd]) {
+		return fmt.Errorf("gate wrapper target file range 0x%x..0x%x is not zero padding", gateWrapperOff, gateEnd)
+	}
+
 	selectorWrapper, err := buildSelectorWrapper()
 	if err != nil {
 		return err
@@ -402,6 +424,7 @@ func run(inputPath, outputPath string, force bool) error {
 
 	patched := append([]byte(nil), data...)
 	copy(patched[wrapperFileOffset:], wrapper)
+	copy(patched[gateWrapperOff:], gateWrapper)
 	copy(patched[selectorWrapperOff:], selectorWrapper)
 	copy(patched[probeWrapperOff:], probeWrapper)
 	copy(patched[joinStateWrapperOff:], joinStateWrapper)
@@ -415,6 +438,12 @@ func run(inputPath, outputPath string, force bool) error {
 	}{
 		{mapCallVMA, wrapperVMA, true},
 		{commitCallVMA, commitWrapperVMA, true},
+		{gateEntryCallVMA, gateWrapperVMA, true},
+		{gateStateCallVMA, gateWrapperVMA + 16, true},
+		{gatePrimaryCallVMA, gateWrapperVMA + 32, true},
+		{gateSecondaryCallVMA, gateWrapperVMA + 48, true},
+		{gateFallbackCallVMA, gateWrapperVMA + 64, false},
+		{gateCandidateCallVMA, gateWrapperVMA + 80, true},
 		{selectorCallVMA, selectorWrapperVMA, true},
 		{probeCallVMA, probeWrapperVMA, true},
 		{joinStartCallVMA, joinStateWrapperVMA, true},
@@ -437,6 +466,8 @@ func run(inputPath, outputPath string, force bool) error {
 	fmt.Printf("candidate map/commit wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", wrapperVMA, wrapperFileOffset, len(wrapper))
 	fmt.Printf("candidate ID map call 0x%x -> wrapper\n", mapCallVMA)
 	fmt.Printf("candidate QoS commit call 0x%x -> wrapper\n", commitCallVMA)
+	fmt.Printf("gate wrapper: VMA 0x%x, file offset 0x%x, size 0x%x\n", gateWrapperVMA, gateWrapperOff, len(gateWrapper))
+	fmt.Printf("gate snapshots: six %d-byte version-4 records appended to /dev_hdd0/tmp/qos.bin\n", recordSize)
 	fmt.Printf("live selector call 0x%x -> wrapper at 0x%x\n", selectorCallVMA, selectorWrapperVMA)
 	fmt.Printf("selected-party probe call 0x%x -> wrapper at 0x%x\n", probeCallVMA, probeWrapperVMA)
 	fmt.Printf("selected-party join-state call 0x%x -> wrapper at 0x%x\n", joinStartCallVMA, joinStateWrapperVMA)

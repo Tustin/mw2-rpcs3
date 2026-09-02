@@ -201,7 +201,7 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, 0, false, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, 0, false)
 }
 
 func (s *mw2MatchmakingStore) findForSearch(
@@ -210,7 +210,7 @@ func (s *mw2MatchmakingStore) findForSearch(
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
 	usePrivateSlots := search.gameType != 0
-	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, true, true)
+	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, false)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -219,7 +219,7 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 	usePrivateSlots bool,
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, ownerID, true, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, ownerID, true)
 }
 
 func mw2SessionMatchesSearch(session mw2StoredMatchmakingSession, search mw2MatchmakingSearch) bool {
@@ -233,30 +233,14 @@ func (s *mw2MatchmakingStore) findMatching(
 	search *mw2MatchmakingSearch,
 	excludedOwnerID uint64,
 	excludeOwner bool,
-	earlierThanOwner bool,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
 	}
 	s.mu.RLock()
-	ownerCreationOrder := uint64(0)
-	if earlierThanOwner {
-		for _, session := range s.sessions {
-			if session.ownerID == excludedOwnerID &&
-				(ownerCreationOrder == 0 || session.creationOrder < ownerCreationOrder) {
-				ownerCreationOrder = session.creationOrder
-			}
-		}
-		if ownerCreationOrder == 0 {
-			earlierThanOwner = false
-		}
-	}
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
-			continue
-		}
-		if earlierThanOwner && session.creationOrder >= ownerCreationOrder {
 			continue
 		}
 		if search != nil && session.ownerID != excludedOwnerID && !session.ready {

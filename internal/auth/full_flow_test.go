@@ -263,8 +263,8 @@ func TestAuthenticatedLSGSurvivesGeneralReadTimeoutThenExpiresIdle(t *testing.T)
 			playlistVersion: 3,
 		}),
 	)
-	if found := readFullFlowFindReply(t, findReply, 1); len(found) != 0 {
-		t.Fatalf("owner search returned candidates across read deadlines: %+v", found)
+	if found := readFullFlowFindReply(t, findReply, 1); len(found) != 1 {
+		t.Fatalf("self-inclusive session disappeared across read deadlines: %+v", found)
 	}
 	if sessions := service.matchmakingStore().find(1, 0, false); len(sessions) != 1 {
 		t.Fatalf("session disappeared across read deadlines: %+v", sessions)
@@ -477,33 +477,41 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		))
 		assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
 	}
-	hostFound := readFullFlowFindReply(
-		t,
-		host.exchange(t, bdServiceMatchmaking, findRequest),
-		5,
-	)
-	if len(hostFound) != 0 {
-		t.Fatalf("initial host find count=%d", len(hostFound))
+	for _, client := range []*fullFlowLSGClient{host, seeker} {
+		found := readFullFlowFindReply(
+			t,
+			client.exchange(t, bdServiceMatchmaking, findRequest),
+			5,
+		)
+		if len(found) != 2 {
+			t.Fatalf("initial find count=%d", len(found))
+		}
+		hostResultCounts := hostCounts
+		seekerResultCounts := hostCounts
+		if client == host {
+			seekerResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
+		} else {
+			hostResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
+		}
+		assertFullFlowCandidate(
+			t,
+			found[0],
+			hostAddress,
+			sessionID,
+			securityKey,
+			hostResultCounts,
+			hostAttributes,
+		)
+		assertFullFlowCandidate(
+			t,
+			found[1],
+			seekerAddress,
+			seekerSessionID,
+			seekerSecurityKey,
+			seekerResultCounts,
+			hostAttributes,
+		)
 	}
-	seekerFound := readFullFlowFindReply(
-		t,
-		seeker.exchange(t, bdServiceMatchmaking, findRequest),
-		5,
-	)
-	if len(seekerFound) != 1 {
-		t.Fatalf("initial seeker find count=%d", len(seekerFound))
-	}
-	hostResultCounts := hostCounts
-	hostResultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
-	assertFullFlowCandidate(
-		t,
-		seekerFound[0],
-		hostAddress,
-		sessionID,
-		securityKey,
-		hostResultCounts,
-		hostAttributes,
-	)
 
 	updatedAddress := append([]byte(nil), hostAddress...)
 	updatedAddress[21] = 8
@@ -525,7 +533,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
 		6,
 	)
-	if len(found) != 1 {
+	if len(found) != 2 {
 		t.Fatalf("updated find count=%d", len(found))
 	}
 	updatedResultCounts := updatedCounts
@@ -539,6 +547,15 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		updatedResultCounts,
 		updatedAttributes,
 	)
+	assertFullFlowCandidate(
+		t,
+		found[1],
+		seekerAddress,
+		seekerSessionID,
+		seekerSecurityKey,
+		hostCounts,
+		hostAttributes,
+	)
 
 	deleteReply := host.exchange(
 		t,
@@ -551,9 +568,18 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		seeker.exchange(t, bdServiceMatchmaking, findRequest),
 		7,
 	)
-	if len(found) != 0 {
+	if len(found) != 1 {
 		t.Fatalf("post-delete find count=%d", len(found))
 	}
+	assertFullFlowCandidate(
+		t,
+		found[0],
+		seekerAddress,
+		seekerSessionID,
+		seekerSecurityKey,
+		hostCounts,
+		hostAttributes,
+	)
 
 	// A nonempty retail result hands this exact address/ID/key tuple to the
 	// client's peer router. Peer QoS and traversal begin after this boundary

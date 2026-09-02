@@ -549,7 +549,7 @@ func TestMW2SharedMatchmakingLifecycle(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsReturnsEarlierOwnersInCreationOrder(t *testing.T) {
+func TestMW2FindSessionsReturnsSelfInclusiveCreationOrder(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	requester := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	peer := &lsgConnection{connectionID: 2, matchmakingSessions: store}
@@ -649,12 +649,11 @@ func TestMW2FindSessionsReturnsEarlierOwnersInCreationOrder(t *testing.T) {
 		return sessionIDs
 	}
 
-	if found := findSessionIDs(requester, 0); len(found) != 0 {
-		t.Fatalf("first owner sessions=%x", found)
-	}
-	found := findSessionIDs(peer, 1)
-	if !bytes.Equal(found[0], requesterSessionID) {
-		t.Fatalf("later owner sessions=%x want=%x", found, requesterSessionID)
+	for _, connection := range []*lsgConnection{requester, peer} {
+		found := findSessionIDs(connection, 2)
+		if !bytes.Equal(found[0], requesterSessionID) || !bytes.Equal(found[1], peerSessionID) {
+			t.Fatalf("self-inclusive order=%x want first=%x second=%x", found, requesterSessionID, peerSessionID)
+		}
 	}
 
 	store.deleteOwner(requester.connectionID)
@@ -664,14 +663,14 @@ func TestMW2FindSessionsReturnsEarlierOwnersInCreationOrder(t *testing.T) {
 	if !replacementHandled || !requester.lastTaskSupported {
 		t.Fatalf("replacement create handled=%v supported=%v reply=%x", replacementHandled, requester.lastTaskSupported, replacementReply)
 	}
-	_ = readCreatedSessionID(replacementReply)
-	found = findSessionIDs(requester, 1)
-	if !bytes.Equal(found[0], peerSessionID) {
-		t.Fatalf("replacement owner sessions=%x want=%x", found, peerSessionID)
+	replacementSessionID := readCreatedSessionID(replacementReply)
+	found := findSessionIDs(requester, 2)
+	if !bytes.Equal(found[0], peerSessionID) || !bytes.Equal(found[1], replacementSessionID) {
+		t.Fatalf("replacement order=%x want older=%x replacement=%x", found, peerSessionID, replacementSessionID)
 	}
 }
 
-func TestMW2FindSessionsAppliesAsymmetricPolicyToRetailShapedSearches(t *testing.T) {
+func TestMW2FindSessionsIgnoresDisprovenRetailEqualityFilters(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	first := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	second := &lsgConnection{connectionID: 2, matchmakingSessions: store}
@@ -721,16 +720,16 @@ func TestMW2FindSessionsAppliesAsymmetricPolicyToRetailShapedSearches(t *testing
 		return count
 	}
 
-	firstCreated := first.lastMatchmakingSessions[0]
-	secondCreated := second.lastMatchmakingSessions[0]
 	firstSearch := mw2MatchmakingSearch{gameType: 1, gameMode: 0, netcodeVersion: 128, mapPackFlags: 2, playlistVersion: 361, requiredFreeSlots: 1, performance: 1000}
 	secondSearch := mw2MatchmakingSearch{gameType: 1, gameMode: 1, netcodeVersion: 139, mapPackFlags: 2, playlistVersion: 426, requiredFreeSlots: 1}
-	if count := findCount(first, firstSearch); count != 0 {
-		t.Fatalf("first pre-update retail search count=%d, want no ready earlier session", count)
+	if count := findCount(first, firstSearch); count != 1 {
+		t.Fatalf("first pre-update retail search count=%d, want own session only", count)
 	}
-	if count := findCount(second, secondSearch); count != 0 {
-		t.Fatalf("second pre-update retail search count=%d, want no ready earlier session", count)
+	if count := findCount(second, secondSearch); count != 1 {
+		t.Fatalf("second pre-update retail search count=%d, want own session only", count)
 	}
+	firstCreated := first.lastMatchmakingSessions[0]
+	secondCreated := second.lastMatchmakingSessions[0]
 	if _, _, handled := first.handleMatchmakingTask(buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingUpdateSession,
 		firstCreated.commonAddress[:],
@@ -751,15 +750,15 @@ func TestMW2FindSessionsAppliesAsymmetricPolicyToRetailShapedSearches(t *testing
 	)); !handled || !second.lastTaskSupported {
 		t.Fatal("second update failed")
 	}
-	if count := findCount(first, firstSearch); count != 0 {
-		t.Fatalf("first post-update retail search count=%d, want no earlier session", count)
+	if count := findCount(first, firstSearch); count != 2 {
+		t.Fatalf("first post-update retail search count=%d, want both sessions despite equality mismatches", count)
 	}
-	if count := findCount(second, secondSearch); count != 1 {
-		t.Fatalf("second post-update retail search count=%d, want first session", count)
+	if count := findCount(second, secondSearch); count != 2 {
+		t.Fatalf("second post-update retail search count=%d, want both sessions despite equality mismatches", count)
 	}
 }
 
-func TestMW2FindSessionsReturnsCurrentAsymmetricSnapshotImmediately(t *testing.T) {
+func TestMW2FindSessionsReturnsCurrentSnapshotImmediately(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	connection := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	createRequest := buildMW2SessionObjectRequestWithValues(
@@ -791,7 +790,7 @@ func TestMW2FindSessionsReturnsCurrentAsymmetricSnapshotImmediately(t *testing.T
 	if _, err := reader.readU8(); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := reader.readU32(); err != nil || count != 0 {
+	if count, err := reader.readU32(); err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v reply=%x", count, err, reply)
 	}
 }
@@ -910,7 +909,7 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsUsesAsymmetricCreationOrder(t *testing.T) {
+func TestMW2FindSessionsSuppressSelfOnlyCompatibility(t *testing.T) {
 	search := mw2MatchmakingSearch{
 		gameType:          1,
 		gameMode:          7,
@@ -946,10 +945,12 @@ func TestMW2FindSessionsUsesAsymmetricCreationOrder(t *testing.T) {
 	owner := &lsgConnection{
 		connectionID:        1,
 		matchmakingSessions: store,
+		suppressSelfOnly:    true,
 	}
 	peer := &lsgConnection{
 		connectionID:        2,
 		matchmakingSessions: store,
+		suppressSelfOnly:    true,
 	}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
 		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
@@ -959,43 +960,28 @@ func TestMW2FindSessionsUsesAsymmetricCreationOrder(t *testing.T) {
 		ready:      true,
 	}
 	if count := findCount(t, owner); count != 0 {
-		t.Fatalf("first owner count=%d, want 0", count)
+		t.Fatalf("self-only compatibility count=%d, want 0", count)
 	}
 	if len(owner.lastMatchmakingSessions) != 0 {
-		t.Fatalf("first owner telemetry=%d, want 0", len(owner.lastMatchmakingSessions))
+		t.Fatalf("self-only compatibility telemetry=%d, want 0", len(owner.lastMatchmakingSessions))
 	}
 	if count := findCount(t, peer); count != 1 {
-		t.Fatalf("ownerless peer count=%d, want 1", count)
+		t.Fatalf("peer-only compatibility count=%d, want 1", count)
 	}
 
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
-		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
-		openPublic:    1,
-		attributes:    [9]int32{1},
-		ownerID:       peer.connectionID,
-		creationOrder: 2,
-		ready:         true,
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic: 1,
+		attributes: [9]int32{1},
+		ownerID:    peer.connectionID,
+		ready:      true,
 	}
-	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
-		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
-		openPublic:    1,
-		attributes:    [9]int32{1},
-		ownerID:       owner.connectionID,
-		creationOrder: 1,
-		ready:         true,
-	}
-	if count := findCount(t, owner); count != 0 {
-		t.Fatalf("first owner with peer count=%d, want 0", count)
-	}
-	if count := findCount(t, peer); count != 1 {
-		t.Fatalf("later owner count=%d, want 1", count)
-	}
-	if len(peer.lastMatchmakingSessions) != 1 || peer.lastMatchmakingSessions[0].ownerID != owner.connectionID {
-		t.Fatalf("later owner candidates=%+v", peer.lastMatchmakingSessions)
+	if count := findCount(t, owner); count != 2 {
+		t.Fatalf("mixed compatibility count=%d, want 2", count)
 	}
 }
 
-func TestMW2FindSessionsExcludesSelfByDefault(t *testing.T) {
+func TestMW2FindSessionsKeepsSelfOnlyByDefault(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	connection := &lsgConnection{connectionID: 1, matchmakingSessions: store}
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
@@ -1023,7 +1009,7 @@ func TestMW2FindSessionsExcludesSelfByDefault(t *testing.T) {
 	if _, err := reader.readU8(); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := reader.readU32(); err != nil || count != 0 {
+	if count, err := reader.readU32(); err != nil || count != 1 {
 		t.Fatalf("default self-only count=%d err=%v reply=%x", count, err, reply)
 	}
 }

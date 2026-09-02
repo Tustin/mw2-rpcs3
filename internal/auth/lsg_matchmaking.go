@@ -297,6 +297,9 @@ func (c *lsgConnection) handleMatchmakingTask(payload []byte) (byte, []byte, boo
 		if request.isRetailPublicSearch() {
 			c.lastTaskSupported = true
 			sessions := c.matchmakingStore().findForSearch(request.maxResults, request.search, c.connectionID)
+			if c.suppressSelfOnly && len(sessions) == 1 && sessions[0].ownerID == c.connectionID {
+				sessions = nil
+			}
 			c.lastMatchmakingSessions = append([]mw2StoredMatchmakingSession(nil), sessions...)
 			return lsgTaskReplyType, c.matchmakingFindReply(sessions), true
 		}
