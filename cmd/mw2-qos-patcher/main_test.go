@@ -227,6 +227,9 @@ func TestBuildJoinStateWrapperCapturesBeforeAndAfterJoinStart(t *testing.T) {
 	if bytes.Contains(wrapper, wordsToBytes([]uint32{0x3d800075, 0x618ce34c})) {
 		t.Fatal("join-state wrapper guard overlaps the QoS map record")
 	}
+	if actual := binary.BigEndian.Uint32(wrapper[36:40]); actual != 0x60000000 {
+		t.Fatalf("join-state capture gate=%08x want unconditional nop", actual)
+	}
 	if joinStateTelemetryGuardVMA < mapRecordVMA+recordSize {
 		t.Fatalf("join guard=%#x overlaps map record ending at %#x", joinStateTelemetryGuardVMA, mapRecordVMA+recordSize)
 	}
