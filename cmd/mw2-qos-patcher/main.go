@@ -16,64 +16,66 @@ import (
 )
 
 const (
-	expectedInputSHA256  = "5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041"
-	abortCallVMA         = uint64(0x2fa390)
-	acceptCallVMA        = uint64(0x2fa7a0)
-	mapCallVMA           = uint64(0x2fa2c0)
-	commitCallVMA        = uint64(0x2fa300)
-	decisionHookVMA      = uint64(0x2fa760)
-	cffCallVMA           = uint64(0x2fa7b8)
-	mapCalleeVMA         = uint64(0xcb538)
-	commitCalleeVMA      = uint64(0xcd998)
-	joinTestCallVMA      = uint64(0x2fdc00)
-	joinHostOneCallVMA   = uint64(0x2fdc30)
-	joinHostTwoCallVMA   = uint64(0x2fdc50)
-	joinStartCallVMA     = uint64(0x2fdc6c)
-	joinRejectCallVMA    = uint64(0x2fdc90)
-	gateEntryCallVMA     = uint64(0xb3f9c)
-	gateStateCallVMA     = uint64(0x2fd830)
-	gatePrimaryCallVMA   = uint64(0x2fd838)
-	gateSecondaryCallVMA = uint64(0x2fd850)
-	gateFallbackCallVMA  = uint64(0x2fdd98)
-	gateCandidateCallVMA = uint64(0x2fe95c)
-	selectorCallVMA      = uint64(0xd6924)
-	selectorCalleeVMA    = uint64(0xd5750)
-	probeCallVMA         = uint64(0xd5b20)
-	probeCalleeVMA       = uint64(0xd2468)
-	selectorWrapperVMA   = uint64(0x709b00)
-	selectorWrapperOff   = uint64(0x6f9b00)
-	probeWrapperVMA      = uint64(0x709c80)
-	probeWrapperOff      = uint64(0x6f9c80)
-	joinStateWrapperVMA  = uint64(0x709e80)
-	joinStateWrapperOff  = uint64(0x6f9e80)
-	selectorWrapperLimit = uint64(0x70a000)
-	clearQoSCalleeVMA    = uint64(0x320048)
-	cffCalleeVMA         = uint64(0xcff28)
-	joinTestCalleeVMA    = uint64(0xd2468)
-	joinHostCalleeVMA    = uint64(0xd26e0)
-	joinStartCalleeVMA   = uint64(0xced10)
-	gateStateCalleeVMA   = uint64(0x2fc7d8)
-	gatePrimaryCalleeVMA = uint64(0x30cc78)
-	gateSecondCalleeVMA  = uint64(0x30cc40)
-	gateJoinCalleeVMA    = uint64(0x2fd758)
-	wrapperVMA           = uint64(0x709280)
-	commitWrapperVMA     = wrapperVMA + 0x130
-	emitWrapperVMA       = wrapperVMA + 0x250
-	wrapperLimitVMA      = uint64(0x709a40)
-	decisionWrapperVMA   = uint64(0x709660)
-	joinWrapperVMA       = uint64(0x709660)
-	gateWrapperVMA       = uint64(0x7098a0)
-	wrapperFileOffset    = uint64(0x6f9280)
-	firstLoadFileSize    = uint64(0x6f9160)
-	firstLoadVAddr       = uint64(0x10000)
-	secondLoadFileOff    = uint64(0x700000)
-	cellFsOpenVMA        = uint64(0x526274)
-	cellFsWriteVMA       = uint64(0x526334)
-	cellFsCloseVMA       = uint64(0x5261f4)
-	recordSize           = 96
-	firstProgramHeader   = 64
-	programFileSizeOff   = firstProgramHeader + 32
-	programMemorySizeOff = firstProgramHeader + 40
+	expectedInputSHA256        = "5ecae7aebdffa8b5aa62f087a81f1b9c20f9c4b3dbdc4d41c2c00e65f1072041"
+	abortCallVMA               = uint64(0x2fa390)
+	acceptCallVMA              = uint64(0x2fa7a0)
+	mapCallVMA                 = uint64(0x2fa2c0)
+	commitCallVMA              = uint64(0x2fa300)
+	decisionHookVMA            = uint64(0x2fa760)
+	cffCallVMA                 = uint64(0x2fa7b8)
+	mapCalleeVMA               = uint64(0xcb538)
+	commitCalleeVMA            = uint64(0xcd998)
+	joinTestCallVMA            = uint64(0x2fdc00)
+	joinHostOneCallVMA         = uint64(0x2fdc30)
+	joinHostTwoCallVMA         = uint64(0x2fdc50)
+	joinStartCallVMA           = uint64(0x2fdc6c)
+	joinRejectCallVMA          = uint64(0x2fdc90)
+	gateEntryCallVMA           = uint64(0xb3f9c)
+	gateStateCallVMA           = uint64(0x2fd830)
+	gatePrimaryCallVMA         = uint64(0x2fd838)
+	gateSecondaryCallVMA       = uint64(0x2fd850)
+	gateFallbackCallVMA        = uint64(0x2fdd98)
+	gateCandidateCallVMA       = uint64(0x2fe95c)
+	selectorCallVMA            = uint64(0xd6924)
+	selectorCalleeVMA          = uint64(0xd5750)
+	probeCallVMA               = uint64(0xd5b20)
+	probeCalleeVMA             = uint64(0xd2468)
+	selectorWrapperVMA         = uint64(0x709b00)
+	selectorWrapperOff         = uint64(0x6f9b00)
+	probeWrapperVMA            = uint64(0x709c80)
+	probeWrapperOff            = uint64(0x6f9c80)
+	joinStateWrapperVMA        = uint64(0x709e80)
+	joinStateWrapperOff        = uint64(0x6f9e80)
+	selectorWrapperLimit       = uint64(0x70a000)
+	clearQoSCalleeVMA          = uint64(0x320048)
+	cffCalleeVMA               = uint64(0xcff28)
+	joinTestCalleeVMA          = uint64(0xd2468)
+	joinHostCalleeVMA          = uint64(0xd26e0)
+	joinStartCalleeVMA         = uint64(0xced10)
+	gateStateCalleeVMA         = uint64(0x2fc7d8)
+	gatePrimaryCalleeVMA       = uint64(0x30cc78)
+	gateSecondCalleeVMA        = uint64(0x30cc40)
+	gateJoinCalleeVMA          = uint64(0x2fd758)
+	wrapperVMA                 = uint64(0x709280)
+	commitWrapperVMA           = wrapperVMA + 0x130
+	emitWrapperVMA             = wrapperVMA + 0x250
+	wrapperLimitVMA            = uint64(0x709a40)
+	decisionWrapperVMA         = uint64(0x709660)
+	joinWrapperVMA             = uint64(0x709660)
+	gateWrapperVMA             = uint64(0x7098a0)
+	wrapperFileOffset          = uint64(0x6f9280)
+	firstLoadFileSize          = uint64(0x6f9160)
+	firstLoadVAddr             = uint64(0x10000)
+	secondLoadFileOff          = uint64(0x700000)
+	cellFsOpenVMA              = uint64(0x526274)
+	cellFsWriteVMA             = uint64(0x526334)
+	cellFsCloseVMA             = uint64(0x5261f4)
+	recordSize                 = 96
+	mapRecordVMA               = uint64(0x75e348)
+	joinStateTelemetryGuardVMA = mapRecordVMA + recordSize
+	firstProgramHeader         = 64
+	programFileSizeOff         = firstProgramHeader + 32
+	programMemorySizeOff       = firstProgramHeader + 40
 )
 
 var (
@@ -877,6 +879,19 @@ func buildJoinStateWrapper() ([]byte, error) {
 		0x5f, 0x68, 0x64, 0x64, 0x30, 0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x71, 0x6f,
 		0x73, 0x2d, 0x6a, 0x6f, 0x69, 0x6e, 0x2e, 0x62, 0x69, 0x6e, 0x00,
 	}
+	mapRecordEndVMA := mapRecordVMA + recordSize
+	if joinStateTelemetryGuardVMA < mapRecordEndVMA || joinStateTelemetryGuardVMA%4 != 0 {
+		return nil, errors.New("join-state telemetry guard overlaps the QoS map record")
+	}
+	oldGuardLoad := wordsToBytes([]uint32{0x3d800075, 0x618ce34c})
+	newGuardLoad := wordsToBytes([]uint32{
+		0x3d800000 | uint32(joinStateTelemetryGuardVMA>>16),
+		0x618c0000 | uint32(joinStateTelemetryGuardVMA&0xffff),
+	})
+	if bytes.Count(wrapper, oldGuardLoad) != 2 {
+		return nil, errors.New("locate join-state telemetry guards")
+	}
+	wrapper = bytes.ReplaceAll(wrapper, oldGuardLoad, newGuardLoad)
 	pathOffset := bytes.Index(wrapper, []byte("/dev_hdd0/tmp/qos-join.bin\x00"))
 	loadOffset := bytes.Index(wrapper, []byte{0x3c, 0x60, 0x00, 0x00, 0x60, 0x63, 0x00, 0x00})
 	if pathOffset < 0 || loadOffset < 0 {
