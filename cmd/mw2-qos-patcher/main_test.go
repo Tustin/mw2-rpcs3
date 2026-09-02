@@ -112,6 +112,130 @@ func TestBuildSelectorWrapperCapturesLiveCandidateArray(t *testing.T) {
 	}
 }
 
+func TestProbeCallsiteMatchesVerifiedSelectorCall(t *testing.T) {
+	if probeCallVMA != 0xd5b20 {
+		t.Fatalf("probe call VMA=%#x want=0xd5b20", probeCallVMA)
+	}
+	want := []byte{
+		0x39, 0x01, 0x00, 0x70,
+		0x4b, 0xff, 0xc9, 0x49,
+		0x54, 0x63, 0x06, 0x3e,
+		0x2f, 0x83, 0x00, 0x00,
+	}
+	if !bytes.Equal(probeContext, want) {
+		t.Fatalf("probe context=% x want=% x", probeContext, want)
+	}
+	resolved, err := branchTarget(probeCallVMA, binary.BigEndian.Uint32(probeContext[4:8]))
+	if err != nil || resolved != probeCalleeVMA {
+		t.Fatalf("probe call resolves to %#x, want %#x: %v", resolved, probeCalleeVMA, err)
+	}
+}
+
+func TestBuildProbeWrapperCapturesSelectedPartyStateOnce(t *testing.T) {
+	wrapper, err := buildProbeWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) != 0x1fc {
+		t.Fatalf("wrapper size=%#x want=0x1fc", len(wrapper))
+	}
+	if probeWrapperVMA+uint64(len(wrapper)) > selectorWrapperLimit {
+		t.Fatalf("wrapper end=%#x exceeds cave limit=%#x", probeWrapperVMA+uint64(len(wrapper)), selectorWrapperLimit)
+	}
+	for _, call := range []struct {
+		offset int
+		target uint64
+	}{
+		{84, probeCalleeVMA},
+		{468, probeCalleeVMA},
+		{324, cellFsOpenVMA},
+		{356, cellFsWriteVMA},
+		{368, cellFsCloseVMA},
+	} {
+		instruction := binary.BigEndian.Uint32(wrapper[call.offset : call.offset+4])
+		resolved, err := branchTarget(probeWrapperVMA+uint64(call.offset), instruction)
+		if err != nil || resolved != call.target {
+			t.Fatalf("branch at offset %#x resolves to %#x, want %#x: %v", call.offset, resolved, call.target, err)
+		}
+	}
+	path := []byte("/dev_hdd0/tmp/qos-probe.bin\x00")
+	if !bytes.HasSuffix(wrapper, path) {
+		t.Fatal("wrapper is missing the selected-party telemetry path")
+	}
+	pathAddress := probeWrapperVMA + uint64(bytes.LastIndex(wrapper, path))
+	if actual := binary.BigEndian.Uint32(wrapper[296:300]); actual != 0x3c600000|uint32(pathAddress>>16) {
+		t.Fatalf("path lis=%08x want=%08x", actual, 0x3c600000|uint32(pathAddress>>16))
+	}
+	if actual := binary.BigEndian.Uint32(wrapper[300:304]); actual != 0x60630000|uint32(pathAddress&0xffff) {
+		t.Fatalf("path ori=%08x want=%08x", actual, 0x60630000|uint32(pathAddress&0xffff))
+	}
+	for _, instruction := range []uint32{
+		0x3d800075, 0x618ce340, 0x800c0000, 0x2f800000, 0x409e016c,
+		0x38000001, 0x900c0000, 0x3d605052, 0x616b4231, 0xb1610088,
+		0xb161008a, 0x814b0038, 0x914100b8, 0x814b003c, 0x914100bc,
+		0x89490010, 0x994100c0, 0x88e901e0, 0x98ea0000, 0x38a00100,
+		0xe8610078, 0x7c0ff120, 0x38210180, 0xe8610038, 0xe9410070,
+	} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], instruction)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper is missing instruction %08x", instruction)
+		}
+	}
+}
+
+func TestBuildJoinStateWrapperCapturesBeforeAndAfterJoinStart(t *testing.T) {
+	wrapper, err := buildJoinStateWrapper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapper) != 0x17f {
+		t.Fatalf("wrapper size=%#x want=0x17f", len(wrapper))
+	}
+	if joinStateWrapperVMA+uint64(len(wrapper)) > selectorWrapperLimit {
+		t.Fatalf("wrapper end=%#x exceeds cave limit=%#x", joinStateWrapperVMA+uint64(len(wrapper)), selectorWrapperLimit)
+	}
+	for _, call := range []struct {
+		offset int
+		target uint64
+	}{
+		{140, joinStartCalleeVMA},
+		{280, cellFsOpenVMA},
+		{312, cellFsWriteVMA},
+		{324, cellFsCloseVMA},
+	} {
+		instruction := binary.BigEndian.Uint32(wrapper[call.offset : call.offset+4])
+		resolved, err := branchTarget(joinStateWrapperVMA+uint64(call.offset), instruction)
+		if err != nil || resolved != call.target {
+			t.Fatalf("branch at offset %#x resolves to %#x, want %#x: %v", call.offset, resolved, call.target, err)
+		}
+	}
+	path := []byte("/dev_hdd0/tmp/qos-join.bin\x00")
+	if !bytes.HasSuffix(wrapper, path) {
+		t.Fatal("wrapper is missing the join-state telemetry path")
+	}
+	pathAddress := joinStateWrapperVMA + uint64(bytes.LastIndex(wrapper, path))
+	if actual := binary.BigEndian.Uint32(wrapper[252:256]); actual != 0x3c600000|uint32(pathAddress>>16) {
+		t.Fatalf("path lis=%08x want=%08x", actual, 0x3c600000|uint32(pathAddress>>16))
+	}
+	if actual := binary.BigEndian.Uint32(wrapper[256:260]); actual != 0x60630000|uint32(pathAddress&0xffff) {
+		t.Fatalf("path ori=%08x want=%08x", actual, 0x60630000|uint32(pathAddress&0xffff))
+	}
+	for _, instruction := range []uint32{
+		0x3d800075, 0x618ce344, 0x38000001, 0x900c0000, 0x3d604a53,
+		0x616b5431, 0xb1610084, 0xb1610086, 0x93610094, 0x39231600,
+		0x393b1600, 0x394101d0, 0x39410300, 0x39410430, 0x39000130,
+		0x38000002, 0x900c0000, 0x38a004e0, 0xe8610050, 0x38210580,
+		0x4e800020,
+	} {
+		var encoded [4]byte
+		binary.BigEndian.PutUint32(encoded[:], instruction)
+		if !bytes.Contains(wrapper, encoded[:]) {
+			t.Fatalf("wrapper is missing instruction %08x", instruction)
+		}
+	}
+}
+
 func TestBuildWrapperUsesOpenedFileDescriptorForWriteAndClose(t *testing.T) {
 	wrapper, err := buildJoinWrapper()
 	if err != nil {

@@ -1,5 +1,7 @@
 You are tasked with emulating the Demonware matchmaking service for Call of Duty: Modern Warfare 2 (2009). Refer to CURRENT_PROGRESS.md to see what tasks need to be accomplished and the current status of the implemtation. Also ensure you update this file when tasks are completed/updated. We will be using RPCS3 to test. When working on tasks, stick to one at a time and work your way down. We don't want to get bogged down trying to solve multiple tasks/issues as the same time.
 
+Before patching, signing, installing, or verifying any ELF/SELF, read and follow `docs/BUILD_PATCHED_SELF.md`.
+
 The captures/ folder contains useful debugging and reverse engineering items:
 
 - mw2 ps3.pcapng is a full capture from game start to lobby on a retail PS3 with successful demonware authentication. It should be used as the source of truth. If you refer to any 3rd party demonware projects, they might be implemtning demonware from another Call of Duty title that won't necessarily match Modern Warfare 2.
