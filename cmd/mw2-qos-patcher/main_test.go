@@ -221,8 +221,11 @@ func TestBuildJoinStateWrapperCapturesBeforeAndAfterJoinStart(t *testing.T) {
 	if actual := binary.BigEndian.Uint32(wrapper[256:260]); actual != 0x60630000|uint32(pathAddress&0xffff) {
 		t.Fatalf("path ori=%08x want=%08x", actual, 0x60630000|uint32(pathAddress&0xffff))
 	}
+	if bytes.Contains(wrapper, wordsToBytes([]uint32{0x3d800075, 0x618ce344})) {
+		t.Fatal("join-state wrapper reuses the QoS commit telemetry guard")
+	}
 	for _, instruction := range []uint32{
-		0x3d800075, 0x618ce344, 0x38000001, 0x900c0000, 0x3d604a53,
+		0x3d800075, 0x618ce34c, 0x38000001, 0x900c0000, 0x3d604a53,
 		0x616b5431, 0xb1610084, 0xb1610086, 0x93610094, 0x39231600,
 		0x393b1600, 0x394101d0, 0x39410300, 0x39410430, 0x39000130,
 		0x38000002, 0x900c0000, 0x38a004e0, 0xe8610050, 0x38210580,
