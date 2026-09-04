@@ -40,7 +40,7 @@ description polish "Deathmatch. Ka�dy dzia�a na w�asn� r�k� i pr�b
 description russian "�������� ������� ������ �������. ��������� ����� ���: �������� ����.\n\n__________\n������: 4-8"
 description japanese "�^���������̃f�X�}�b�`�B\n�����ȊO�͂��ׂēG�B�G�͂��ׂĎE���B\n\n__________\n�v���C���[���F4�`8"
 unlockxp 0
-maxparty 1
+maxparty 2
 rule party_minplayers 2
 rule party_maxplayers 8
 rule party_matchedplayercount 1
