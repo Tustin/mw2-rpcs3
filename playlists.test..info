@@ -1,0 +1,51 @@
+version 361
+// File based off official playlists.info from retail mw2.
+
+// ****GLOBAL RULES****
+
+rule party_gameStartTimerLength 8
+rule scr_xpscale 1
+rule scr_restxp_enable 0
+rule newsFeed_updateInterval 600
+rule session_immediateDeleteTinySessions 1
+rule party_minlobbytime 60
+
+gametype ffa
+name english "Free-for-all1111"
+name french "M�l�e g�n�rale"
+name italian "Tutti contro tutti"
+name german "Frei f�r alle"
+name spanish "Duelo a muerte"
+name polish "Dowolna"
+name russian "������ �� ����"
+name japanese "�t���[�E�t�H�[�E�I�[��"
+script dm
+
+playlist 1 // ffa gametype
+name english "Testing"
+name french "M�l�e g�n�rale"
+name italian "Tutti contro tutti"
+name german "Frei f�r alle"
+name spanish "Duelo a muerte"
+name polish "Tryb dowolny"
+name russian "������ �� ����"
+name japanese "�t���[�E�t�H�[�E�I�[��"
+name korean "������"
+description english "Straight up Deathmatch.  Every man for himself.  Kill everyone.\n\n__________\nPlayers:4-8"
+description french "Match � mort classique. Une r�gle : chacun pour soi. N'�pargnez personne.\n\n__________\nJoueurs : 4-8"
+description italian "Deathmatch, nudo e crudo. Ognuno per s�. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
+description german "Ganz normales Deathmatch. Jeder k�mpft hier f�r sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
+description spanish "Duelo cl�sico. S�lvese quien pueda. Mata a todo el mundo.\n\n__________\nJugadores: 4-8"
+description polish "Deathmatch. Ka�dy dzia�a na w�asn� r�k� i pr�buje zabi� innych.\n__________\nGracze:4-8"
+description russian "�������� ������� ������ �������. ��������� ����� ���: �������� ����.\n\n__________\n������: 4-8"
+description japanese "�^���������̃f�X�}�b�`�B\n�����ȊO�͂��ׂēG�B�G�͂��ׂĎE���B\n\n__________\n�v���C���[���F4�`8"
+unlockxp 0
+maxparty 2
+rule party_minplayers 2
+rule party_maxplayers 8
+rule party_matchedplayercount 1
+rule scr_dm_scorelimit 1500
+rule cg_everyonehearseveryone 1
+
+
+mp_rust,ffa,1
