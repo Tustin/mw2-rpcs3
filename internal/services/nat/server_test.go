@@ -479,7 +479,7 @@ func TestServeReportsAlternateBindFailure(t *testing.T) {
 }
 
 func TestResolveAdvertisedIPv4PrefersConfiguredThenAlternateSourceBind(t *testing.T) {
-	got, err := resolveAdvertisedIPv4(
+	got, err := ResolveAdvertisedIPv4(
 		"198.51.100.22",
 		&net.UDPAddr{IP: net.IPv4zero, Port: 3075},
 	)
@@ -490,7 +490,7 @@ func TestResolveAdvertisedIPv4PrefersConfiguredThenAlternateSourceBind(t *testin
 		t.Fatalf("configured result = %s", got)
 	}
 
-	got, err = resolveAdvertisedIPv4(
+	got, err = ResolveAdvertisedIPv4(
 		"",
 		&net.UDPAddr{IP: net.IPv4(192, 0, 2, 44), Port: 3075},
 	)
@@ -501,7 +501,7 @@ func TestResolveAdvertisedIPv4PrefersConfiguredThenAlternateSourceBind(t *testin
 		t.Fatalf("specific-bind result = %s", got)
 	}
 
-	if _, err := resolveAdvertisedIPv4(
+	if _, err := ResolveAdvertisedIPv4(
 		"2001:db8::1",
 		&net.UDPAddr{IP: net.IPv4zero, Port: 3075},
 	); err == nil {

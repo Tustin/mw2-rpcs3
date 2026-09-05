@@ -50,7 +50,13 @@ func main() {
 		logger.Error("bandwidth endpoint initialization failed", "error", err)
 		os.Exit(1)
 	}
-	authServer.SetBandwidthEndpoint(net.ParseIP(cfg.NATAdvertisedIP), uint16(natEndpoint.Port))
+	serverIP, err := nat.ResolveAdvertisedIPv4(cfg.NATAdvertisedIP, natEndpoint)
+	if err != nil {
+		logger.Error("server IP initialization failed", "error", err)
+		os.Exit(1)
+	}
+	authServer.SetBandwidthEndpoint(serverIP, uint16(natEndpoint.Port))
+	logger.Info("configure your client DNS to use this server", "ip", serverIP.String())
 	if cfg.LogSensitive {
 		logger.Warn("sensitive protocol logging enabled; logs contain credentials, keys, decrypted payloads, and raw frames")
 	}

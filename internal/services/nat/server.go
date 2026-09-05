@@ -93,7 +93,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	// The client compares the command-3 reply's source IP with the IPv4
 	// advertised inside the 0x15 body. Derive from the alternate reply-source
 	// socket, not the primary socket, when no canonical address is configured.
-	advertisedIPv4, err := resolveAdvertisedIPv4(s.advertisedIPv4, alternate.LocalAddr())
+	advertisedIPv4, err := ResolveAdvertisedIPv4(s.advertisedIPv4, alternate.LocalAddr())
 	if err != nil {
 		_ = primary.Close()
 		_ = alternate.Close()
@@ -295,7 +295,7 @@ func observedUDPAddress(remote net.Addr) (net.IP, int, bool) {
 	return ipv4, udpAddr.Port, true
 }
 
-func resolveAdvertisedIPv4(configured string, primaryLocalAddr net.Addr) (net.IP, error) {
+func ResolveAdvertisedIPv4(configured string, primaryLocalAddr net.Addr) (net.IP, error) {
 	if configured != "" {
 		ipv4 := net.ParseIP(configured).To4()
 		if !usableAdvertisedIPv4(ipv4) {

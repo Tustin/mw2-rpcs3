@@ -1912,6 +1912,8 @@ It requires `files/default_mp_tu0_clean.elf` to remain an immutable input, uses
 distinct ELF and SELF output paths, packages with the tools and key data under
 `files/self`, and retains the patcher's decrypted-SELF byte-for-byte verification.
 
+Server startup now resolves the same reachable IPv4 used by the NAT/bandwidth services and emits a JSON info log named `configure your client DNS to use this server` with an `ip` field. An explicit `MW2_NAT_ADVERTISED_IP` remains authoritative; otherwise startup uses the existing route/interface discovery. `go test ./...`, `go vet ./...`, and `git diff --check` pass.
+
 ## Reference material
 
 - Local analysis inputs, not committed: the supplied retail PCAP and
