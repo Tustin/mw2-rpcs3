@@ -125,12 +125,19 @@ func (s *RawServer) Serve(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+	var wg sync.WaitGroup
+	var connectionsMu sync.Mutex
+	connections := make(map[net.Conn]struct{})
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()
+		connectionsMu.Lock()
+		defer connectionsMu.Unlock()
+		for conn := range connections {
+			_ = conn.Close()
+		}
 	}()
 
-	var wg sync.WaitGroup
 	defer wg.Wait()
 	for {
 		conn, err := listener.Accept()
@@ -141,9 +148,17 @@ func (s *RawServer) Serve(ctx context.Context) error {
 			return err
 		}
 		s.connections.Add(1)
+		connectionsMu.Lock()
+		connections[conn] = struct{}{}
+		connectionsMu.Unlock()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() {
+				connectionsMu.Lock()
+				delete(connections, conn)
+				connectionsMu.Unlock()
+			}()
 			s.handle(conn)
 		}()
 	}
