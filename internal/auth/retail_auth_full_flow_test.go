@@ -331,8 +331,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 	if len(found) != 1 {
 		t.Fatalf("find count=%d, want one exact host candidate", len(found))
 	}
-	resultCounts := hostCounts
-	resultCounts[0] = mw2RemoteFindOpenPublicSlotFloor
+	resultCounts := [4]int32{8, 1, 0, 0}
 	assertFullFlowCandidate(
 		t,
 		found[0],

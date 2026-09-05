@@ -9,10 +9,9 @@ const (
 	bdMatchmakingFindByID      = byte(4)
 	bdMatchmakingFindSessions  = byte(5)
 
-	mw2MatchmakingCommonAddressSize  = 25
-	mw2MatchmakingSessionIDSize      = 8
-	mw2MatchmakingSecurityKeySize    = 16
-	mw2RemoteFindOpenPublicSlotFloor = int32(2)
+	mw2MatchmakingCommonAddressSize = 25
+	mw2MatchmakingSessionIDSize     = 8
+	mw2MatchmakingSecurityKeySize   = 16
 )
 
 type mw2MatchmakingInfo struct {
@@ -243,8 +242,11 @@ func writeMW2MatchmakingResult(writer *bdBitWriter, session mw2StoredMatchmaking
 }
 
 func (c *lsgConnection) matchmakingFindResult(session mw2StoredMatchmakingSession) mw2StoredMatchmakingSession {
-	if session.ownerID != c.connectionID && session.openPublic < mw2RemoteFindOpenPublicSlotFloor {
-		session.openPublic = mw2RemoteFindOpenPublicSlotFloor
+	if session.ownerID != c.connectionID && session.openPublic == 0 && session.openPrivate > 0 {
+		session.openPublic += session.openPrivate
+		session.filledPublic += session.filledPrivate
+		session.openPrivate = 0
+		session.filledPrivate = 0
 	}
 	return session
 }

@@ -332,17 +332,19 @@ func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsFloorsRemoteOpenPublicSlots(t *testing.T) {
+func TestMW2FindSessionsReclassifiesRemotePrivateSlotsAsPublic(t *testing.T) {
 	connection := &lsgConnection{connectionID: 1}
 	self := mw2StoredMatchmakingSession{
-		sessionID:   [mw2MatchmakingSessionIDSize]byte{1},
-		openPrivate: 7,
-		ownerID:     1,
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
+		openPrivate:   7,
+		filledPrivate: 1,
+		ownerID:       1,
 	}
 	remote := mw2StoredMatchmakingSession{
-		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
-		openPrivate: 7,
-		ownerID:     2,
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
+		openPrivate:   7,
+		filledPrivate: 1,
+		ownerID:       2,
 	}
 
 	reader := mustBDTaskReplyReader(t, connection.matchmakingFindReply([]mw2StoredMatchmakingSession{self, remote}))
@@ -366,17 +368,14 @@ func TestMW2FindSessionsFloorsRemoteOpenPublicSlots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if selfResult.openPublic != 0 {
-		t.Fatalf("self open public=%d, want stored value 0", selfResult.openPublic)
+	if selfResult.openPublic != 0 || selfResult.filledPublic != 0 || selfResult.openPrivate != 7 || selfResult.filledPrivate != 1 {
+		t.Fatalf("self counts=%d/%d/%d/%d, want stored values 0/0/7/1", selfResult.openPublic, selfResult.filledPublic, selfResult.openPrivate, selfResult.filledPrivate)
 	}
-	if remoteResult.openPublic != mw2RemoteFindOpenPublicSlotFloor {
-		t.Fatalf("remote open public=%d, want floor %d", remoteResult.openPublic, mw2RemoteFindOpenPublicSlotFloor)
+	if remoteResult.openPublic != 7 || remoteResult.filledPublic != 1 || remoteResult.openPrivate != 0 || remoteResult.filledPrivate != 0 {
+		t.Fatalf("remote counts=%d/%d/%d/%d, want reclassified values 7/1/0/0", remoteResult.openPublic, remoteResult.filledPublic, remoteResult.openPrivate, remoteResult.filledPrivate)
 	}
-	if remoteResult.openPrivate != remote.openPrivate {
-		t.Fatalf("remote open private=%d, want stored value %d", remoteResult.openPrivate, remote.openPrivate)
-	}
-	if remote.openPublic != 0 {
-		t.Fatalf("stored remote open public=%d, want unchanged value 0", remote.openPublic)
+	if remote.openPublic != 0 || remote.filledPublic != 0 || remote.openPrivate != 7 || remote.filledPrivate != 1 {
+		t.Fatalf("stored remote counts=%d/%d/%d/%d, want unchanged values 0/0/7/1", remote.openPublic, remote.filledPublic, remote.openPrivate, remote.filledPrivate)
 	}
 }
 
