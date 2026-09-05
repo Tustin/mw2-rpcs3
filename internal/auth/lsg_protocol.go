@@ -9,6 +9,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 )
 
 const (
@@ -93,6 +95,8 @@ type lsgConnection struct {
 	bandwidthIPv4           [4]byte
 	bandwidthPort           uint16
 	bandwidthConfigured     bool
+	bandwidthMeasurementKey string
+	bandwidthMeasurements   *bandwidth.Store
 	lastBandwidthPhase      string
 	matchmakingSessions     *mw2MatchmakingStore
 	suppressSelfOnly        bool
@@ -539,10 +543,17 @@ func (c *lsgConnection) handleBandwidthTask(payload []byte) (byte, []byte, bool)
 	c.lastTaskSupported = true
 	if len(payload) >= 21 {
 		c.lastBandwidthPhase = "finalize"
-		return lsgServiceTaskReplyType, bandwidthFinalizeSuccess(), true
+		var results bandwidth.Results
+		if c.bandwidthMeasurements != nil {
+			results, _ = c.bandwidthMeasurements.Consume(c.bandwidthMeasurementKey)
+		}
+		return lsgServiceTaskReplyType, bandwidthFinalizeSuccess(results), true
 	}
 	if len(payload) >= 17 {
 		c.lastBandwidthPhase = "request"
+		if c.bandwidthMeasurements != nil {
+			c.bandwidthMeasurements.Reset(c.bandwidthMeasurementKey)
+		}
 		return lsgServiceTaskReplyType, c.bandwidthRequestSuccess(), true
 	}
 
@@ -588,12 +599,19 @@ func (c *lsgConnection) bandwidthRequestSuccess() []byte {
 	return response
 }
 
-func bandwidthFinalizeSuccess() []byte {
-	// handleFinalizeReply consumes rejected=false followed by five raw u32
-	// result fields. Zero is a valid neutral result and completes the client
-	// state machine. Including the transaction prefix makes this 29 bytes,
-	// producing the exact 49-byte encrypted record seen in the retail PCAP.
+func bandwidthFinalizeSuccess(results bandwidth.Results) []byte {
 	response := make([]byte, 29)
 	response[8] = 0
+	offset := 9
+	for _, value := range [...]uint32{
+		results.BytesReceived,
+		results.ReceivePeriodMS,
+		results.AverageSequence,
+		results.MinimumSequence,
+		results.MaximumSequence,
+	} {
+		binary.LittleEndian.PutUint32(response[offset:], value)
+		offset += 4
+	}
 	return response
 }

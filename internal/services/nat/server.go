@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
 )
 
@@ -47,13 +48,14 @@ const (
 )
 
 type Server struct {
-	primaryAddr    string
-	alternateAddr  string
-	advertisedIPv4 string
-	relayEnabled   bool
-	log            *slog.Logger
-	recorder       *capture.Recorder
-	packets        atomic.Uint64
+	primaryAddr           string
+	alternateAddr         string
+	advertisedIPv4        string
+	relayEnabled          bool
+	log                   *slog.Logger
+	recorder              *capture.Recorder
+	packets               atomic.Uint64
+	bandwidthMeasurements *bandwidth.Store
 }
 
 func New(addr string, log *slog.Logger, recorder *capture.Recorder) *Server {
@@ -79,6 +81,10 @@ func NewWithAddresses(
 }
 
 func (s *Server) Packets() uint64 { return s.packets.Load() }
+
+func (s *Server) SetBandwidthMeasurements(measurements *bandwidth.Store) {
+	s.bandwidthMeasurements = measurements
+}
 
 func (s *Server) Serve(ctx context.Context) error {
 	primary, err := net.ListenPacket("udp4", s.primaryAddr)
@@ -146,6 +152,13 @@ func (s *Server) servePacketConns(ctx context.Context, primary, alternate net.Pa
 		_ = s.recorder.Record("nat", "in", remote.String(), buffer[:n])
 
 		if sequence, upload := bandwidthUploadSequence(buffer[:n]); upload {
+			if s.bandwidthMeasurements != nil {
+				host, _, splitErr := net.SplitHostPort(remote.String())
+				if splitErr != nil {
+					host = remote.String()
+				}
+				s.bandwidthMeasurements.Record(host, sequence, uint32(n), time.Now())
+			}
 			s.log.Info("bandwidth upload packet received",
 				"remote", remote,
 				"sequence", sequence,

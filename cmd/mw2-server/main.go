@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/josh/mw2-rpcs3/internal/auth"
+	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
 	"github.com/josh/mw2-rpcs3/internal/config"
 	"github.com/josh/mw2-rpcs3/internal/health"
@@ -56,6 +57,8 @@ func main() {
 		os.Exit(1)
 	}
 	authServer.SetBandwidthEndpoint(serverIP, uint16(natEndpoint.Port))
+	bandwidthMeasurements := bandwidth.NewStore()
+	authServer.SetBandwidthMeasurements(bandwidthMeasurements)
 	logger.Info("configure your client DNS to use this server", "ip", serverIP.String())
 	if cfg.LogSensitive {
 		logger.Warn("sensitive protocol logging enabled; logs contain credentials, keys, decrypted payloads, and raw frames")
@@ -69,6 +72,7 @@ func main() {
 		logger,
 		recorder,
 	)
+	natServer.SetBandwidthMeasurements(bandwidthMeasurements)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	type runner struct {

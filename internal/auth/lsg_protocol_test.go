@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+	"time"
+
+	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 )
 
 func TestParseLSGInitialRecord(t *testing.T) {
@@ -264,6 +267,8 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	session.bandwidthIPv4 = [4]byte{192, 0, 2, 25}
 	session.bandwidthPort = 3074
 	session.bandwidthConfigured = true
+	session.bandwidthMeasurementKey = "client-a"
+	session.bandwidthMeasurements = bandwidth.NewStore()
 	// Exact decrypted core from the prior live RPCS3 run. Unlike normal tasks,
 	// bandwidth uses an untyped raw operation byte.
 	payload := mustDecodeHex("010000000000724c3800000000000dcd40")
@@ -299,6 +304,10 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 		t.Fatalf("bandwidth request wire length=%d want=65", len(frame))
 	}
 
+	receivedAt := time.Unix(1_700_000_000, 0)
+	for sequence := uint32(0); sequence < 5; sequence++ {
+		session.bandwidthMeasurements.Record("client-a", sequence, 512, receivedAt.Add(time.Duration(sequence)*500*time.Millisecond))
+	}
 	finalizePayload := append([]byte{1}, make([]byte, 20)...)
 	responseType, result, ok, reply = handleLSGMessage(session, bdServiceBandwidth, finalizePayload)
 	if !ok || !reply || responseType != lsgServiceTaskReplyType {
@@ -306,6 +315,12 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	}
 	if session.lastBandwidthPhase != "finalize" || len(result) != 29 || result[8] != 0 {
 		t.Fatalf("malformed bandwidth finalize reply phase=%q payload=%x", session.lastBandwidthPhase, result)
+	}
+	wantResults := []uint32{2560, 2000, 2, 0, 4}
+	for index, want := range wantResults {
+		if got := binary.LittleEndian.Uint32(result[9+index*4:]); got != want {
+			t.Fatalf("bandwidth result[%d]=%d want=%d payload=%x", index, got, want, result)
+		}
 	}
 	frame, err = session.encryptResponse(responseType, result)
 	if err != nil {

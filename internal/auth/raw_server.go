@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
 	"github.com/josh/mw2-rpcs3/internal/peerproto"
 )
@@ -44,25 +45,26 @@ type RequestSummary struct {
 }
 
 type RawServer struct {
-	addr                string
-	log                 *slog.Logger
-	recorder            *capture.Recorder
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
-	lsgIdleTimeout      time.Duration
-	logSensitive        bool
-	connections         atomic.Uint64
-	requests            atomic.Uint64
-	lsgConnections      atomic.Uint64
-	lsgFrames           atomic.Uint64
-	lsgSessions         *lsgSessionStore
-	matchmakingOnce     sync.Once
-	matchmakingSessions *mw2MatchmakingStore
-	suppressSelfOnly    bool
-	preferEarlierHosts  bool
-	bandwidthIPv4       [4]byte
-	bandwidthPort       uint16
-	bandwidthConfigured bool
+	addr                  string
+	log                   *slog.Logger
+	recorder              *capture.Recorder
+	readTimeout           time.Duration
+	writeTimeout          time.Duration
+	lsgIdleTimeout        time.Duration
+	logSensitive          bool
+	connections           atomic.Uint64
+	requests              atomic.Uint64
+	lsgConnections        atomic.Uint64
+	lsgFrames             atomic.Uint64
+	lsgSessions           *lsgSessionStore
+	matchmakingOnce       sync.Once
+	matchmakingSessions   *mw2MatchmakingStore
+	suppressSelfOnly      bool
+	preferEarlierHosts    bool
+	bandwidthIPv4         [4]byte
+	bandwidthPort         uint16
+	bandwidthConfigured   bool
+	bandwidthMeasurements *bandwidth.Store
 }
 
 const minimumAuthenticatedLSGIdleTimeout = 5 * time.Minute
@@ -107,6 +109,10 @@ func (s *RawServer) SetMatchmakingPreferEarlierHosts(enabled bool) {
 // Demonware bandwidth-test prerequisite. It normally matches the primary NAT
 // listener. When ip is nil, an accepted TCP connection's concrete local IPv4
 // is used for native (non-container) runs.
+func (s *RawServer) SetBandwidthMeasurements(measurements *bandwidth.Store) {
+	s.bandwidthMeasurements = measurements
+}
+
 func (s *RawServer) SetBandwidthEndpoint(ip net.IP, port uint16) {
 	ipv4 := ip.To4()
 	if ipv4 == nil || port == 0 {
@@ -294,6 +300,12 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 	session.bandwidthIPv4 = s.bandwidthIPv4
 	session.bandwidthPort = s.bandwidthPort
 	session.bandwidthConfigured = s.bandwidthConfigured
+	if host, _, splitErr := net.SplitHostPort(conn.RemoteAddr().String()); splitErr == nil {
+		session.bandwidthMeasurementKey = host
+	} else {
+		session.bandwidthMeasurementKey = conn.RemoteAddr().String()
+	}
+	session.bandwidthMeasurements = s.bandwidthMeasurements
 	if !session.bandwidthConfigured {
 		if local, ok := conn.LocalAddr().(*net.TCPAddr); ok && local != nil {
 			if ipv4 := local.IP.To4(); ipv4 != nil && !ipv4.IsUnspecified() && session.bandwidthPort != 0 {
