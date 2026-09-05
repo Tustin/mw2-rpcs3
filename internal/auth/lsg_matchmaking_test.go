@@ -332,7 +332,7 @@ func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsReclassifiesRemotePrivateSlotsAsPublic(t *testing.T) {
+func TestMW2FindSessionsForcesRemotePublicSlotValues(t *testing.T) {
 	connection := &lsgConnection{connectionID: 1}
 	self := mw2StoredMatchmakingSession{
 		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
@@ -371,8 +371,8 @@ func TestMW2FindSessionsReclassifiesRemotePrivateSlotsAsPublic(t *testing.T) {
 	if selfResult.openPublic != 0 || selfResult.filledPublic != 0 || selfResult.openPrivate != 7 || selfResult.filledPrivate != 1 {
 		t.Fatalf("self counts=%d/%d/%d/%d, want stored values 0/0/7/1", selfResult.openPublic, selfResult.filledPublic, selfResult.openPrivate, selfResult.filledPrivate)
 	}
-	if remoteResult.openPublic != 7 || remoteResult.filledPublic != 1 || remoteResult.openPrivate != 0 || remoteResult.filledPrivate != 0 {
-		t.Fatalf("remote counts=%d/%d/%d/%d, want reclassified values 7/1/0/0", remoteResult.openPublic, remoteResult.filledPublic, remoteResult.openPrivate, remoteResult.filledPrivate)
+	if remoteResult.openPublic != 8 || remoteResult.filledPublic != 1 || remoteResult.openPrivate != 7 || remoteResult.filledPrivate != 1 {
+		t.Fatalf("remote counts=%d/%d/%d/%d, want forced values 8/1/7/1", remoteResult.openPublic, remoteResult.filledPublic, remoteResult.openPrivate, remoteResult.filledPrivate)
 	}
 	if remote.openPublic != 0 || remote.filledPublic != 0 || remote.openPrivate != 7 || remote.filledPrivate != 1 {
 		t.Fatalf("stored remote counts=%d/%d/%d/%d, want unchanged values 0/0/7/1", remote.openPublic, remote.filledPublic, remote.openPrivate, remote.filledPrivate)

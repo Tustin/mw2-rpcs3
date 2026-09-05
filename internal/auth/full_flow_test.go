@@ -489,9 +489,9 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		hostResultCounts := hostCounts
 		seekerResultCounts := hostCounts
 		if client == host {
-			seekerResultCounts = [4]int32{8, 1, 0, 0}
+			seekerResultCounts = [4]int32{8, 1, 8, 0}
 		} else {
-			hostResultCounts = [4]int32{8, 1, 0, 0}
+			hostResultCounts = [4]int32{8, 1, 8, 0}
 		}
 		assertFullFlowCandidate(
 			t,
@@ -536,7 +536,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	if len(found) != 2 {
 		t.Fatalf("updated find count=%d", len(found))
 	}
-	updatedResultCounts := [4]int32{7, 3, 0, 0}
+	updatedResultCounts := [4]int32{8, 1, 7, 1}
 	assertFullFlowCandidate(
 		t,
 		found[0],
