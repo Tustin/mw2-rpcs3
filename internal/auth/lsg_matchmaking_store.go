@@ -201,16 +201,17 @@ func (s *mw2MatchmakingStore) find(
 	requiredFreeSlots int32,
 	usePrivateSlots bool,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, 0, false)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, 0, false, false)
 }
 
 func (s *mw2MatchmakingStore) findForSearch(
 	maxResults int32,
 	search mw2MatchmakingSearch,
 	ownerID uint64,
+	preferEarlierHosts bool,
 ) []mw2StoredMatchmakingSession {
 	usePrivateSlots := search.gameType != 0
-	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, false)
+	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, false, preferEarlierHosts)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -219,7 +220,7 @@ func (s *mw2MatchmakingStore) findExcludingOwner(
 	usePrivateSlots bool,
 	ownerID uint64,
 ) []mw2StoredMatchmakingSession {
-	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, ownerID, true)
+	return s.findMatching(maxResults, requiredFreeSlots, usePrivateSlots, nil, ownerID, true, false)
 }
 
 func mw2SessionMatchesSearch(session mw2StoredMatchmakingSession, search mw2MatchmakingSearch) bool {
@@ -233,17 +234,29 @@ func (s *mw2MatchmakingStore) findMatching(
 	search *mw2MatchmakingSearch,
 	excludedOwnerID uint64,
 	excludeOwner bool,
+	preferEarlierHosts bool,
 ) []mw2StoredMatchmakingSession {
 	if s == nil || maxResults <= 0 {
 		return nil
 	}
 	s.mu.RLock()
+	var ownerCreationOrder uint64
+	if preferEarlierHosts {
+		for _, session := range s.sessions {
+			if session.ownerID == excludedOwnerID && (ownerCreationOrder == 0 || session.creationOrder < ownerCreationOrder) {
+				ownerCreationOrder = session.creationOrder
+			}
+		}
+	}
 	result := make([]mw2StoredMatchmakingSession, 0, len(s.sessions))
 	for _, session := range s.sessions {
 		if excludeOwner && session.ownerID == excludedOwnerID {
 			continue
 		}
 		if search != nil && session.ownerID != excludedOwnerID && !session.ready {
+			continue
+		}
+		if preferEarlierHosts && ownerCreationOrder != 0 && session.ownerID != excludedOwnerID && session.creationOrder > ownerCreationOrder {
 			continue
 		}
 		if search != nil && !mw2SessionMatchesSearch(session, *search) {

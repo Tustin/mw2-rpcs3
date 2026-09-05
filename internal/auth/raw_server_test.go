@@ -334,6 +334,24 @@ func TestRawServerInjectsSharedMatchmakingStore(t *testing.T) {
 	}
 }
 
+func TestRawServerInjectsMatchmakingPreferEarlierHosts(t *testing.T) {
+	service := NewRawServer(
+		"",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		capture.New(false, "", RetailRequestSize),
+		time.Second,
+		time.Second,
+	)
+	service.SetMatchmakingPreferEarlierHosts(true)
+	connection, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !connection.preferEarlierHosts {
+		t.Fatal("LSG connection did not inherit matchmaking earlier-host preference")
+	}
+}
+
 func TestRawServerInjectsMatchmakingSuppressSelfOnly(t *testing.T) {
 	service := NewRawServer(
 		"",

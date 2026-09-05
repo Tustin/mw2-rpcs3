@@ -9,23 +9,24 @@ import (
 )
 
 type Config struct {
-	AuthAddr         string
-	LobbyAddr        string
-	NATAddr          string
-	NATAlternateAddr string
-	NATAdvertisedIP  string
-	NATRelayEnabled  bool
-	SuppressSelfOnly bool
-	HTTPAddr         string
-	LogLevel         string
-	LogSensitive     bool
-	CaptureEnabled   bool
-	CaptureDir       string
-	MaxFrameBytes    uint32
-	ReadTimeout      time.Duration
-	WriteTimeout     time.Duration
-	SessionTTL       time.Duration
-	StaticMOTD       string
+	AuthAddr           string
+	LobbyAddr          string
+	NATAddr            string
+	NATAlternateAddr   string
+	NATAdvertisedIP    string
+	NATRelayEnabled    bool
+	SuppressSelfOnly   bool
+	PreferEarlierHosts bool
+	HTTPAddr           string
+	LogLevel           string
+	LogSensitive       bool
+	CaptureEnabled     bool
+	CaptureDir         string
+	MaxFrameBytes      uint32
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	SessionTTL         time.Duration
+	StaticMOTD         string
 }
 
 func Load() (Config, error) {
@@ -56,6 +57,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.SuppressSelfOnly, err = envBool("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.PreferEarlierHosts, err = envBool("MW2_MATCHMAKING_PREFER_EARLIER_HOSTS", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFrameBytes, err = envUint32("MW2_MAX_FRAME_BYTES", cfg.MaxFrameBytes); err != nil {

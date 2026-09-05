@@ -96,6 +96,7 @@ type lsgConnection struct {
 	lastBandwidthPhase      string
 	matchmakingSessions     *mw2MatchmakingStore
 	suppressSelfOnly        bool
+	preferEarlierHosts      bool
 	lastMatchmakingSessions []mw2StoredMatchmakingSession
 }
 

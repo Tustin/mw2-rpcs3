@@ -130,6 +130,64 @@ func TestMW2MatchmakingStoreExcludesOwnerBeforeCapping(t *testing.T) {
 	}
 }
 
+func TestMW2MatchmakingStorePreferEarlierHostsPreventsCrossedSelection(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	search := mw2MatchmakingSearch{gameType: 0}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic:    18,
+		attributes:    [9]int32{0},
+		ownerID:       10,
+		creationOrder: 1,
+		ready:         true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic:    18,
+		attributes:    [9]int32{0},
+		ownerID:       20,
+		creationOrder: 2,
+		ready:         true,
+	}
+
+	older := store.findForSearch(50, search, 10, true)
+	if len(older) != 1 || older[0].ownerID != 10 {
+		t.Fatalf("older requester sessions=%+v, want only self", older)
+	}
+	newer := store.findForSearch(50, search, 20, true)
+	if len(newer) != 2 || newer[0].ownerID != 10 || newer[1].ownerID != 20 {
+		t.Fatalf("newer requester sessions=%+v, want older then self", newer)
+	}
+}
+
+func TestMW2MatchmakingStoreKeepsCrossedSelectionByDefault(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	search := mw2MatchmakingSearch{gameType: 0}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic:    18,
+		attributes:    [9]int32{0},
+		ownerID:       10,
+		creationOrder: 1,
+		ready:         true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
+		openPublic:    18,
+		attributes:    [9]int32{0},
+		ownerID:       20,
+		creationOrder: 2,
+		ready:         true,
+	}
+
+	for _, ownerID := range []uint64{10, 20} {
+		found := store.findForSearch(50, search, ownerID, false)
+		if len(found) != 2 || found[0].ownerID != 10 || found[1].ownerID != 20 {
+			t.Fatalf("owner %d sessions=%+v, want both in creation order", ownerID, found)
+		}
+	}
+}
+
 func TestMW2MatchmakingStoreRequiresEnoughOpenPublicSlots(t *testing.T) {
 	store := newMW2MatchmakingStore()
 	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{

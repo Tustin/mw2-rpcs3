@@ -44,6 +44,7 @@ func main() {
 	authServer := auth.NewRawServer(cfg.AuthAddr, logger, recorder, cfg.ReadTimeout, cfg.WriteTimeout)
 	authServer.SetSensitiveLogging(cfg.LogSensitive)
 	authServer.SetMatchmakingSuppressSelfOnly(cfg.SuppressSelfOnly)
+	authServer.SetMatchmakingPreferEarlierHosts(cfg.PreferEarlierHosts)
 	natEndpoint, err := net.ResolveUDPAddr("udp", cfg.NATAddr)
 	if err != nil {
 		logger.Error("bandwidth endpoint initialization failed", "error", err)
