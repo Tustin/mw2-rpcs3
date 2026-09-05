@@ -477,14 +477,14 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		))
 		assertFullFlowMutationReply(t, updateReply, 4, bdMatchmakingUpdateSession)
 	}
-	remoteCounts := [4]int32{8, 1, 8, 0}
+	findCounts := [4]int32{8, 1, 8, 0}
 	for _, search := range []struct {
 		client       *fullFlowLSGClient
 		hostCounts   [4]int32
 		seekerCounts [4]int32
 	}{
-		{client: host, hostCounts: hostCounts, seekerCounts: remoteCounts},
-		{client: seeker, hostCounts: remoteCounts, seekerCounts: hostCounts},
+		{client: host, hostCounts: findCounts, seekerCounts: findCounts},
+		{client: seeker, hostCounts: findCounts, seekerCounts: findCounts},
 	} {
 		found := readFullFlowFindReply(
 			t,
@@ -518,7 +518,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 	updatedAddress[21] = 8
 	updatedAddress[24] = 1
 	updatedCounts := [4]int32{0, 2, 7, 1}
-	updatedRemoteCounts := [4]int32{8, 1, 7, 1}
+	updatedFindCounts := [4]int32{8, 1, 7, 1}
 	updatedAttributes := [9]int32{101, 8, 105, 6, 103, 104, 102, 2, 505}
 	updateReply := host.exchange(t, bdServiceMatchmaking, buildMW2SessionObjectRequestWithValues(
 		bdMatchmakingUpdateSession,
@@ -544,7 +544,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		updatedAddress,
 		sessionID,
 		securityKey,
-		updatedRemoteCounts,
+		updatedFindCounts,
 		updatedAttributes,
 	)
 	assertFullFlowCandidate(
@@ -553,7 +553,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		seekerAddress,
 		seekerSessionID,
 		seekerSecurityKey,
-		hostCounts,
+		findCounts,
 		hostAttributes,
 	)
 
@@ -577,7 +577,7 @@ func TestRawServerTwoClientStorageToMatchmakingCandidateFlow(t *testing.T) {
 		seekerAddress,
 		seekerSessionID,
 		seekerSecurityKey,
-		hostCounts,
+		findCounts,
 		hostAttributes,
 	)
 
