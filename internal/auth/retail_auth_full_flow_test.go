@@ -391,7 +391,7 @@ func TestRawServerRetailAuthTwoClientStorageAndMatchmakingFlow(t *testing.T) {
 		hostAddress,
 		sessionID,
 		securityKey,
-		[4]int32{8, 1, 8, 0},
+		[4]int32{8, 0, 0, 0},
 		hostAttributes,
 	)
 

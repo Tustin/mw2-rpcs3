@@ -243,8 +243,10 @@ func writeMW2MatchmakingResult(writer *bdBitWriter, session mw2StoredMatchmaking
 
 func (c *lsgConnection) matchmakingFindResult(session mw2StoredMatchmakingSession) mw2StoredMatchmakingSession {
 	if session.openPublic == 0 && session.openPrivate > 0 {
-		session.openPublic = 8
-		session.filledPublic = 1
+		session.openPublic = session.openPrivate
+		session.filledPublic = session.filledPrivate
+		session.openPrivate = 0
+		session.filledPrivate = 0
 	}
 	return session
 }
