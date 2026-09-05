@@ -241,14 +241,6 @@ func writeMW2MatchmakingResult(writer *bdBitWriter, session mw2StoredMatchmaking
 	}
 }
 
-func (c *lsgConnection) matchmakingFindResult(session mw2StoredMatchmakingSession) mw2StoredMatchmakingSession {
-	if session.ownerID != c.connectionID && session.openPublic == 0 && session.openPrivate > 0 {
-		session.openPublic = 8
-		session.filledPublic = 1
-	}
-	return session
-}
-
 func (c *lsgConnection) matchmakingFindReply(sessions []mw2StoredMatchmakingSession) []byte {
 	writer := newBDBitWriter()
 	writer.writeU64(c.nextTransactionID())
@@ -256,7 +248,7 @@ func (c *lsgConnection) matchmakingFindReply(sessions []mw2StoredMatchmakingSess
 	writer.writeU8(bdMatchmakingFindSessions)
 	writer.writeU32(uint32(len(sessions)))
 	for _, session := range sessions {
-		writeMW2MatchmakingResult(writer, c.matchmakingFindResult(session))
+		writeMW2MatchmakingResult(writer, session)
 	}
 	return writer.bytes()
 }

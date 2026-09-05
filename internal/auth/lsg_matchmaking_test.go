@@ -332,53 +332,6 @@ func TestMW2NonemptyFindSessionsReplyMatchesRecoveredGoldenBits(t *testing.T) {
 	}
 }
 
-func TestMW2FindSessionsForcesRemotePublicSlotValues(t *testing.T) {
-	connection := &lsgConnection{connectionID: 1}
-	self := mw2StoredMatchmakingSession{
-		sessionID:     [mw2MatchmakingSessionIDSize]byte{1},
-		openPrivate:   7,
-		filledPrivate: 1,
-		ownerID:       1,
-	}
-	remote := mw2StoredMatchmakingSession{
-		sessionID:     [mw2MatchmakingSessionIDSize]byte{2},
-		openPrivate:   7,
-		filledPrivate: 1,
-		ownerID:       2,
-	}
-
-	reader := mustBDTaskReplyReader(t, connection.matchmakingFindReply([]mw2StoredMatchmakingSession{self, remote}))
-	if _, err := reader.readU64(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.readU32(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.readU8(); err != nil {
-		t.Fatal(err)
-	}
-	if count, err := reader.readU32(); err != nil || count != 2 {
-		t.Fatalf("count=%d err=%v", count, err)
-	}
-	selfResult, err := readMW2MatchmakingInfo(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	remoteResult, err := readMW2MatchmakingInfo(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if selfResult.openPublic != 0 || selfResult.filledPublic != 0 || selfResult.openPrivate != 7 || selfResult.filledPrivate != 1 {
-		t.Fatalf("self counts=%d/%d/%d/%d, want stored values 0/0/7/1", selfResult.openPublic, selfResult.filledPublic, selfResult.openPrivate, selfResult.filledPrivate)
-	}
-	if remoteResult.openPublic != 8 || remoteResult.filledPublic != 1 || remoteResult.openPrivate != 7 || remoteResult.filledPrivate != 1 {
-		t.Fatalf("remote counts=%d/%d/%d/%d, want forced values 8/1/7/1", remoteResult.openPublic, remoteResult.filledPublic, remoteResult.openPrivate, remoteResult.filledPrivate)
-	}
-	if remote.openPublic != 0 || remote.filledPublic != 0 || remote.openPrivate != 7 || remote.filledPrivate != 1 {
-		t.Fatalf("stored remote counts=%d/%d/%d/%d, want unchanged values 0/0/7/1", remote.openPublic, remote.filledPublic, remote.openPrivate, remote.filledPrivate)
-	}
-}
-
 func TestMW2MutationRepliesMatchRecoveredGoldenBits(t *testing.T) {
 	goldens := map[byte]string{
 		bdMatchmakingUpdateSession: "150000000000000000020000001802",
