@@ -285,7 +285,7 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 			"00020000" +
 			"05000000" +
 			"f4010000" +
-			"d0070000" +
+			"32000000" +
 			"10270000" +
 			"88130000" +
 			"f4010000" +

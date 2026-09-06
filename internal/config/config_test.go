@@ -28,7 +28,7 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.PreferEarlierHosts ||
 		cfg.LogSensitive ||
 		cfg.MaxFrameBytes != 1<<20 ||
-		cfg.BandwidthSendDurationMS != 2000 ||
+		cfg.BandwidthSendDurationMS != 50 ||
 		cfg.BandwidthFinalizeReceivePeriodMS != nil {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}

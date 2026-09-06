@@ -85,7 +85,7 @@ func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, rea
 		lsgIdleTimeout:          lsgIdleTimeout,
 		lsgSessions:             newLSGSessionStore(),
 		matchmakingSessions:     newMW2MatchmakingStore(),
-		bandwidthSendDurationMS: 2000,
+		bandwidthSendDurationMS: 50,
 	}
 }
 

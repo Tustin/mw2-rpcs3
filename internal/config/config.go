@@ -42,7 +42,7 @@ func Load() (Config, error) {
 		LogLevel:                env("MW2_LOG_LEVEL", "info"),
 		CaptureDir:              env("MW2_CAPTURE_DIR", "captures"),
 		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
-		BandwidthSendDurationMS: 2000,
+		BandwidthSendDurationMS: 50,
 		MaxFrameBytes:           1 << 20,
 		ReadTimeout:             30 * time.Second,
 		WriteTimeout:            10 * time.Second,

@@ -594,7 +594,7 @@ func (c *lsgConnection) bandwidthRequestSuccess() []byte {
 	offset++
 	sendDurationMS := c.bandwidthSendDurationMS
 	if sendDurationMS == 0 {
-		sendDurationMS = 2000
+		sendDurationMS = 50
 	}
 	for _, value := range [...]uint32{512, 5, 500, sendDurationMS, 10000, 5000, 500} {
 		binary.LittleEndian.PutUint32(response[offset:], value)
