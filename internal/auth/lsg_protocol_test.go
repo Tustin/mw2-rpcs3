@@ -305,8 +305,8 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	}
 
 	receivedAt := time.Unix(1_700_000_000, 0)
-	for sequence := uint32(0); sequence < 5; sequence++ {
-		session.bandwidthMeasurements.Record("client-a", sequence, 512, receivedAt.Add(time.Duration(sequence)*500*time.Millisecond))
+	for sequence, elapsed := range []time.Duration{0, 400, 800, 1200, 1599} {
+		session.bandwidthMeasurements.Record("client-a", uint32(sequence), 512, receivedAt.Add(elapsed*time.Millisecond))
 	}
 	finalizePayload := append([]byte{1}, make([]byte, 20)...)
 	responseType, result, ok, reply = handleLSGMessage(session, bdServiceBandwidth, finalizePayload)
@@ -316,7 +316,7 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	if session.lastBandwidthPhase != "finalize" || len(result) != 29 || result[8] != 0 {
 		t.Fatalf("malformed bandwidth finalize reply phase=%q payload=%x", session.lastBandwidthPhase, result)
 	}
-	wantResults := []uint32{2560, 2000, 2, 0, 4}
+	wantResults := []uint32{2560, 1599, 2, 0, 4}
 	for index, want := range wantResults {
 		if got := binary.LittleEndian.Uint32(result[9+index*4:]); got != want {
 			t.Fatalf("bandwidth result[%d]=%d want=%d payload=%x", index, got, want, result)

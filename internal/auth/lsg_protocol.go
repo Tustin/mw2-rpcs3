@@ -581,7 +581,7 @@ func (c *lsgConnection) bandwidthRequestSuccess() []byte {
 	//   byte token[8]
 	//
 	// The MW2 PS3 retail capture independently fixes the title-specific values:
-	// five 512-byte UDP packets, first at about 500 ms, spaced over 2 seconds,
+	// five 512-byte UDP packets, first at about 500 ms, spanning about 1.6 seconds,
 	// sent to the advertised IPv4 on UDP 3074 with token 00..07.
 	response := make([]byte, 51)
 	offset := 8 // untyped u64 transaction ID remains zero
