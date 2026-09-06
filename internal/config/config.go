@@ -9,41 +9,44 @@ import (
 )
 
 type Config struct {
-	AuthAddr           string
-	LobbyAddr          string
-	NATAddr            string
-	NATAlternateAddr   string
-	NATAdvertisedIP    string
-	NATRelayEnabled    bool
-	SuppressSelfOnly   bool
-	PreferEarlierHosts bool
-	HTTPAddr           string
-	LogLevel           string
-	LogSensitive       bool
-	CaptureEnabled     bool
-	CaptureDir         string
-	MaxFrameBytes      uint32
-	ReadTimeout        time.Duration
-	WriteTimeout       time.Duration
-	SessionTTL         time.Duration
-	StaticMOTD         string
+	AuthAddr                         string
+	LobbyAddr                        string
+	NATAddr                          string
+	NATAlternateAddr                 string
+	NATAdvertisedIP                  string
+	NATRelayEnabled                  bool
+	SuppressSelfOnly                 bool
+	PreferEarlierHosts               bool
+	HTTPAddr                         string
+	LogLevel                         string
+	LogSensitive                     bool
+	CaptureEnabled                   bool
+	CaptureDir                       string
+	MaxFrameBytes                    uint32
+	ReadTimeout                      time.Duration
+	WriteTimeout                     time.Duration
+	SessionTTL                       time.Duration
+	StaticMOTD                       string
+	BandwidthSendDurationMS          uint32
+	BandwidthFinalizeReceivePeriodMS *uint32
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		AuthAddr:         env("MW2_AUTH_ADDR", ":3074"),
-		LobbyAddr:        env("MW2_LOBBY_ADDR", ":3075"),
-		NATAddr:          env("MW2_NAT_ADDR", ":3074"),
-		NATAlternateAddr: env("MW2_NAT_ALT_ADDR", ":3075"),
-		NATAdvertisedIP:  env("MW2_NAT_ADVERTISED_IP", ""),
-		HTTPAddr:         env("MW2_HTTP_ADDR", ":8080"),
-		LogLevel:         env("MW2_LOG_LEVEL", "info"),
-		CaptureDir:       env("MW2_CAPTURE_DIR", "captures"),
-		StaticMOTD:       env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
-		MaxFrameBytes:    1 << 20,
-		ReadTimeout:      30 * time.Second,
-		WriteTimeout:     10 * time.Second,
-		SessionTTL:       2 * time.Minute,
+		AuthAddr:                env("MW2_AUTH_ADDR", ":3074"),
+		LobbyAddr:               env("MW2_LOBBY_ADDR", ":3075"),
+		NATAddr:                 env("MW2_NAT_ADDR", ":3074"),
+		NATAlternateAddr:        env("MW2_NAT_ALT_ADDR", ":3075"),
+		NATAdvertisedIP:         env("MW2_NAT_ADVERTISED_IP", ""),
+		HTTPAddr:                env("MW2_HTTP_ADDR", ":8080"),
+		LogLevel:                env("MW2_LOG_LEVEL", "info"),
+		CaptureDir:              env("MW2_CAPTURE_DIR", "captures"),
+		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
+		BandwidthSendDurationMS: 2000,
+		MaxFrameBytes:           1 << 20,
+		ReadTimeout:             30 * time.Second,
+		WriteTimeout:            10 * time.Second,
+		SessionTTL:              2 * time.Minute,
 	}
 
 	var err error
@@ -63,6 +66,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.MaxFrameBytes, err = envUint32("MW2_MAX_FRAME_BYTES", cfg.MaxFrameBytes); err != nil {
+		return Config{}, err
+	}
+	if cfg.BandwidthSendDurationMS, err = envUint32("MW2_BANDWIDTH_SEND_DURATION_MS", cfg.BandwidthSendDurationMS); err != nil {
+		return Config{}, err
+	}
+	if cfg.BandwidthFinalizeReceivePeriodMS, err = envOptionalUint32("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS"); err != nil {
 		return Config{}, err
 	}
 	if cfg.ReadTimeout, err = envDuration("MW2_READ_TIMEOUT", cfg.ReadTimeout); err != nil {
@@ -127,6 +136,19 @@ func envUint32(key string, fallback uint32) (uint32, error) {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}
 	return uint32(parsed), nil
+}
+
+func envOptionalUint32(key string) (*uint32, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", key, err)
+	}
+	result := uint32(parsed)
+	return &result, nil
 }
 
 func envDuration(key string, fallback time.Duration) (time.Duration, error) {

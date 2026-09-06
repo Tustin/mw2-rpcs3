@@ -45,26 +45,28 @@ type RequestSummary struct {
 }
 
 type RawServer struct {
-	addr                  string
-	log                   *slog.Logger
-	recorder              *capture.Recorder
-	readTimeout           time.Duration
-	writeTimeout          time.Duration
-	lsgIdleTimeout        time.Duration
-	logSensitive          bool
-	connections           atomic.Uint64
-	requests              atomic.Uint64
-	lsgConnections        atomic.Uint64
-	lsgFrames             atomic.Uint64
-	lsgSessions           *lsgSessionStore
-	matchmakingOnce       sync.Once
-	matchmakingSessions   *mw2MatchmakingStore
-	suppressSelfOnly      bool
-	preferEarlierHosts    bool
-	bandwidthIPv4         [4]byte
-	bandwidthPort         uint16
-	bandwidthConfigured   bool
-	bandwidthMeasurements *bandwidth.Store
+	addr                             string
+	log                              *slog.Logger
+	recorder                         *capture.Recorder
+	readTimeout                      time.Duration
+	writeTimeout                     time.Duration
+	lsgIdleTimeout                   time.Duration
+	logSensitive                     bool
+	connections                      atomic.Uint64
+	requests                         atomic.Uint64
+	lsgConnections                   atomic.Uint64
+	lsgFrames                        atomic.Uint64
+	lsgSessions                      *lsgSessionStore
+	matchmakingOnce                  sync.Once
+	matchmakingSessions              *mw2MatchmakingStore
+	suppressSelfOnly                 bool
+	preferEarlierHosts               bool
+	bandwidthIPv4                    [4]byte
+	bandwidthPort                    uint16
+	bandwidthConfigured              bool
+	bandwidthMeasurements            *bandwidth.Store
+	bandwidthSendDurationMS          uint32
+	bandwidthFinalizeReceivePeriodMS *uint32
 }
 
 const minimumAuthenticatedLSGIdleTimeout = 5 * time.Minute
@@ -75,14 +77,15 @@ func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, rea
 		lsgIdleTimeout = minimumAuthenticatedLSGIdleTimeout
 	}
 	return &RawServer{
-		addr:                addr,
-		log:                 log,
-		recorder:            recorder,
-		readTimeout:         readTimeout,
-		writeTimeout:        writeTimeout,
-		lsgIdleTimeout:      lsgIdleTimeout,
-		lsgSessions:         newLSGSessionStore(),
-		matchmakingSessions: newMW2MatchmakingStore(),
+		addr:                    addr,
+		log:                     log,
+		recorder:                recorder,
+		readTimeout:             readTimeout,
+		writeTimeout:            writeTimeout,
+		lsgIdleTimeout:          lsgIdleTimeout,
+		lsgSessions:             newLSGSessionStore(),
+		matchmakingSessions:     newMW2MatchmakingStore(),
+		bandwidthSendDurationMS: 2000,
 	}
 }
 
@@ -111,6 +114,11 @@ func (s *RawServer) SetMatchmakingPreferEarlierHosts(enabled bool) {
 // is used for native (non-container) runs.
 func (s *RawServer) SetBandwidthMeasurements(measurements *bandwidth.Store) {
 	s.bandwidthMeasurements = measurements
+}
+
+func (s *RawServer) SetBandwidthExperiment(sendDurationMS uint32, finalizeReceivePeriodMS *uint32) {
+	s.bandwidthSendDurationMS = sendDurationMS
+	s.bandwidthFinalizeReceivePeriodMS = finalizeReceivePeriodMS
 }
 
 func (s *RawServer) SetBandwidthEndpoint(ip net.IP, port uint16) {
@@ -306,6 +314,8 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		session.bandwidthMeasurementKey = conn.RemoteAddr().String()
 	}
 	session.bandwidthMeasurements = s.bandwidthMeasurements
+	session.bandwidthSendDurationMS = s.bandwidthSendDurationMS
+	session.bandwidthFinalizeReceivePeriodMS = s.bandwidthFinalizeReceivePeriodMS
 	if !session.bandwidthConfigured {
 		if local, ok := conn.LocalAddr().(*net.TCPAddr); ok && local != nil {
 			if ipv4 := local.IP.To4(); ipv4 != nil && !ipv4.IsUnspecified() && session.bandwidthPort != 0 {

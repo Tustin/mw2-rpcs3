@@ -331,6 +331,37 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	}
 }
 
+func TestHandleLSGBandwidthExperimentOverrides(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.bandwidthConfigured = true
+	session.bandwidthSendDurationMS = 50
+	finalizePeriodMS := uint32(40)
+	session.bandwidthFinalizeReceivePeriodMS = &finalizePeriodMS
+
+	requestPayload := make([]byte, 17)
+	requestPayload[0] = 1
+	_, result, ok, reply := handleLSGMessage(session, bdServiceBandwidth, requestPayload)
+	if !ok || !reply {
+		t.Fatalf("bandwidth request payload=%x ok=%v reply=%v", result, ok, reply)
+	}
+	if got := binary.LittleEndian.Uint32(result[21:]); got != 50 {
+		t.Fatalf("send duration=%d want=50 payload=%x", got, result)
+	}
+
+	finalizePayload := make([]byte, 21)
+	finalizePayload[0] = 1
+	_, result, ok, reply = handleLSGMessage(session, bdServiceBandwidth, finalizePayload)
+	if !ok || !reply {
+		t.Fatalf("bandwidth finalize payload=%x ok=%v reply=%v", result, ok, reply)
+	}
+	if got := binary.LittleEndian.Uint32(result[13:]); got != 40 {
+		t.Fatalf("receive period=%d want=40 payload=%x", got, result)
+	}
+}
+
 func TestHandleUnknownLSGTaskReturnsErrorAndMarksUnsupported(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {

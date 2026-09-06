@@ -12,6 +12,8 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_MATCHMAKING_PREFER_EARLIER_HOSTS", "")
 	t.Setenv("MW2_LOG_SENSITIVE", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
+	t.Setenv("MW2_BANDWIDTH_SEND_DURATION_MS", "")
+	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +27,9 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.SuppressSelfOnly ||
 		cfg.PreferEarlierHosts ||
 		cfg.LogSensitive ||
-		cfg.MaxFrameBytes != 1<<20 {
+		cfg.MaxFrameBytes != 1<<20 ||
+		cfg.BandwidthSendDurationMS != 2000 ||
+		cfg.BandwidthFinalizeReceivePeriodMS != nil {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 }
@@ -137,6 +141,28 @@ func TestLoadRejectsInvalidPreferEarlierHostsFlag(t *testing.T) {
 	t.Setenv("MW2_MATCHMAKING_PREFER_EARLIER_HOSTS", "sometimes")
 	if _, err := Load(); err == nil {
 		t.Fatal("accepted invalid MW2_MATCHMAKING_PREFER_EARLIER_HOSTS")
+	}
+}
+
+func TestLoadBandwidthExperimentOverrides(t *testing.T) {
+	t.Setenv("MW2_BANDWIDTH_SEND_DURATION_MS", "50")
+	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "40")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BandwidthSendDurationMS != 50 {
+		t.Fatalf("BandwidthSendDurationMS = %d, want 50", cfg.BandwidthSendDurationMS)
+	}
+	if cfg.BandwidthFinalizeReceivePeriodMS == nil || *cfg.BandwidthFinalizeReceivePeriodMS != 40 {
+		t.Fatalf("BandwidthFinalizeReceivePeriodMS = %v, want 40", cfg.BandwidthFinalizeReceivePeriodMS)
+	}
+}
+
+func TestLoadRejectsInvalidBandwidthExperimentOverride(t *testing.T) {
+	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "forty")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS")
 	}
 }
 

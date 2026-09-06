@@ -123,6 +123,8 @@ All configuration is environment-based:
 - `MW2_LOG_SENSITIVE`, default `false` (development-only credential, key, raw
   frame, and decrypted payload logging; never publish its output unredacted)
 - `MW2_MAX_FRAME_BYTES`, default 1 MiB, valid range 64 bytes to 16 MiB
+- `MW2_BANDWIDTH_SEND_DURATION_MS`, default `2000` (experimental service-18 request value)
+- `MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS`, default unset (experimental override for the measured service-18 finalize period)
 - `MW2_READ_TIMEOUT`, default `30s`
 - `MW2_WRITE_TIMEOUT`, default `10s`
 - `MW2_SESSION_TTL`, default `2m` (experimental TCP-3075 session scaffold

@@ -75,33 +75,35 @@ func (s *lsgSessionStore) consume(ticket []byte) (lsgStoredSession, bool) {
 }
 
 type lsgConnection struct {
-	key                     [24]byte
-	pendingKey              [24]byte
-	connectionID            uint64
-	entityID                uint64
-	requestIV               uint32
-	responseIV              uint32
-	nextTransaction         uint64
-	lastServiceID           byte
-	lastOperationID         byte
-	lastTaskSupported       bool
-	playlistListReplies     int
-	playlistSHA256          string
-	playlistBytes           int
-	lastStorageFiles        []string
-	lastStorageFileIDs      []string
-	lastStorageGetFile      string
-	lastStorageGetID        string
-	bandwidthIPv4           [4]byte
-	bandwidthPort           uint16
-	bandwidthConfigured     bool
-	bandwidthMeasurementKey string
-	bandwidthMeasurements   *bandwidth.Store
-	lastBandwidthPhase      string
-	matchmakingSessions     *mw2MatchmakingStore
-	suppressSelfOnly        bool
-	preferEarlierHosts      bool
-	lastMatchmakingSessions []mw2StoredMatchmakingSession
+	key                              [24]byte
+	pendingKey                       [24]byte
+	connectionID                     uint64
+	entityID                         uint64
+	requestIV                        uint32
+	responseIV                       uint32
+	nextTransaction                  uint64
+	lastServiceID                    byte
+	lastOperationID                  byte
+	lastTaskSupported                bool
+	playlistListReplies              int
+	playlistSHA256                   string
+	playlistBytes                    int
+	lastStorageFiles                 []string
+	lastStorageFileIDs               []string
+	lastStorageGetFile               string
+	lastStorageGetID                 string
+	bandwidthIPv4                    [4]byte
+	bandwidthPort                    uint16
+	bandwidthConfigured              bool
+	bandwidthMeasurementKey          string
+	bandwidthMeasurements            *bandwidth.Store
+	bandwidthSendDurationMS          uint32
+	bandwidthFinalizeReceivePeriodMS *uint32
+	lastBandwidthPhase               string
+	matchmakingSessions              *mw2MatchmakingStore
+	suppressSelfOnly                 bool
+	preferEarlierHosts               bool
+	lastMatchmakingSessions          []mw2StoredMatchmakingSession
 }
 
 type lsgInitialRequest struct {
@@ -547,6 +549,9 @@ func (c *lsgConnection) handleBandwidthTask(payload []byte) (byte, []byte, bool)
 		if c.bandwidthMeasurements != nil {
 			results, _ = c.bandwidthMeasurements.Consume(c.bandwidthMeasurementKey)
 		}
+		if c.bandwidthFinalizeReceivePeriodMS != nil {
+			results.ReceivePeriodMS = *c.bandwidthFinalizeReceivePeriodMS
+		}
 		return lsgServiceTaskReplyType, bandwidthFinalizeSuccess(results), true
 	}
 	if len(payload) >= 17 {
@@ -587,7 +592,11 @@ func (c *lsgConnection) bandwidthRequestSuccess() []byte {
 	offset := 8 // untyped u64 transaction ID remains zero
 	response[offset] = 0
 	offset++
-	for _, value := range [...]uint32{512, 5, 500, 2000, 10000, 5000, 500} {
+	sendDurationMS := c.bandwidthSendDurationMS
+	if sendDurationMS == 0 {
+		sendDurationMS = 2000
+	}
+	for _, value := range [...]uint32{512, 5, 500, sendDurationMS, 10000, 5000, 500} {
 		binary.LittleEndian.PutUint32(response[offset:], value)
 		offset += 4
 	}

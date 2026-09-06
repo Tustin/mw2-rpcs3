@@ -59,6 +59,7 @@ func main() {
 	authServer.SetBandwidthEndpoint(serverIP, uint16(natEndpoint.Port))
 	bandwidthMeasurements := bandwidth.NewStore()
 	authServer.SetBandwidthMeasurements(bandwidthMeasurements)
+	authServer.SetBandwidthExperiment(cfg.BandwidthSendDurationMS, cfg.BandwidthFinalizeReceivePeriodMS)
 	logger.Info("configure your client DNS to use this server", "ip", serverIP.String())
 	if cfg.LogSensitive {
 		logger.Warn("sensitive protocol logging enabled; logs contain credentials, keys, decrypted payloads, and raw frames")
