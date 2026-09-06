@@ -210,8 +210,7 @@ func (s *mw2MatchmakingStore) findForSearch(
 	ownerID uint64,
 	preferEarlierHosts bool,
 ) []mw2StoredMatchmakingSession {
-	usePrivateSlots := search.gameType != 0
-	return s.findMatching(maxResults, search.requiredFreeSlots, usePrivateSlots, &search, ownerID, false, preferEarlierHosts)
+	return s.findMatching(maxResults, search.requiredFreeSlots, false, &search, ownerID, false, preferEarlierHosts)
 }
 
 func (s *mw2MatchmakingStore) findExcludingOwner(
@@ -263,7 +262,9 @@ func (s *mw2MatchmakingStore) findMatching(
 			continue
 		}
 		openSlots := session.openPublic
-		if usePrivateSlots {
+		if search != nil && session.openPrivate > openSlots {
+			openSlots = session.openPrivate
+		} else if usePrivateSlots {
 			openSlots = session.openPrivate
 		}
 		if openSlots >= requiredFreeSlots {

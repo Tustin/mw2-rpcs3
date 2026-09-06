@@ -228,6 +228,27 @@ func TestMW2MatchmakingStoreCanSearchOpenPrivateSlots(t *testing.T) {
 	}
 }
 
+func TestMW2MatchmakingStoreSearchUsesAvailableWireSlotPool(t *testing.T) {
+	store := newMW2MatchmakingStore()
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{1}] = mw2StoredMatchmakingSession{
+		sessionID:  [mw2MatchmakingSessionIDSize]byte{1},
+		openPublic: 8,
+		attributes: [9]int32{1},
+		ready:      true,
+	}
+	store.sessions[[mw2MatchmakingSessionIDSize]byte{2}] = mw2StoredMatchmakingSession{
+		sessionID:   [mw2MatchmakingSessionIDSize]byte{2},
+		openPrivate: 8,
+		attributes:  [9]int32{1},
+		ready:       true,
+	}
+
+	found := store.findForSearch(50, mw2MatchmakingSearch{gameType: 1, requiredFreeSlots: 1}, 0, false)
+	if len(found) != 2 {
+		t.Fatalf("sessions=%+v, want both wire slot pools", found)
+	}
+}
+
 func TestMW2MatchmakingStoreEnforcesOwnerAndCapacity(t *testing.T) {
 	store := newMW2MatchmakingStoreWithLimit(1)
 	info := mw2MatchmakingInfo{

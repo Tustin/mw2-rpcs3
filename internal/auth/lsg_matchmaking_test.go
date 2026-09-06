@@ -801,8 +801,8 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		requiredFreeSlots: 3,
 		performance:       106,
 	}
-	if count := resultCount(eligible); count != 1 {
-		t.Fatalf("count=%d, want one unranked session with at least three private slots", count)
+	if count := resultCount(eligible); count != 2 {
+		t.Fatalf("count=%d, want two unranked sessions with at least three slots in either wire pool", count)
 	}
 
 	incompatible := eligible
@@ -818,19 +818,19 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 	} {
 		variant := eligible
 		change(&variant)
-		if count := resultCount(variant); count != 1 {
+		if count := resultCount(variant); count != 2 {
 			t.Fatalf("%s filtering was added despite retail mismatch proof: count=%d", name, count)
 		}
 	}
 	mapPackVariant := eligible
 	mapPackVariant.mapPackFlags++
-	if count := resultCount(mapPackVariant); count != 1 {
+	if count := resultCount(mapPackVariant); count != 2 {
 		t.Fatalf("map-pack filtering was added without retail proof: count=%d", count)
 	}
 
 	eligible.requiredFreeSlots = 5
 	if count := resultCount(eligible); count != 0 {
-		t.Fatalf("insufficient private slots were returned: count=%d", count)
+		t.Fatalf("insufficient slots in both wire pools were returned: count=%d", count)
 	}
 
 	eligible.gameType = 0
@@ -851,13 +851,13 @@ func TestMW2FindSessionsSelectsSlotPoolAndRequiredFreeSlots(t *testing.T) {
 		ownerID:     2,
 		ready:       true,
 	}
-	if count := resultCount(eligible); count != 1 {
-		t.Fatalf("count=%d, want one ranked session with at least three public slots", count)
+	if count := resultCount(eligible); count != 2 {
+		t.Fatalf("count=%d, want two ranked sessions with at least three slots in either wire pool", count)
 	}
 
 	eligible.requiredFreeSlots = 4
-	if count := resultCount(eligible); count != 0 {
-		t.Fatalf("insufficient public slots were returned: count=%d", count)
+	if count := resultCount(eligible); count != 1 {
+		t.Fatalf("count=%d, want one ranked session with four slots in either wire pool", count)
 	}
 }
 
