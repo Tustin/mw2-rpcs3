@@ -334,6 +334,27 @@ func TestRawServerInjectsSharedMatchmakingStore(t *testing.T) {
 	}
 }
 
+func TestRawServerInjectsSharedUserFileStore(t *testing.T) {
+	service := NewRawServer(
+		"",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		capture.New(false, "", RetailRequestSize),
+		time.Second,
+		time.Second,
+	)
+	first, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.newLSGConnection(candidateSessionKey, candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.userFiles == nil || first.userFiles != second.userFiles || first.userFiles != service.userFiles {
+		t.Fatal("LSG connections do not share the RawServer user-file store")
+	}
+}
+
 func TestRawServerInjectsMatchmakingPreferEarlierHosts(t *testing.T) {
 	service := NewRawServer(
 		"",

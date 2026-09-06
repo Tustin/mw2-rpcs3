@@ -38,6 +38,42 @@ func buildMW2StorageGetRequest(fileID uint64) []byte {
 	return bd.bytes()
 }
 
+func buildMW2StorageOwnerListRequest(ownerID uint64) []byte {
+	writer := newLSBBitWriter(0)
+	writer.writeBit(true)
+	bd := &bdBitWriter{bits: writer}
+	bd.writeU8(bdStorageListOwnerFiles)
+	bd.writeU8(0)
+	bd.writeU64(ownerID)
+	bd.writeU32(0)
+	bd.writeU16(1)
+	return bd.bytes()
+}
+
+func buildMW2StorageUploadRequest(data []byte) []byte {
+	writer := newLSBBitWriter(0)
+	writer.writeBit(true)
+	bd := &bdBitWriter{bits: writer}
+	bd.writeU8(bdStorageUploadUserFile)
+	bd.writeU8(0)
+	bd.writeBool(false)
+	bd.writeString(mw2ProfileFilename)
+	bd.writeBool(false)
+	bd.writeBlob(data)
+	return bd.bytes()
+}
+
+func buildMW2StorageUpdateRequest(fileID uint64, data []byte) []byte {
+	writer := newLSBBitWriter(0)
+	writer.writeBit(true)
+	bd := &bdBitWriter{bits: writer}
+	bd.writeU8(bdStorageUpdateUserFile)
+	bd.writeU8(0)
+	bd.writeU64(fileID)
+	bd.writeBlob(data)
+	return bd.bytes()
+}
+
 func readBDTestString(reader *bdBitReader) (string, error) {
 	if err := reader.readType(bdTypeString); err != nil {
 		return "", err
@@ -371,12 +407,122 @@ func TestMW2StorageGetsTitleUpdatePlaylistVariant(t *testing.T) {
 
 func TestMW2StorageOwnerListReplyIsSuccessfulAndEmpty(t *testing.T) {
 	connection := &lsgConnection{nextTransaction: 4}
-	summary, err := parseMW2StorageReplySummary(connection.storageOwnerListReply())
+	summary, err := parseMW2StorageReplySummary(connection.storageOwnerListReply(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if summary.transactionID != 4 || summary.errorCode != bdErrorNone || summary.operationID != bdStorageListOwnerFiles || summary.resultCount != 0 || summary.fileSize != 0 {
 		t.Fatalf("summary=%+v", summary)
+	}
+}
+
+func TestMW2UserProfileUploadListGetAndUpdate(t *testing.T) {
+	const ownerID = uint64(0xb804d13e5ee3dafa)
+	store := newMW2UserFileStore()
+	first := &lsgConnection{entityID: ownerID, userFiles: store}
+	profile := bytes.Repeat([]byte{0x5a}, mw2ProfileSize)
+	_, uploadReply, handled := first.handleStorageTask(buildMW2StorageUploadRequest(profile))
+	if !handled || !first.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, first.lastTaskSupported)
+	}
+	upload := mustBDTaskReplyReader(t, uploadReply)
+	if _, err := upload.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := upload.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := upload.readU8(); err != nil || operation != bdStorageUploadUserFile {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if count, err := upload.readU32(); err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	fileID, err := upload.readU64()
+	if err != nil || fileID == 0 {
+		t.Fatalf("fileID=%d err=%v", fileID, err)
+	}
+
+	second := &lsgConnection{userFiles: store}
+	_, listReply, handled := second.handleStorageTask(buildMW2StorageOwnerListRequest(ownerID))
+	if !handled || !second.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, second.lastTaskSupported)
+	}
+	list := mustBDTaskReplyReader(t, listReply)
+	if _, err := list.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := list.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := list.readU8(); err != nil || operation != bdStorageListOwnerFiles {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if count, err := list.readU32(); err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	if size, err := list.readU32(); err != nil || size != mw2ProfileSize {
+		t.Fatalf("size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, list, fileID, mw2ProfileFilename)
+
+	_, getReply, handled := second.handleStorageTask(buildMW2StorageGetRequest(fileID))
+	if !handled || !second.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, second.lastTaskSupported)
+	}
+	get := mustBDTaskReplyReader(t, getReply)
+	if _, err := get.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := get.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := get.readU8(); err != nil || operation != bdStorageGetFile {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if size, err := get.readU32(); err != nil || size != mw2ProfileSize {
+		t.Fatalf("size=%d err=%v", size, err)
+	}
+	assertMW2FileInfoValue(t, get, fileID, mw2ProfileFilename)
+	blob, err := get.readBlob(mw2ProfileSize)
+	if err != nil || !bytes.Equal(blob, profile) {
+		t.Fatalf("blob length=%d err=%v", len(blob), err)
+	}
+
+	updated := bytes.Repeat([]byte{0xa5}, mw2ProfileSize)
+	_, updateReply, handled := second.handleStorageTask(buildMW2StorageUpdateRequest(fileID, updated))
+	if !handled || !second.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, second.lastTaskSupported)
+	}
+	update := mustBDTaskReplyReader(t, updateReply)
+	if _, err := update.readU64(); err != nil {
+		t.Fatal(err)
+	}
+	if errorCode, err := update.readU32(); err != nil || errorCode != bdErrorNone {
+		t.Fatalf("error=%d err=%v", errorCode, err)
+	}
+	if operation, err := update.readU8(); err != nil || operation != bdStorageUpdateUserFile {
+		t.Fatalf("operation=%d err=%v", operation, err)
+	}
+	if count, err := update.readU32(); err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	updatedFile, ok := store.get(fileID)
+	if !ok || !bytes.Equal(updatedFile.data, updated) {
+		t.Fatal("updated profile was not retained")
+	}
+}
+
+func TestMW2UserProfileStorePersistsWhenConfigured(t *testing.T) {
+	t.Setenv("MW2_PROFILE_DIR", t.TempDir())
+	const ownerID = uint64(0xb804d13e5ee3dafa)
+	profile := bytes.Repeat([]byte{0x3c}, mw2ProfileSize)
+	first := newMW2UserFileStore()
+	first.upload(ownerID, mw2ProfileFilename, profile)
+	second := newMW2UserFileStore()
+	files := second.list(ownerID)
+	if len(files) != 1 || files[0].name != mw2ProfileFilename || !bytes.Equal(files[0].data, profile) {
+		t.Fatalf("files=%+v", files)
 	}
 }
 

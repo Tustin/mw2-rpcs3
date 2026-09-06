@@ -3,6 +3,9 @@ package auth
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"sync"
 )
 
 const (
@@ -15,9 +18,13 @@ const (
 	mw2MOTDFilename         = "messageoftheday.info"
 	mw2MOTDMaxSize          = 0x100
 	mw2DefaultMOTD          = "Welcome to Modern Warfare 2 multiplayer"
+	bdStorageUploadUserFile = byte(1)
+	bdStorageUpdateUserFile = byte(2)
+	bdStorageGetFile        = byte(5)
 	bdStorageListOwnerFiles = byte(7)
 	bdStorageListFiles      = byte(8)
-	bdStorageGetFile        = byte(5)
+	mw2ProfileFilename      = "iw4-mpdata"
+	mw2ProfileSize          = 0x2000
 )
 
 type mw2PublisherFile struct {
@@ -138,6 +145,14 @@ func (r *bdBitReader) readType(expected byte) error {
 	return nil
 }
 
+func (r *bdBitReader) readBool() (bool, error) {
+	if err := r.readType(bdTypeBool); err != nil {
+		return false, err
+	}
+	value, err := r.bits.readBits(1)
+	return value != 0, err
+}
+
 func (r *bdBitReader) readU8() (byte, error) {
 	if err := r.readType(bdTypeU8); err != nil {
 		return 0, err
@@ -185,6 +200,24 @@ func (r *bdBitReader) readU64() (uint64, error) {
 	return r.bits.readBits(64)
 }
 
+func (r *bdBitReader) readString(maximum int) (string, error) {
+	if err := r.readType(bdTypeString); err != nil {
+		return "", err
+	}
+	value := make([]byte, 0, maximum)
+	for len(value) <= maximum {
+		character, err := r.bits.readBits(8)
+		if err != nil {
+			return "", err
+		}
+		if character == 0 {
+			return string(value), nil
+		}
+		value = append(value, byte(character))
+	}
+	return "", fmt.Errorf("string exceeds maximum %d", maximum)
+}
+
 func (r *bdBitReader) readBlob(maximum int) ([]byte, error) {
 	if err := r.readType(bdTypeBlob); err != nil {
 		return nil, err
@@ -207,6 +240,10 @@ type mw2StorageRequest struct {
 	offset      uint32
 	maximum     uint16
 	filter      string
+	filename    string
+	firstFlag   bool
+	secondFlag  bool
+	data        []byte
 }
 
 type mw2StorageReplySummary struct {
@@ -215,6 +252,122 @@ type mw2StorageReplySummary struct {
 	operationID   byte
 	resultCount   uint32
 	fileSize      uint32
+}
+
+type mw2UserFile struct {
+	id      uint64
+	ownerID uint64
+	name    string
+	data    []byte
+}
+
+type mw2UserFileStore struct {
+	mu      sync.RWMutex
+	nextID  uint64
+	dir     string
+	byID    map[uint64]mw2UserFile
+	byOwner map[uint64]uint64
+}
+
+func newMW2UserFileStore() *mw2UserFileStore {
+	store := &mw2UserFileStore{nextID: 1, dir: os.Getenv("MW2_PROFILE_DIR"), byID: make(map[uint64]mw2UserFile), byOwner: make(map[uint64]uint64)}
+	store.load()
+	return store
+}
+
+func (s *mw2UserFileStore) profilePath(ownerID uint64) string {
+	return filepath.Join(s.dir, fmt.Sprintf("%016x.bin", ownerID))
+}
+
+func (s *mw2UserFileStore) load() {
+	if s.dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		var ownerID uint64
+		if _, err := fmt.Sscanf(entry.Name(), "%016x.bin", &ownerID); err != nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.dir, entry.Name()))
+		if err != nil || len(data) != mw2ProfileSize {
+			continue
+		}
+		file := mw2UserFile{id: s.nextID, ownerID: ownerID, name: mw2ProfileFilename, data: data}
+		s.nextID++
+		s.byID[file.id] = file
+		s.byOwner[ownerID] = file.id
+	}
+}
+
+func (s *mw2UserFileStore) persist(file mw2UserFile) {
+	if s.dir == "" {
+		return
+	}
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return
+	}
+	_ = os.WriteFile(s.profilePath(file.ownerID), file.data, 0o600)
+}
+
+func (s *mw2UserFileStore) upload(ownerID uint64, name string, data []byte) mw2UserFile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existingID := s.byOwner[ownerID]; existingID != 0 {
+		file := s.byID[existingID]
+		file.name = name
+		file.data = append([]byte(nil), data...)
+		s.byID[existingID] = file
+		s.persist(file)
+		return file
+	}
+	file := mw2UserFile{id: s.nextID, ownerID: ownerID, name: name, data: append([]byte(nil), data...)}
+	s.nextID++
+	s.byID[file.id] = file
+	s.byOwner[ownerID] = file.id
+	s.persist(file)
+	return file
+}
+
+func (s *mw2UserFileStore) update(ownerID, fileID uint64, data []byte) (mw2UserFile, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	file, ok := s.byID[fileID]
+	if !ok || file.ownerID != ownerID {
+		return mw2UserFile{}, false
+	}
+	file.data = append([]byte(nil), data...)
+	s.byID[fileID] = file
+	s.persist(file)
+	return file, true
+}
+
+func (s *mw2UserFileStore) get(fileID uint64) (mw2UserFile, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	file, ok := s.byID[fileID]
+	file.data = append([]byte(nil), file.data...)
+	return file, ok
+}
+
+func (s *mw2UserFileStore) list(ownerID uint64) []mw2UserFile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	files := make([]mw2UserFile, 0, 1)
+	for _, file := range s.byID {
+		if file.ownerID == ownerID {
+			file.data = append([]byte(nil), file.data...)
+			files = append(files, file)
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].id < files[j].id })
+	return files
 }
 
 func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
@@ -229,6 +382,40 @@ func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
 	}
 	request := mw2StorageRequest{operationID: operationID}
 	switch operationID {
+	case bdStorageUploadUserFile:
+		request.value, err = reader.readU8()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage upload context: %w", err)
+		}
+		request.firstFlag, err = reader.readBool()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage upload first flag: %w", err)
+		}
+		request.filename, err = reader.readString(128)
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage upload filename: %w", err)
+		}
+		request.secondFlag, err = reader.readBool()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage upload second flag: %w", err)
+		}
+		request.data, err = reader.readBlob(mw2ProfileSize)
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage upload body: %w", err)
+		}
+	case bdStorageUpdateUserFile:
+		request.value, err = reader.readU8()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage update context: %w", err)
+		}
+		request.fileID, err = reader.readU64()
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage update file ID: %w", err)
+		}
+		request.data, err = reader.readBlob(mw2ProfileSize)
+		if err != nil {
+			return mw2StorageRequest{}, fmt.Errorf("read storage update body: %w", err)
+		}
 	case bdStorageListOwnerFiles:
 		request.value, err = reader.readU8()
 		if err != nil {
@@ -413,12 +600,41 @@ func (c *lsgConnection) storageEmptyListReply() []byte {
 	return writer.bytes()
 }
 
-func (c *lsgConnection) storageOwnerListReply() []byte {
+func writeMW2UserFileInfo(writer *bdBitWriter, file mw2UserFile) {
+	writeMW2FileInfo(writer, mw2PublisherFile{id: file.id, name: file.name, data: file.data})
+}
+
+func (c *lsgConnection) storageOwnerListReply(files []mw2UserFile) []byte {
 	writer := newBDBitWriter()
 	writer.writeU64(c.nextTransactionID())
 	writer.writeU32(bdErrorNone)
 	writer.writeU8(bdStorageListOwnerFiles)
-	writer.writeU32(0)
+	writer.writeU32(uint32(len(files)))
+	for _, file := range files {
+		writer.writeU32(uint32(len(file.data)))
+		writeMW2UserFileInfo(writer, file)
+	}
+	return writer.bytes()
+}
+
+func (c *lsgConnection) storageMutationReply(operationID byte, fileID uint64) []byte {
+	writer := newBDBitWriter()
+	writer.writeU64(c.nextTransactionID())
+	writer.writeU32(bdErrorNone)
+	writer.writeU8(operationID)
+	writer.writeU32(1)
+	writer.writeU64(fileID)
+	return writer.bytes()
+}
+
+func (c *lsgConnection) storageUserGetReply(file mw2UserFile) []byte {
+	writer := newBDBitWriter()
+	writer.writeU64(c.nextTransactionID())
+	writer.writeU32(bdErrorNone)
+	writer.writeU8(bdStorageGetFile)
+	writer.writeU32(uint32(len(file.data)))
+	writeMW2UserFileInfo(writer, file)
+	writer.writeBlob(file.data)
 	return writer.bytes()
 }
 
@@ -520,12 +736,44 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 	}
 	c.lastOperationID = request.operationID
 
+	if c.userFiles == nil {
+		c.userFiles = newMW2UserFileStore()
+	}
 	var reply []byte
 	switch request.operationID {
+	case bdStorageUploadUserFile:
+		if request.filename != mw2ProfileFilename || len(request.data) != mw2ProfileSize {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
+		c.lastTaskSupported = true
+		file := c.userFiles.upload(c.entityID, request.filename, request.data)
+		reply = c.storageMutationReply(request.operationID, file.id)
+	case bdStorageUpdateUserFile:
+		if len(request.data) != mw2ProfileSize {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
+		file, ok := c.userFiles.update(c.entityID, request.fileID, request.data)
+		if !ok {
+			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
+			break
+		}
+		c.lastTaskSupported = true
+		reply = c.storageMutationReply(request.operationID, file.id)
 	case bdStorageListOwnerFiles:
 		c.entityID = request.ownerID
 		c.lastTaskSupported = true
-		reply = c.storageOwnerListReply()
+		files := c.userFiles.list(request.ownerID)
+		if request.offset >= uint32(len(files)) || request.maximum == 0 {
+			files = nil
+		} else {
+			files = files[request.offset:]
+			if len(files) > int(request.maximum) {
+				files = files[:request.maximum]
+			}
+		}
+		reply = c.storageOwnerListReply(files)
 	case bdStorageListFiles:
 		c.lastTaskSupported = true
 		files, loadErr := loadMW2PublisherFiles()
@@ -544,6 +792,12 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		reply = c.storagePublisherListReply(selected)
 	case bdStorageGetFile:
 		c.lastTaskSupported = true
+		if userFile, found := c.userFiles.get(request.fileID); found {
+			c.lastStorageGetFile = userFile.name
+			c.lastStorageGetID = fmt.Sprintf("0x%016x", userFile.id)
+			reply = c.storageUserGetReply(userFile)
+			break
+		}
 		files, loadErr := loadMW2PublisherFiles()
 		if loadErr != nil {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)

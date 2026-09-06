@@ -59,6 +59,7 @@ type RawServer struct {
 	lsgSessions                      *lsgSessionStore
 	matchmakingOnce                  sync.Once
 	matchmakingSessions              *mw2MatchmakingStore
+	userFiles                        *mw2UserFileStore
 	suppressSelfOnly                 bool
 	preferEarlierHosts               bool
 	bandwidthIPv4                    [4]byte
@@ -85,6 +86,7 @@ func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, rea
 		lsgIdleTimeout:          lsgIdleTimeout,
 		lsgSessions:             newLSGSessionStore(),
 		matchmakingSessions:     newMW2MatchmakingStore(),
+		userFiles:               newMW2UserFileStore(),
 		bandwidthSendDurationMS: 50,
 	}
 }
@@ -694,6 +696,7 @@ func (s *RawServer) newLSGConnection(key, pendingKey [24]byte) (*lsgConnection, 
 		return nil, err
 	}
 	connection.matchmakingSessions = s.matchmakingStore()
+	connection.userFiles = s.userFiles
 	connection.suppressSelfOnly = s.suppressSelfOnly
 	connection.preferEarlierHosts = s.preferEarlierHosts
 	return connection, nil
