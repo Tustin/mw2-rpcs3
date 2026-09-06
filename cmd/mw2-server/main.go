@@ -46,6 +46,10 @@ func main() {
 	authServer.SetSensitiveLogging(cfg.LogSensitive)
 	authServer.SetMatchmakingSuppressSelfOnly(cfg.SuppressSelfOnly)
 	authServer.SetMatchmakingPreferEarlierHosts(cfg.PreferEarlierHosts)
+	if err := authServer.SetStatsDatabase(cfg.StatsDBPath); err != nil {
+		logger.Error("stats database initialization failed", "error", err)
+		os.Exit(1)
+	}
 	natEndpoint, err := net.ResolveUDPAddr("udp", cfg.NATAddr)
 	if err != nil {
 		logger.Error("bandwidth endpoint initialization failed", "error", err)

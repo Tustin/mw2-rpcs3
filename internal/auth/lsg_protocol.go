@@ -102,6 +102,7 @@ type lsgConnection struct {
 	lastBandwidthPhase               string
 	matchmakingSessions              *mw2MatchmakingStore
 	userFiles                        *mw2UserFileStore
+	stats                            *mw2StatsStore
 	suppressSelfOnly                 bool
 	preferEarlierHosts               bool
 	lastMatchmakingSessions          []mw2StoredMatchmakingSession
@@ -475,6 +476,9 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 	if serviceID == bdServiceMatchmaking {
 		return c.handleMatchmakingTask(payload)
 	}
+	if serviceID == bdServiceStats {
+		return c.handleStatsTask(payload)
+	}
 	operationID, ok := decodeLSGTaskOperation(payload)
 	if !ok {
 		operationID, ok = decodeLegacyLSGTaskOperation(payload)
@@ -515,9 +519,6 @@ func (c *lsgConnection) handleTask(serviceID byte, payload []byte) (byte, []byte
 			writer.writeU32(0)
 			writer.writeU32(0)
 		}), true
-	case serviceID == bdServiceStats && operationID == 4:
-		c.lastTaskSupported = true
-		return lsgTaskReplyType, c.taskReply(operationID, bdErrorNone, nil), true
 	case serviceID == bdServicePerformance && operationID == 2:
 		_, entityIDs, valid := parsePerformanceValuesRequest(payload)
 		if !valid {

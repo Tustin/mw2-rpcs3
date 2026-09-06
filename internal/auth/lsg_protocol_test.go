@@ -118,7 +118,7 @@ func TestDecodeObservedLSGStatsTaskOperation(t *testing.T) {
 	}
 }
 
-func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
+func TestHandleObservedLSGStatsTaskReturnsEmptyResult(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
 		t.Fatal(err)
@@ -131,17 +131,29 @@ func TestHandleObservedLSGStatsTaskReturnsEmptySuccess(t *testing.T) {
 	if session.lastServiceID != bdServiceStats || session.lastOperationID != 4 {
 		t.Fatalf("stats service=%d operation=%d", session.lastServiceID, session.lastOperationID)
 	}
-	if len(result) != 26 {
-		t.Fatalf("stats reply length=%d payload=%x", len(result), result)
+	reader, err := newBDTaskReplyReader(result)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if transaction := binary.LittleEndian.Uint64(result[1:9]); transaction != 0 {
-		t.Fatalf("stats transaction=%d", transaction)
+	transaction, err := reader.readU64()
+	if err != nil || transaction != 0 {
+		t.Fatalf("stats transaction=%d err=%v payload=%x", transaction, err, result)
 	}
-	if errorCode := binary.LittleEndian.Uint32(result[10:14]); errorCode != bdErrorNone {
-		t.Fatalf("stats error=%d", errorCode)
+	errorCode, err := reader.readU32()
+	if err != nil || errorCode != bdErrorNone {
+		t.Fatalf("stats error=%d err=%v payload=%x", errorCode, err, result)
 	}
-	if result[14] != bdTypeU8 || result[15] != 4 || result[16] != bdTypeU32 || binary.LittleEndian.Uint32(result[17:21]) != 0 || result[21] != bdTypeU32 || binary.LittleEndian.Uint32(result[22:26]) != 0 {
-		t.Fatalf("malformed stats reply=%x", result)
+	operationID, err := reader.readU8()
+	if err != nil || operationID != bdStatsReadByEntity {
+		t.Fatalf("stats operation=%d err=%v payload=%x", operationID, err, result)
+	}
+	returned, err := reader.readU32()
+	if err != nil || returned != 0 {
+		t.Fatalf("stats returned=%d err=%v payload=%x", returned, err, result)
+	}
+	total, err := reader.readU32()
+	if err != nil || total != 0 {
+		t.Fatalf("stats total=%d err=%v payload=%x", total, err, result)
 	}
 }
 

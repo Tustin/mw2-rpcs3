@@ -11,7 +11,7 @@ rule session_immediateDeleteTinySessions 1
 rule party_minlobbytime 60
 
 gametype ffa
-name english "Free-for-all1111"
+name english "Free-for-all"
 name french "M�l�e g�n�rale"
 name italian "Tutti contro tutti"
 name german "Frei f�r alle"
@@ -22,7 +22,7 @@ name japanese "�t���[�E�t�H�[�E�I�[��"
 script dm
 
 playlist 1 // ffa gametype
-name english "Testing"
+name english "Christmas 24/7"
 name french "M�l�e g�n�rale"
 name italian "Tutti contro tutti"
 name german "Frei f�r alle"
@@ -31,7 +31,7 @@ name polish "Tryb dowolny"
 name russian "������ �� ����"
 name japanese "�t���[�E�t�H�[�E�I�[��"
 name korean "������"
-description english "Straight up Deathmatch.  Every man for himself.  Kill everyone.\n\n__________\nPlayers:4-8"
+description english "Custom Christmas map 24/7"
 description french "Match � mort classique. Une r�gle : chacun pour soi. N'�pargnez personne.\n\n__________\nJoueurs : 4-8"
 description italian "Deathmatch, nudo e crudo. Ognuno per s�. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
 description german "Ganz normales Deathmatch. Jeder k�mpft hier f�r sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
@@ -48,4 +48,4 @@ rule scr_dm_scorelimit 1500
 rule cg_everyonehearseveryone 1
 
 
-mp_rust,ffa,1
+mp_christmas_xmas,ffa,1

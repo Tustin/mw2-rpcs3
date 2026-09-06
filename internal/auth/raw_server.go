@@ -60,6 +60,7 @@ type RawServer struct {
 	matchmakingOnce                  sync.Once
 	matchmakingSessions              *mw2MatchmakingStore
 	userFiles                        *mw2UserFileStore
+	stats                            *mw2StatsStore
 	suppressSelfOnly                 bool
 	preferEarlierHosts               bool
 	bandwidthIPv4                    [4]byte
@@ -108,6 +109,18 @@ func (s *RawServer) SetMatchmakingSuppressSelfOnly(enabled bool) {
 
 func (s *RawServer) SetMatchmakingPreferEarlierHosts(enabled bool) {
 	s.preferEarlierHosts = enabled
+}
+
+func (s *RawServer) SetStatsDatabase(path string) error {
+	store, err := newMW2StatsStore(path)
+	if err != nil {
+		return err
+	}
+	if s.stats != nil {
+		_ = s.stats.close()
+	}
+	s.stats = store
+	return nil
 }
 
 // SetBandwidthEndpoint configures the client-reachable endpoint used by the
@@ -697,6 +710,7 @@ func (s *RawServer) newLSGConnection(key, pendingKey [24]byte) (*lsgConnection, 
 	}
 	connection.matchmakingSessions = s.matchmakingStore()
 	connection.userFiles = s.userFiles
+	connection.stats = s.stats
 	connection.suppressSelfOnly = s.suppressSelfOnly
 	connection.preferEarlierHosts = s.preferEarlierHosts
 	return connection, nil

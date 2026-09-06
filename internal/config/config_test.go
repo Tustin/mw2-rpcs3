@@ -11,6 +11,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", "")
 	t.Setenv("MW2_MATCHMAKING_PREFER_EARLIER_HOSTS", "")
 	t.Setenv("MW2_LOG_SENSITIVE", "")
+	t.Setenv("MW2_STATS_DB_PATH", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
 	t.Setenv("MW2_BANDWIDTH_SEND_DURATION_MS", "")
 	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "")
@@ -27,10 +28,22 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.SuppressSelfOnly ||
 		cfg.PreferEarlierHosts ||
 		cfg.LogSensitive ||
+		cfg.StatsDBPath != "mw2-stats.db" ||
 		cfg.MaxFrameBytes != 1<<20 ||
 		cfg.BandwidthSendDurationMS != 50 ||
 		cfg.BandwidthFinalizeReceivePeriodMS != nil {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadStatsDBPathOverride(t *testing.T) {
+	t.Setenv("MW2_STATS_DB_PATH", "/tmp/mw2-test-stats.db")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StatsDBPath != "/tmp/mw2-test-stats.db" {
+		t.Fatalf("StatsDBPath = %q, want explicit override", cfg.StatsDBPath)
 	}
 }
 
