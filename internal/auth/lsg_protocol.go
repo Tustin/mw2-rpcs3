@@ -173,7 +173,7 @@ func newLSGConnectionWithPendingKey(key, pendingKey [24]byte) (*lsgConnection, e
 		key:                 key,
 		pendingKey:          pendingKey,
 		matchmakingSessions: newMW2MatchmakingStore(),
-		userFiles:           newMW2UserFileStore(),
+		userFiles:           newMemoryMW2UserFileStore(),
 	}
 	var random [12]byte
 	if _, err := rand.Read(random[:]); err != nil {

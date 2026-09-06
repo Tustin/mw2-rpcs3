@@ -1,11 +1,12 @@
 package auth
 
 import (
+	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
-	"sync"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -262,116 +263,150 @@ type mw2UserFile struct {
 }
 
 type mw2UserFileStore struct {
-	mu      sync.RWMutex
-	nextID  uint64
-	dir     string
-	byID    map[uint64]mw2UserFile
-	byOwner map[uint64]uint64
+	db *sql.DB
 }
 
-func newMW2UserFileStore() *mw2UserFileStore {
-	store := &mw2UserFileStore{nextID: 1, dir: os.Getenv("MW2_PROFILE_DIR"), byID: make(map[uint64]mw2UserFile), byOwner: make(map[uint64]uint64)}
-	store.load()
+func newMW2UserFileStore(path string) (*mw2UserFileStore, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open profile database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS user_files (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		owner_id BLOB NOT NULL UNIQUE,
+		filename TEXT NOT NULL,
+		data BLOB NOT NULL CHECK(length(data) = 8192)
+	)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize profile database: %w", err)
+	}
+	return &mw2UserFileStore{db: db}, nil
+}
+
+func newMemoryMW2UserFileStore() *mw2UserFileStore {
+	store, err := newMW2UserFileStore(":memory:")
+	if err != nil {
+		panic(err)
+	}
 	return store
 }
 
-func (s *mw2UserFileStore) profilePath(ownerID uint64) string {
-	return filepath.Join(s.dir, fmt.Sprintf("%016x.bin", ownerID))
+func (s *mw2UserFileStore) close() error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	return s.db.Close()
 }
 
-func (s *mw2UserFileStore) load() {
-	if s.dir == "" {
-		return
-	}
-	entries, err := os.ReadDir(s.dir)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		var ownerID uint64
-		if _, err := fmt.Sscanf(entry.Name(), "%016x.bin", &ownerID); err != nil {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(s.dir, entry.Name()))
-		if err != nil || len(data) != mw2ProfileSize {
-			continue
-		}
-		file := mw2UserFile{id: s.nextID, ownerID: ownerID, name: mw2ProfileFilename, data: data}
-		s.nextID++
-		s.byID[file.id] = file
-		s.byOwner[ownerID] = file.id
-	}
+func userFileEntityKey(entityID uint64) []byte {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, entityID)
+	return key
 }
 
-func (s *mw2UserFileStore) persist(file mw2UserFile) {
-	if s.dir == "" {
-		return
+func userFileEntityID(key []byte) (uint64, bool) {
+	if len(key) != 8 {
+		return 0, false
 	}
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
-		return
-	}
-	_ = os.WriteFile(s.profilePath(file.ownerID), file.data, 0o600)
+	return binary.BigEndian.Uint64(key), true
 }
 
-func (s *mw2UserFileStore) upload(ownerID uint64, name string, data []byte) mw2UserFile {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existingID := s.byOwner[ownerID]; existingID != 0 {
-		file := s.byID[existingID]
-		file.name = name
-		file.data = append([]byte(nil), data...)
-		s.byID[existingID] = file
-		s.persist(file)
-		return file
+func scanMW2UserFile(scanner interface{ Scan(...any) error }) (mw2UserFile, error) {
+	var file mw2UserFile
+	var ownerKey []byte
+	var id int64
+	if err := scanner.Scan(&id, &ownerKey, &file.name, &file.data); err != nil {
+		return mw2UserFile{}, err
 	}
-	file := mw2UserFile{id: s.nextID, ownerID: ownerID, name: name, data: append([]byte(nil), data...)}
-	s.nextID++
-	s.byID[file.id] = file
-	s.byOwner[ownerID] = file.id
-	s.persist(file)
-	return file
-}
-
-func (s *mw2UserFileStore) update(ownerID, fileID uint64, data []byte) (mw2UserFile, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	file, ok := s.byID[fileID]
-	if !ok || file.ownerID != ownerID {
-		ownerFileID := s.byOwner[ownerID]
-		file, ok = s.byID[ownerFileID]
-		if !ok || file.ownerID != ownerID || file.name != mw2ProfileFilename {
-			return mw2UserFile{}, false
-		}
+	ownerID, ok := userFileEntityID(ownerKey)
+	if !ok || id <= 0 || len(file.data) != mw2ProfileSize {
+		return mw2UserFile{}, fmt.Errorf("invalid stored profile")
 	}
-	file.data = append([]byte(nil), data...)
-	s.byID[file.id] = file
-	s.persist(file)
-	return file, true
-}
-
-func (s *mw2UserFileStore) get(fileID uint64) (mw2UserFile, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	file, ok := s.byID[fileID]
+	file.id = uint64(id)
+	file.ownerID = ownerID
 	file.data = append([]byte(nil), file.data...)
-	return file, ok
+	return file, nil
 }
 
-func (s *mw2UserFileStore) list(ownerID uint64) []mw2UserFile {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	files := make([]mw2UserFile, 0, 1)
-	for _, file := range s.byID {
-		if file.ownerID == ownerID {
-			file.data = append([]byte(nil), file.data...)
-			files = append(files, file)
+func (s *mw2UserFileStore) upload(ownerID uint64, name string, data []byte) (mw2UserFile, error) {
+	if _, err := s.db.Exec(`INSERT INTO user_files (owner_id, filename, data) VALUES (?, ?, ?)
+		ON CONFLICT(owner_id) DO UPDATE SET filename = excluded.filename, data = excluded.data`, userFileEntityKey(ownerID), name, data); err != nil {
+		return mw2UserFile{}, fmt.Errorf("store profile: %w", err)
+	}
+	file, ok, err := s.getByOwner(ownerID)
+	if err != nil {
+		return mw2UserFile{}, err
+	}
+	if !ok {
+		return mw2UserFile{}, fmt.Errorf("stored profile is missing")
+	}
+	return file, nil
+}
+
+func (s *mw2UserFileStore) update(ownerID, fileID uint64, data []byte) (mw2UserFile, bool, error) {
+	result, err := s.db.Exec(`UPDATE user_files SET data = ? WHERE id = ? AND owner_id = ?`, data, fileID, userFileEntityKey(ownerID))
+	if err != nil {
+		return mw2UserFile{}, false, fmt.Errorf("update profile: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return mw2UserFile{}, false, fmt.Errorf("read updated profile count: %w", err)
+	}
+	if rows == 0 {
+		file, ok, err := s.getByOwner(ownerID)
+		if err != nil || !ok || file.name != mw2ProfileFilename {
+			return mw2UserFile{}, false, err
+		}
+		fileID = file.id
+		if _, err := s.db.Exec(`UPDATE user_files SET data = ? WHERE id = ?`, data, fileID); err != nil {
+			return mw2UserFile{}, false, fmt.Errorf("update owner profile: %w", err)
 		}
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].id < files[j].id })
-	return files
+	file, ok, err := s.get(fileID)
+	return file, ok, err
+}
+
+func (s *mw2UserFileStore) get(fileID uint64) (mw2UserFile, bool, error) {
+	file, err := scanMW2UserFile(s.db.QueryRow(`SELECT id, owner_id, filename, data FROM user_files WHERE id = ?`, fileID))
+	if err == sql.ErrNoRows {
+		return mw2UserFile{}, false, nil
+	}
+	if err != nil {
+		return mw2UserFile{}, false, fmt.Errorf("get profile: %w", err)
+	}
+	return file, true, nil
+}
+
+func (s *mw2UserFileStore) getByOwner(ownerID uint64) (mw2UserFile, bool, error) {
+	file, err := scanMW2UserFile(s.db.QueryRow(`SELECT id, owner_id, filename, data FROM user_files WHERE owner_id = ?`, userFileEntityKey(ownerID)))
+	if err == sql.ErrNoRows {
+		return mw2UserFile{}, false, nil
+	}
+	if err != nil {
+		return mw2UserFile{}, false, fmt.Errorf("get owner profile: %w", err)
+	}
+	return file, true, nil
+}
+
+func (s *mw2UserFileStore) list(ownerID uint64) ([]mw2UserFile, error) {
+	rows, err := s.db.Query(`SELECT id, owner_id, filename, data FROM user_files WHERE owner_id = ? ORDER BY id`, userFileEntityKey(ownerID))
+	if err != nil {
+		return nil, fmt.Errorf("list owner profiles: %w", err)
+	}
+	defer rows.Close()
+	files := make([]mw2UserFile, 0, 1)
+	for rows.Next() {
+		file, err := scanMW2UserFile(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan owner profile: %w", err)
+		}
+		files = append(files, file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list owner profiles: %w", err)
+	}
+	return files, nil
 }
 
 func parseMW2StorageRequest(payload []byte) (mw2StorageRequest, error) {
@@ -746,7 +781,7 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 	c.lastOperationID = request.operationID
 
 	if c.userFiles == nil {
-		c.userFiles = newMW2UserFileStore()
+		c.userFiles = newMemoryMW2UserFileStore()
 	}
 	var reply []byte
 	switch request.operationID {
@@ -755,15 +790,23 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
 			break
 		}
+		file, err := c.userFiles.upload(c.entityID, request.filename, request.data)
+		if err != nil {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
 		c.lastTaskSupported = true
-		file := c.userFiles.upload(c.entityID, request.filename, request.data)
 		reply = c.storageMutationReply(request.operationID, file.id)
 	case bdStorageUpdateUserFile:
 		if len(request.data) != mw2ProfileSize {
 			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
 			break
 		}
-		file, ok := c.userFiles.update(c.entityID, request.fileID, request.data)
+		file, ok, err := c.userFiles.update(c.entityID, request.fileID, request.data)
+		if err != nil {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
 		if !ok {
 			reply = c.storageErrorReply(request.operationID, bdErrorNoFile)
 			break
@@ -773,7 +816,11 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 	case bdStorageListOwnerFiles:
 		c.entityID = request.ownerID
 		c.lastTaskSupported = true
-		files := c.userFiles.list(request.ownerID)
+		files, err := c.userFiles.list(request.ownerID)
+		if err != nil {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
 		if request.offset >= uint32(len(files)) || request.maximum == 0 {
 			files = nil
 		} else {
@@ -801,7 +848,12 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		reply = c.storagePublisherListReply(selected)
 	case bdStorageGetFile:
 		c.lastTaskSupported = true
-		if userFile, found := c.userFiles.get(request.fileID); found {
+		userFile, found, err := c.userFiles.get(request.fileID)
+		if err != nil {
+			reply = c.storageErrorReply(request.operationID, bdErrorServiceNotAvailable)
+			break
+		}
+		if found {
 			c.lastStorageGetFile = userFile.name
 			c.lastStorageGetID = fmt.Sprintf("0x%016x", userFile.id)
 			reply = c.storageUserGetReply(userFile)

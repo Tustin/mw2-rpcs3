@@ -74,37 +74,37 @@ set stopspeed 100
 
 gametype tdm
 name english "Team Deathmatch"
-name french "Match а mort par йquipe"
+name french "Match пїЅ mort par пїЅquipe"
 name italian "Deathmatch a squadre"
 name german "Team-Deathmatch"
 name spanish "Duelo por equipos"
-name polish "DM Druїynowy"
-name russian "Командный бой"
-name japanese "ѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
+name polish "DM DruпїЅynowy"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ"
+name japanese "пїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
 script war
 teambased
 
 gametype bp_tdm
 name english "Bulletproof Team Deathmatch"
-name french "Match а mort йquipe Insensible"
+name french "Match пїЅ mort пїЅquipe Insensible"
 name italian "Deathmatch a squadre Antiproiettile"
 name german "Kugelsicher - Team-Deathmatch"
 name spanish "Duelo por equipos a prueba de balas"
-name polish "Kuloodporny DM druїyn."
-name russian "Командный бой, пуленепробиваемые"
-name japanese "ѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃF–h’e"
+name polish "Kuloodporny DM druпїЅyn."
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅFпїЅhпїЅe"
 script war
 teambased
 
 gametype 3p_tdm
 name english "3rd Person Team Deathmatch"
-name french "Match а mort йquipe 3e personne"
-name italian "Deathmatch a squadre 3° P."
+name french "Match пїЅ mort пїЅquipe 3e personne"
+name italian "Deathmatch a squadre 3пїЅ P."
 name german "Externe Ansicht - Team-Deathmatch"
 name spanish "Duelo por equipos en TP"
-name polish "DM Druїynowy - 3. osoba"
-name russian "Командный бой, от 3-го лица"
-name japanese "TPSѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
+name polish "DM DruпїЅynowy - 3. osoba"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
 script war
 teambased
 rule camera_thirdperson 1
@@ -112,13 +112,13 @@ rule scr_war_scorelimit 5000
 
 gametype hc_tdm
 name english "Hardcore Team Deathmatch"
-name french "Match а mort par йquipe Hardcore."
+name french "Match пїЅ mort par пїЅquipe Hardcore."
 name italian "Deathmatch a squadre - veterano"
 name german "Hardcore-Team-Deathmatch"
 name spanish "Duelo por equipos extremo"
-name polish "DM Druїynowy hardcore"
-name russian "Командный бой, повыш. сложность"
-name japanese "ѓnЃ[ѓhѓRѓAЃFѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
+name polish "DM DruпїЅynowy hardcore"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
 script war
 teambased
 hardcore
@@ -133,13 +133,13 @@ rule g_hardcore 1
 
 gametype ric_tdm
 name english "Ricochet Team Deathmatch"
-name french "Match а mort par йquipe Ricochet"
+name french "Match пїЅ mort par пїЅquipe Ricochet"
 name italian "Deathmatch ricochet a squadre"
-name german "Querschlдger-Team-Deathmatch"
+name german "QuerschlпїЅger-Team-Deathmatch"
 name spanish "Duelo por equipos con rebote"
-name polish "DM Druїynowy rykoszet"
-name russian "Командный бой, рикошет"
-name japanese "ѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃF’µ’e"
+name polish "DM DruпїЅynowy rykoszet"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅFпїЅпїЅпїЅe"
 script war
 teambased
 hardcore
@@ -154,13 +154,13 @@ rule g_hardcore 1
 
 gametype turbo_tdm
 name english "Team Deathmatch Express"
-name french "Match а mort par йquipe Express"
+name french "Match пїЅ mort par пїЅquipe Express"
 name italian "Deathmatch a squadre turbo"
 name german "Express-Team-Deathmatch"
-name spanish "Duelo por equipos exprйs"
-name polish "Ekspresowy DM druїynowy"
-name russian "Быстрый командный бой"
-name japanese "’ZЏkЊ^ЃFѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
+name spanish "Duelo por equipos exprпїЅs"
+name polish "Ekspresowy DM druпїЅynowy"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ"
+name japanese "пїЅZпїЅkпїЅ^пїЅFпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
 script war
 teambased
 
@@ -174,20 +174,20 @@ name italian "Dominio"
 name german "Herrschaft"
 name spanish "Dominio"
 name polish "Dominacja"
-name russian "Превосходство"
-name japanese "ѓhѓ~ѓlЃ[ѓVѓ‡ѓ“"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅhпїЅ~пїЅlпїЅ[пїЅVпїЅпїЅпїЅпїЅ"
 script dom
 teambased
 
 gametype 3p_dom
 name english "3rd Person Domination"
 name french "Domination 3e personne"
-name italian "Dominio 3° P."
+name italian "Dominio 3пїЅ P."
 name german "Externe Ansicht - Herrschaft"
 name spanish "Dominio en TP"
 name polish "Dominacja - 3. osoba"
-name russian "Превосходство, от 3-го лица"
-name japanese "TPSѓhѓ~ѓlЃ[ѓVѓ‡ѓ“"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅhпїЅ~пїЅlпїЅ[пїЅVпїЅпїЅпїЅпїЅ"
 script dom
 teambased
 rule camera_thirdperson 1
@@ -196,25 +196,25 @@ rule camera_thirdperson 1
 
 gametype hq
 name english "Headquarters"
-name french "Quartier gйnйral "
+name french "Quartier gпїЅnпїЅral "
 name italian "QG"
 name german "Hauptquartier"
 name spanish "Cuarteles"
 name polish "Sztab"
-name russian "Штаб"
-name japanese "ѓwѓbѓhѓNѓHЃ[ѓ^Ѓ["
+name russian "пїЅпїЅпїЅпїЅ"
+name japanese "пїЅwпїЅbпїЅhпїЅNпїЅHпїЅ[пїЅ^пїЅ["
 script koth
 teambased
 
 gametype hq_pro
 name english "Headquarters Pro"
-name french "Quartier gйnйral Pro"
+name french "Quartier gпїЅnпїЅral Pro"
 name italian "QG Pro"
 name german "Hauptquartier Pro"
 name spanish "Cuarteles (Pro)"
 name polish "Sztab prof."
-name russian "Штаб, профи"
-name japanese "ѓwѓbѓhѓNѓHЃ[ѓ^Ѓ[ЃFѓvѓЌ"
+name russian "пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅwпїЅbпїЅhпїЅNпїЅHпїЅ[пїЅ^пїЅ[пїЅFпїЅvпїЅпїЅ"
 script koth
 teambased
 rule koth_spawntime 30
@@ -223,13 +223,13 @@ rule scr_koth_timelimit 20
 
 gametype 3p_hq_pro
 name english "3rd Person Headquarters Pro"
-name french "Quartier gйnйral Pro 3e personne"
-name italian "QG Pro 3° P."
+name french "Quartier gпїЅnпїЅral Pro 3e personne"
+name italian "QG Pro 3пїЅ P."
 name german "Externe Ansicht - Hauptquartier Pro"
 name spanish "Cuarteles (Pro) en TP"
 name polish "Sztab prof. - 3. osoba"
-name russian "Штаб, профи, от 3-го лица"
-name japanese "TPSѓwѓbѓhѓNѓIЃ[ѓ^Ѓ[ЃFѓvѓЌ"
+name russian "пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅwпїЅbпїЅhпїЅNпїЅIпїЅ[пїЅ^пїЅ[пїЅFпїЅvпїЅпїЅ"
 script koth
 teambased
 rule koth_spawntime 30
@@ -239,13 +239,13 @@ rule scr_koth_timelimit 20
 
 gametype ric_hq_pro
 name english "Hardcore Ricochet: HQ Pro"
-name french "Ricochet Hardcore : Quartier gйnйral Pro"
+name french "Ricochet Hardcore : Quartier gпїЅnпїЅral Pro"
 name italian "Ricochet veterano: QG Pro"
-name german "Hardcore-Querschlдger: HQ Pro"
+name german "Hardcore-QuerschlпїЅger: HQ Pro"
 name spanish "Extremo con rebote: Cuarteles (Pro)"
 name polish "Rykosz. hard.: Sztab pro."
-name russian "Штаб, профи (рикошет, повыш. сложность)"
-name japanese "’µ’eѓnЃ[ѓhѓRѓAЃFHQѓvѓЌ"
+name russian "пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)"
+name japanese "пїЅпїЅпїЅeпїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFHQпїЅvпїЅпїЅ"
 script koth
 teambased
 hardcore
@@ -268,21 +268,21 @@ name french "Sabotage"
 name italian "Sabotaggio"
 name german "Sabotage"
 name spanish "Sabotaje"
-name polish "Sabotaї"
-name russian "Диверсия"
-name japanese "ѓTѓ{ѓ^Ѓ[ѓWѓ…"
+name polish "SabotaпїЅ"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅTпїЅ{пїЅ^пїЅ[пїЅWпїЅпїЅ"
 script sab
 teambased
 
 gametype 3p_sab
 name english "3rd Person Sabotage"
 name french "Sabotage 3e personne"
-name italian "Sabotaggio 3° P."
+name italian "Sabotaggio 3пїЅ P."
 name german "Externe Ansicht: Sabotage"
 name spanish "Sabotaje en TP"
-name polish "Sabotaї 3. osoba"
-name russian "Диверсия, от 3-го лица"
-name japanese "TPSѓTѓ{ѓ^Ѓ[ѓWѓ…"
+name polish "SabotaпїЅ 3. osoba"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅTпїЅ{пїЅ^пїЅ[пїЅWпїЅпїЅ"
 script sab
 teambased
 rule camera_thirdperson 1
@@ -293,23 +293,23 @@ gametype sd
 name english "Search and Destroy"
 name french "Recherche et destruction"
 name italian "Cerca e distruggi"
-name german "Suchen und Zerstцren"
+name german "Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir"
-name polish "Znajdџ i zniszcz"
-name russian "Бомба"
-name japanese "ѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓC"
+name polish "ZnajdпїЅ i zniszcz"
+name russian "пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅC"
 script sd
 teambased
 
 gametype die_sd
 name english "Die Hard Search and Destroy"
 name french "Rech. & destr. Increvable"
-name italian "Modalitа Cerca e distruggi Duro a morire"
-name german "Stirb langsam - Suchen und Zerstцren"
+name italian "ModalitпїЅ Cerca e distruggi Duro a morire"
+name german "Stirb langsam - Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir radical"
 name polish "Trudne odszukaj i zniszcz"
-name russian "Бомба, последний шанс"
-name japanese "ѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓCЃFѓ_ѓCѓnЃ[ѓh"
+name russian "пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "пїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅCпїЅFпїЅ_пїЅCпїЅnпїЅ[пїЅh"
 script sd
 teambased
 
@@ -317,11 +317,11 @@ gametype hc_sd
 name english "Hardcore Search and Destroy"
 name french "Recherche et destruction Hardcore"
 name italian "Cerca e distruggi - veterano"
-name german "Hardcore-Suchen und Zerstцren"
+name german "Hardcore-Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir extremo"
 name polish "Odszukaj i zniszcz hardcore"
-name russian "Бомба, повыш. сложность"
-name japanese "ѓnЃ[ѓhѓRѓAЃFѓTЃ[ѓ`&ѓfѓXѓgѓЌѓC"
+name russian "пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFпїЅTпїЅ[пїЅ`&пїЅfпїЅXпїЅgпїЅпїЅпїЅC"
 script sd
 teambased
 hardcore
@@ -337,11 +337,11 @@ gametype ric_sd
 name english "Hardcore Search and Destroy"
 name french "Recherche et destruction Hardcore"
 name italian "Cerca e distruggi - veterano"
-name german "Hardcore-Suchen und Zerstцren"
+name german "Hardcore-Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir extremo"
-name polish "Znajdџ i zniszcz hardcore"
-name russian "Бомба, повыш. сложность"
-name japanese "ѓnЃ[ѓhѓRѓAЃFѓTЃ[ѓ`&ѓfѓXѓgѓЌѓC"
+name polish "ZnajdпїЅ i zniszcz hardcore"
+name russian "пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFпїЅTпїЅ[пїЅ`&пїЅfпїЅXпїЅgпїЅпїЅпїЅC"
 script sd
 teambased
 hardcore
@@ -356,12 +356,12 @@ rule g_hardcore 1
 gametype 3p_sd
 name english "3rd Person Search and Destroy"
 name french "Rech. & destr. 3e personne"
-name italian "Cerca e Distruggi 3° P."
-name german "Externe Ansicht - Suchen und Zerstцren"
+name italian "Cerca e Distruggi 3пїЅ P."
+name german "Externe Ansicht - Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir en TP"
 name polish "Odszukaj i zniszcz - 3. osoba"
-name russian "Бомба, от 3-го лица"
-name japanese "TPSѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓC"
+name russian "пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅC"
 script sd
 teambased
 rule camera_thirdperson 1
@@ -371,13 +371,13 @@ rule camera_thirdperson 1
 
 gametype arena
 name english "Arena"
-name french "Arиne"
+name french "ArпїЅne"
 name italian "Arena"
 name german "Arena"
 name spanish "Arena"
 name polish "Arena"
-name russian "Арена"
-name japanese "ѓAѓЉЃ[ѓi"
+name russian "пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅAпїЅпїЅпїЅ[пїЅi"
 script arena
 teambased
 
@@ -385,25 +385,25 @@ teambased
 
 gametype dd
 name english "Demolition"
-name french "Dйmolition"
+name french "DпїЅmolition"
 name italian "Demolizione"
 name german "Sprengkommando"
-name spanish "Demoliciуn"
+name spanish "DemoliciпїЅn"
 name polish "Wysadzanie"
-name russian "Уничтожение"
-name japanese "ѓfѓ‚ѓЉѓbѓVѓ‡ѓ“"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅfпїЅпїЅпїЅпїЅпїЅbпїЅVпїЅпїЅпїЅпїЅ"
 script dd
 teambased
 
 gametype 3p_dd
 name english "3rd Person Demolition"
-name french "Dйmolition 3e personne"
-name italian "Demolizione 3° P."
+name french "DпїЅmolition 3e personne"
+name italian "Demolizione 3пїЅ P."
 name german "Externe Ansicht - Sprengkommando"
-name spanish "Demoliciуn en TP"
+name spanish "DemoliciпїЅn en TP"
 name polish "Wysadzanie - 3. osoba"
-name russian "Уничтожение, от 3-го лица"
-name japanese "TPSѓfѓ‚ѓЉѓbѓVѓ‡ѓ“"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅfпїЅпїЅпїЅпїЅпїЅbпїЅVпїЅпїЅпїЅпїЅ"
 script dd
 teambased
 rule camera_thirdperson 1
@@ -412,24 +412,24 @@ rule camera_thirdperson 1
 
 gametype ffa
 name english "Free-for-all"
-name french "Mкlйe gйnйrale"
+name french "MпїЅlпїЅe gпїЅnпїЅrale"
 name italian "Tutti contro tutti"
-name german "Frei fьr alle"
+name german "Frei fпїЅr alle"
 name spanish "Duelo a muerte"
 name polish "Dowolna"
-name russian "Каждый за себя"
-name japanese "ѓtѓЉЃ[ЃEѓtѓHЃ[ЃEѓIЃ[ѓ‹"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "пїЅtпїЅпїЅпїЅ[пїЅEпїЅtпїЅHпїЅ[пїЅEпїЅIпїЅ[пїЅпїЅ"
 script dm
 
 gametype 3p_ffa
 name english "3rd Person Free-for-all"
-name french "Mкlйe gйnйrale 3e personne"
-name italian "Tutti contro tutti 3° P."
-name german "Externe Ansicht - Frei fьr alle"
+name french "MпїЅlпїЅe gпїЅnпїЅrale 3e personne"
+name italian "Tutti contro tutti 3пїЅ P."
+name german "Externe Ansicht - Frei fпїЅr alle"
 name spanish "Duelo a muerte en TP"
 name polish "Dowolna - 3. osoba"
-name russian "Каждый за себя, от 3-го лица"
-name japanese "TPSѓtѓЉЃ[ЃEѓtѓHЃ[ЃEѓIЃ[ѓ‹"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅtпїЅпїЅпїЅ[пїЅEпїЅtпїЅHпїЅ[пїЅEпїЅIпїЅ[пїЅпїЅ"
 script dm
 rule camera_thirdperson 1
 
@@ -437,11 +437,11 @@ gametype cage_ffa
 name english "Cage Match"
 name french "Match en cage"
 name italian "Duello"
-name german "Kдfigschlacht"
+name german "KпїЅfigschlacht"
 name spanish "Duelo personal"
 name polish "Mecz w kl."
-name russian "Бой в клетке"
-name japanese "ѓPЃ[ѓWѓ}ѓbѓ`"
+name russian "пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅPпїЅ[пїЅWпїЅ}пїЅbпїЅ`"
 script dm
 rule scr_dm_scorelimit 1000
 rule scr_xpscale 2
@@ -449,12 +449,12 @@ rule scr_xpscale 2
 gametype 3p_cage_ffa
 name english "3rd Person Cage Match"
 name french "Match en cage 3e personne"
-name italian "Duello 3° P."
-name german "Externe Ansicht - Kдfigschlacht"
+name italian "Duello 3пїЅ P."
+name german "Externe Ansicht - KпїЅfigschlacht"
 name spanish "Duelo personal en TP"
 name polish "Mecz w klatce - 3. os"
-name russian "Бой в клетке, от 3-го лица"
-name japanese "TPSѓPЃ[ѓWѓ}ѓbѓ`"
+name russian "пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅPпїЅ[пїЅWпїЅ}пїЅbпїЅ`"
 script dm
 rule scr_dm_scorelimit 1000
 rule camera_thirdperson 1
@@ -462,13 +462,13 @@ rule scr_xpscale 2
 
 gametype hc_ffa
 name english "Hardcore Free-for-all"
-name french "Mкlйe gйnйrale (Hardcore)"
+name french "MпїЅlпїЅe gпїЅnпїЅrale (Hardcore)"
 name italian "Tutti contro tutti - veterano"
-name german "Hardcore-Frei fьr alle"
+name german "Hardcore-Frei fпїЅr alle"
 name spanish "Duelo a muerte extremo"
 name polish "Hardcore dowolny"
-name russian "Каждый за себя, повыш. сложность"
-name japanese "ѓtѓЉЃ[ЃEѓtѓHЃ[ЃEѓIЃ[ѓ‹ЃiѓnЃ[ѓhѓRѓAЃj"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅtпїЅпїЅпїЅ[пїЅEпїЅtпїЅHпїЅ[пїЅEпїЅIпїЅ[пїЅпїЅпїЅiпїЅnпїЅ[пїЅhпїЅRпїЅAпїЅj"
 script dm
 hardcore
 rule scr_player_healthregentime 0
@@ -485,20 +485,20 @@ name italian "Cattura la bandiera"
 name german "Capture the Flag"
 name spanish "Tomar la bandera"
 name polish "Zdobycie flagi"
-name russian "Захват флага"
-name japanese "ѓLѓѓѓvѓ`ѓѓЃ[ҐѓUҐѓtѓ‰ѓbѓO"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅLпїЅпїЅпїЅvпїЅ`пїЅпїЅпїЅ[пїЅпїЅUпїЅпїЅtпїЅпїЅпїЅbпїЅO"
 script ctf
 teambased
 
 gametype 3p_ctf
 name english "3rd Person Capture the Flag"
 name french "Capture du drapeau 3e personne"
-name italian "Cattura la bandiera 3° P."
+name italian "Cattura la bandiera 3пїЅ P."
 name german "Externe Ansicht - Capture the Flag"
 name spanish "Tomar la bandera en TP"
 name polish "Zdobycie flagi - 3. osoba"
-name russian "Захват флага, от 3-го лица"
-name japanese "TPSѓLѓѓѓvѓ`ѓѓЃ[ЃEѓUЃEѓtѓ‰ѓbѓO"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅLпїЅпїЅпїЅvпїЅ`пїЅпїЅпїЅ[пїЅEпїЅUпїЅEпїЅtпїЅпїЅпїЅbпїЅO"
 script ctf
 teambased
 rule camera_thirdperson 1
@@ -510,8 +510,8 @@ name italian "CLB a una bandiera"
 name german "CTF - Eine Flagge"
 name spanish "TLB 1 bandera"
 name polish "ZF 1 flaga"
-name russian "Захват флага, один флаг"
-name japanese "ѓЏѓ“ѓtѓ‰ѓbѓOCTF"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "пїЅпїЅпїЅпїЅпїЅtпїЅпїЅпїЅbпїЅOCTF"
 script oneflag
 teambased
 rule scr_oneflag_roundswitch 1
@@ -520,36 +520,36 @@ rule scr_oneflag_roundswitch 1
 
 gametype nuke
 name english "Global Thermonuclear War"
-name french "Guerre thermonuclйaire mondiale"
+name french "Guerre thermonuclпїЅaire mondiale"
 name italian "Guerra termonucleare globale"
 name german "Thermonuklearer Krieg"
 name spanish "Guerra termonuclear global"
 name polish "Globalna wojna atomowa"
-name russian "Третья мировая"
-name japanese "‘S–Кђв–Еђн‘€"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅSпїЅКђпїЅЕђн‘€"
 script gtnw
 teambased
 
 
 playlist 1 // tdm gametype
 name english "Team Deathmatch"
-name french "Match а mort par йquipe"
+name french "Match пїЅ mort par пїЅquipe"
 name italian "Deathmatch a squadre"
 name german "Team-Deathmatch"
 name spanish "Duelo por equipos"
-name polish "DM Druїynowy"
-name russian "Командный бой"
-name japanese "ѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
-name korean "ЖА µҐЅєёЕДЎ"
+name polish "DM DruпїЅynowy"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ"
+name japanese "пїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
+name korean "пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ"
 description english "Straight up Team Deathmatch.  Use teamwork to kill enemy players and reach the score limit.\n\n__________\nPlayers:8-12"
-description french "Un Match а mort par йquipe classique. Progressez avec vos coйquipiers pour exterminer vos ennemis et atteindre la limite de score.\n\n__________\nJoueurs : 8-12"
+description french "Un Match пїЅ mort par пїЅquipe classique. Progressez avec vos coпїЅquipiers pour exterminer vos ennemis et atteindre la limite de score.\n\n__________\nJoueurs : 8-12"
 description italian "Deathmatch a squadre, nudo e crudo. Coordina il lavoro di squadra per eliminare i giocatori nemici e realizzare il punteggio stabilito.\n\n__________\nGiocatori: 8-12"
 description german "Ganz normales Team-Deathmatch. Schalten Sie mit Teamwork gegnerische Spieler aus und erreichen Sie das Punktlimit.\n\n__________\nSpieler: 8-12"
-description spanish "Duelo por equipos clбsico. Colabora con tus compaсeros para acabar con los enemigos y alcanza el lнmite de puntos.\n\n__________\nJugadores: 8-12"
-description polish "Normalny DM Druїynowy. Jako druїyna zabijajcie przeciwnikуw i osi№gnijcie limit pkt.\n__________\nGracze:8-12"
-description russian "Сражение между двумя командами. Уничтожайте противников и зарабатывайте очки совместно с партнерами по команде.\n\n__________\nИгроки: 8-12"
-description japanese "ђ^‚БЊьЏџ•‰‚Мѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃB\n“GѓvѓЊѓCѓ„Ѓ[‚рѓ`Ѓ[ѓЂѓЏЃ[ѓN‚Е“|‚µ\nѓXѓRѓAѓЉѓ~ѓbѓg‚Й“ћ’B‚·‚к‚ОЏџ‚ї‚ѕЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
-description korean "БшБ¤ЗС ЖА µҐЅєёЕДЎ. »уґл ЗГ·№АМѕоµйА» БЧАМ°н ГЦ°н БЎјцїЎ µµґЮЗП±в А§ЗШ ЖАїцЕ©ё¦ №ЯИЦЗШ¶у.\n__________\nЗГ·№АМѕо:8-12"
+description spanish "Duelo por equipos clпїЅsico. Colabora con tus compaпїЅeros para acabar con los enemigos y alcanza el lпїЅmite de puntos.\n\n__________\nJugadores: 8-12"
+description polish "Normalny DM DruпїЅynowy. Jako druпїЅyna zabijajcie przeciwnikпїЅw i osiпїЅgnijcie limit pkt.\n__________\nGracze:8-12"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅ^пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅМѓ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅB\nпїЅGпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅ`пїЅ[пїЅпїЅпїЅпїЅпїЅ[пїЅNпїЅЕ“|пїЅпїЅ\nпїЅXпїЅRпїЅAпїЅпїЅпїЅ~пїЅbпїЅgпїЅЙ“пїЅпїЅBпїЅпїЅпїЅпїЅОЏпїЅпїЅпїЅпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
+description korean "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ. пїЅпїЅпїЅ пїЅГ·пїЅпїЅМѕпїЅпїЅпїЅпїЅ пїЅпїЅпїЅМ°пїЅ пїЅЦ°пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅП±пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅЕ©пїЅпїЅ пїЅпїЅпїЅпїЅпїЅШ¶пїЅ.\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:8-12"
 unlockxp 0
 maxparty 6
 rule party_minplayers 8
@@ -575,23 +575,23 @@ mp_underpass,tdm,4
 
 playlist 2 // tdm gametype
 name english "Mercenary Team Deathmatch"
-name french "Match а mort Mercenaire"
+name french "Match пїЅ mort Mercenaire"
 name italian "Deathmatch a squadre mercenari"
-name german "Sцldner-Team-Deathmatch"
+name german "SпїЅldner-Team-Deathmatch"
 name spanish "Duelo por equipos mercenario"
-name polish "DM Druїynowy najemnicy"
-name russian "Командный бой, наемники"
-name japanese "—b•єЃFѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
-name korean "ёУЅГіКё® ЖА µҐЅєёЕДЎ"
+name polish "DM DruпїЅynowy najemnicy"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅbпїЅпїЅпїЅFпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
+name korean "пїЅУЅГіКёпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ"
 description english "Team Deathmatch with random teams, no parties allowed. Use teamwork to kill enemy players and reach the score limit.\n__________\nPlayers:8-12\nNo MW2 Parties"
-description french "Match а mort en йquipe avec йquipes alйatoires. Progressez avec vos coйquipiers pour exterminer vos ennemis et atteindre la limite de score.\n__________\nJoueurs : 8-12\nPas d'йquipe MW2"
+description french "Match пїЅ mort en пїЅquipe avec пїЅquipes alпїЅatoires. Progressez avec vos coпїЅquipiers pour exterminer vos ennemis et atteindre la limite de score.\n__________\nJoueurs : 8-12\nPas d'пїЅquipe MW2"
 description italian "Deathmatch a squadre con squadre casuali e niente gruppi. Coordina il lavoro di squadra per eliminare i giocatori nemici e realizzare il punteggio stabilito.\n__________\nGiocatori: 8-12\nNiente gruppi MW2"
-description german "Team-Deathmatch mit zufдlligen Teams, keine Gruppen erlaubt. Schalten Sie mit Teamwork gegnerische Spieler aus und erreichen Sie das Punktlimit.\n__________\nSpieler: 8-12\nKeine MW2-Gruppen"
-description spanish "Duelo por equipos con equipos al azar, no se admiten grupos. Colabora con tus compaсeros para acabar con los enemigos y alcanza el lнmite de puntos.\n__________\nJugadores: 8-12\nNo se admiten grupos de MW2"
-description polish "DM Druї. z losowymi druї., zespoіy niedozwolone. Jako druїyna, zabijajcie przeciwnikуw i osi№gnijcie limit punktуw.\n__________\nGracze:8-12\nBez zespoіуw MW2"
-description russian "'Командный бой'' со случайными составами команд. Постоянные команды не допускаются. Уничтожайте противников и зарабатывайте очки совместно с партнерами по команде.\n__________\nИгроки: 8-12\nКоманды MW2 не допускаются"
-description japanese "ѓ‰ѓ“ѓ_ѓЂѓ`Ѓ[ѓЂ•Тђ¬‚Мѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃB\n‚»‚МЏк‚Е•Тђ¬‚і‚к‚Ѕѓ`Ѓ[ѓЂ‚ЕAЊg‚рЋж‚иЃA\n“G‚рЌUЊ‚‚µ‚ДѓXѓRѓAѓЉѓ~ѓbѓg‚р–ЪЋw‚·ЃB\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\nMW2ѓpЃ[ѓeѓBЃ[‚МЋќ‚їЌћ‚Э‹ЦЋ~"
-description korean "№«АЫА§АЗ ЖА°ъАЗ µҐЅєёЕДЎ. ЖДЖј Згїл єТ°Ў. ЖАїцЕ©ё¦ ЕлЗШ АыА» БЧАМ°н Б¦ЗС БЎјцїЎ µµґЮЗПЅКЅГїА.\n__________\nЗГ·№АМѕо:8-12"
+description german "Team-Deathmatch mit zufпїЅlligen Teams, keine Gruppen erlaubt. Schalten Sie mit Teamwork gegnerische Spieler aus und erreichen Sie das Punktlimit.\n__________\nSpieler: 8-12\nKeine MW2-Gruppen"
+description spanish "Duelo por equipos con equipos al azar, no se admiten grupos. Colabora con tus compaпїЅeros para acabar con los enemigos y alcanza el lпїЅmite de puntos.\n__________\nJugadores: 8-12\nNo se admiten grupos de MW2"
+description polish "DM DruпїЅ. z losowymi druпїЅ., zespoпїЅy niedozwolone. Jako druпїЅyna, zabijajcie przeciwnikпїЅw i osiпїЅgnijcie limit punktпїЅw.\n__________\nGracze:8-12\nBez zespoпїЅпїЅw MW2"
+description russian "'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ'' пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅ MW2 пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+description japanese "пїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅ`пїЅ[пїЅпїЅпїЅТђпїЅпїЅМѓ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅB\nпїЅпїЅпїЅМЏпїЅЕ•ТђпїЅпїЅпїЅпїЅк‚ЅпїЅ`пїЅ[пїЅпїЅпїЅЕAпїЅgпїЅпїЅпїЅпїЅпїЅA\nпїЅGпїЅпїЅпїЅUпїЅпїЅпїЅпїЅпїЅДѓXпїЅRпїЅAпїЅпїЅпїЅ~пїЅbпїЅgпїЅпїЅЪЋwпїЅпїЅпїЅB\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nMW2пїЅpпїЅ[пїЅeпїЅBпїЅ[пїЅМЋпїЅпїЅпїЅпїЅпїЅпїЅЭ‹ЦЋ~"
+description korean "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ. пїЅпїЅЖј пїЅпїЅпїЅ пїЅТ°пїЅ. пїЅпїЅпїЅпїЅЕ©пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅМ°пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅПЅКЅГїпїЅ.\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:8-12"
 unlockxp 0
 maxparty 1
 rule party_minplayers 8
@@ -617,22 +617,22 @@ mp_underpass,tdm,4
 
 playlist 3 // ffa gametype
 name english "Free-for-all"
-name french "Mкlйe gйnйrale"
+name french "MпїЅlпїЅe gпїЅnпїЅrale"
 name italian "Tutti contro tutti"
-name german "Frei fьr alle"
+name german "Frei fпїЅr alle"
 name spanish "Duelo a muerte"
 name polish "Tryb dowolny"
-name russian "Каждый за себя"
-name japanese "ѓtѓЉЃ[ЃEѓtѓHЃ[ЃEѓIЃ[ѓ‹"
-name korean "°іАОАь"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "пїЅtпїЅпїЅпїЅ[пїЅEпїЅtпїЅHпїЅ[пїЅEпїЅIпїЅ[пїЅпїЅ"
+name korean "пїЅпїЅпїЅпїЅпїЅпїЅ"
 description english "Straight up Deathmatch.  Every man for himself.  Kill everyone.\n\n__________\nPlayers:4-8"
-description french "Match а mort classique. Une rиgle : chacun pour soi. N'йpargnez personne.\n\n__________\nJoueurs : 4-8"
-description italian "Deathmatch, nudo e crudo. Ognuno per sй. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
-description german "Ganz normales Deathmatch. Jeder kдmpft hier fьr sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
-description spanish "Duelo clбsico. Sбlvese quien pueda. Mata a todo el mundo.\n\n__________\nJugadores: 4-8"
-description polish "Deathmatch. Kaїdy dziaіa na wіasn№ rкkк i prуbuje zabiж innych.\n__________\nGracze:4-8"
-description russian "Сражение каждого против каждого. Союзников здесь нет: убивайте всех.\n\n__________\nИгроки: 4-8"
-description japanese "ђ^‚БЊьЏџ•‰‚МѓfѓXѓ}ѓbѓ`ЃB\nЋ©•Є€ИЉO‚Н‚·‚Ч‚Д“GЃB“G‚Н‚·‚Ч‚ДЋE‚№ЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF4Ѓ`8"
+description french "Match пїЅ mort classique. Une rпїЅgle : chacun pour soi. N'пїЅpargnez personne.\n\n__________\nJoueurs : 4-8"
+description italian "Deathmatch, nudo e crudo. Ognuno per sпїЅ. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
+description german "Ganz normales Deathmatch. Jeder kпїЅmpft hier fпїЅr sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
+description spanish "Duelo clпїЅsico. SпїЅlvese quien pueda. Mata a todo el mundo.\n\n__________\nJugadores: 4-8"
+description polish "Deathmatch. KaпїЅdy dziaпїЅa na wпїЅasnпїЅ rпїЅkпїЅ i prпїЅbuje zabiпїЅ innych.\n__________\nGracze:4-8"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 4-8"
+description japanese "пїЅ^пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅМѓfпїЅXпїЅ}пїЅbпїЅ`пїЅB\nпїЅпїЅпїЅпїЅпїЅИЉOпїЅН‚пїЅпїЅЧ‚Д“GпїЅBпїЅGпїЅН‚пїЅпїЅЧ‚ДЋEпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF4пїЅ`8"
 unlockxp 0
 maxparty 1
 rule party_minplayers 4
@@ -665,18 +665,18 @@ name italian "Dominio"
 name german "Herrschaft"
 name spanish "Dominio"
 name polish "Dominacja"
-name russian "Превосходство"
-name japanese "ѓhѓ~ѓlЃ[ѓVѓ‡ѓ“"
-name korean "Бц№и"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅhпїЅ~пїЅlпїЅ[пїЅVпїЅпїЅпїЅпїЅ"
+name korean "пїЅпїЅпїЅпїЅ"
 description english "3 flags in the level must be captured.  Your team gets points for having control of a flag.  The more flags your team holds, the more points you gain.\n__________\nPlayers:8-12"
-description french "3 drapeaux doivent кtre capturйs dans le niveau. Votre йquipe gagne des points lorsqu'elle contrфle un drapeau. Plus votre йquipe contrфle de drapeaux, plus vous gagnez de points.\n__________\nJoueurs : 8-12"
-description italian "Lo scopo и prendere possesso delle 3 bandiere presenti nel livello. La tua squadra ottiene un punto per ogni bandiera conquistata. Piщ saranno le bandiere possedute dalla squadra e piщ punti otterrete.\n__________\nGiocatori: 8-12"
-description german "3 Flaggen im Level mьssen erobert werden. Ihr Team punktet fьr die Kontrolle einer Flagge. Je mehr Flaggen Ihr Team hдlt, desto mehr Punkte bekommt es.\n__________\nSpieler: 8-12"
-description spanish "Hay que tomar 3 banderas en el nivel. Tu equipo recibirб puntos cada vez que controle una bandera. Cuantas mбs banderas controlйis, mбs puntos obtendrйis.\n__________\nJugadores: 8-12"
-description polish "Trzeba przej№ж 3 flagi na mapie. Druїyna zdobywa punkty za przejкcie kontroli nad flag№. Im wiкcej flag posiada twoja druї., tym wiкcej pkt. zdobywasz.\n__________\nGracze:8-12"
-description russian "На территории есть 3 флага, за контроль над которыми начисляются очки. Чем больше флагов захватит ваша команда, тем больше очков вы получите.\n__________\nИгроки: 8-12"
-description japanese "ѓXѓeЃ[ѓW“а‚М3‚В‚Мѓtѓ‰ѓbѓO‚р’DЋж‚·‚йЃB\nѓtѓ‰ѓbѓO‚І‚Ж‚Йѓ|ѓCѓ“ѓg‚Є“ь‚й‚Ѕ‚Я\n‚И‚й‚Ч‚­‘Ѕ‚­’DЋж‚·‚й•K—v‚Є‚ ‚йЃB\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
-description korean "3°іАЗ ±к№ЯА» И№µжЗШ¶у. іКАЗ ЖААМ ±к№ЯАЗ ЕлБ¦±ЗА» °ЎБьАё·ОЅб БЎјцё¦ ѕт°Ф µИґЩ. ±к№ЯА» ґх ё№АМ И№µжЗТјц·П ґх ё№Ає БЎјцё¦ ѕтґВґЩ.\n__________\nЗГ·№АМѕо:8-12"
+description french "3 drapeaux doivent пїЅtre capturпїЅs dans le niveau. Votre пїЅquipe gagne des points lorsqu'elle contrпїЅle un drapeau. Plus votre пїЅquipe contrпїЅle de drapeaux, plus vous gagnez de points.\n__________\nJoueurs : 8-12"
+description italian "Lo scopo пїЅ prendere possesso delle 3 bandiere presenti nel livello. La tua squadra ottiene un punto per ogni bandiera conquistata. PiпїЅ saranno le bandiere possedute dalla squadra e piпїЅ punti otterrete.\n__________\nGiocatori: 8-12"
+description german "3 Flaggen im Level mпїЅssen erobert werden. Ihr Team punktet fпїЅr die Kontrolle einer Flagge. Je mehr Flaggen Ihr Team hпїЅlt, desto mehr Punkte bekommt es.\n__________\nSpieler: 8-12"
+description spanish "Hay que tomar 3 banderas en el nivel. Tu equipo recibirпїЅ puntos cada vez que controle una bandera. Cuantas mпїЅs banderas controlпїЅis, mпїЅs puntos obtendrпїЅis.\n__________\nJugadores: 8-12"
+description polish "Trzeba przejпїЅпїЅ 3 flagi na mapie. DruпїЅyna zdobywa punkty za przejпїЅcie kontroli nad flagпїЅ. Im wiпїЅcej flag posiada twoja druпїЅ., tym wiпїЅcej pkt. zdobywasz.\n__________\nGracze:8-12"
+description russian "пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ 3 пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ. пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅXпїЅeпїЅ[пїЅWпїЅпїЅпїЅпїЅ3пїЅВ‚МѓtпїЅпїЅпїЅbпїЅOпїЅпїЅDпїЅж‚·пїЅпїЅB\nпїЅtпїЅпїЅпїЅbпїЅOпїЅпїЅпїЅЖ‚Йѓ|пїЅCпїЅпїЅпїЅgпїЅпїЅпїЅпїЅпїЅй‚ЅпїЅпїЅ\nпїЅИ‚пїЅЧ‚пїЅпїЅпїЅпїЅпїЅпїЅDпїЅж‚·пїЅпїЅKпїЅvпїЅпїЅпїЅпїЅпїЅпїЅB\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
+description korean "3пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ И№пїЅпїЅпїЅШ¶пїЅ. пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅОЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅИґпїЅ. пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ И№пїЅпїЅпїЅТјпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅВґпїЅ.\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:8-12"
 unlockxp 3600
 maxparty 6
 rule party_minplayers 8
@@ -706,19 +706,19 @@ name french "Guerre de territoire"
 name italian "Battaglia terrestre"
 name german "Bodenangriff"
 name spanish "Guerra terrestre"
-name polish "Wojn№ l№d."
-name russian "Наземные войны"
-name japanese "ѓOѓ‰ѓEѓ“ѓhЃEѓEѓHЃ["
-name korean "Бц»у АьАп"
+name polish "WojnпїЅ lпїЅd."
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅOпїЅпїЅпїЅEпїЅпїЅпїЅhпїЅEпїЅEпїЅHпїЅ["
+name korean "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ"
 description english "Big team games - Team Deathmatch and Domination.\n\n__________\nPlayers:12-18"
-description french "Un mode taillй pour le jeu en йquipe avec, au menu, Match а mort par йquipe et Domination.\n\n__________\nJoueurs : 12-18"
-description italian "Modalitа per squadre numerose: Deathmatch a squadre e Dominio.\n\n__________\nGiocatori: 12-18"
-description german "GroЯe Teamspiele - Team-Deathmatch und Herrschaft.\n\n__________\nSpieler: 12-18"
+description french "Un mode taillпїЅ pour le jeu en пїЅquipe avec, au menu, Match пїЅ mort par пїЅquipe et Domination.\n\n__________\nJoueurs : 12-18"
+description italian "ModalitпїЅ per squadre numerose: Deathmatch a squadre e Dominio.\n\n__________\nGiocatori: 12-18"
+description german "GroпїЅe Teamspiele - Team-Deathmatch und Herrschaft.\n\n__________\nSpieler: 12-18"
 description spanish "Partidas con equipos numerosos: Duelo por equipos y Dominio.\n\n__________\nJugadores: 12-18"
-description polish "Liczne druїyny - DM Druї. i Dominacja\n\n__________\nGracze: 12-18"
-description russian "Игры в режимах '''Командный бой'' и ''Превосходство'' с большим числом участников.\n\n__________\nИгроки: 12-18"
-description japanese "‘еђlђ”ѓ`Ѓ[ѓЂЊь‚«ЃBѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`‚Ж\nѓhѓ~ѓlЃ[ѓVѓ‡ѓ“ЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF12Ѓ`18"
-description korean "Е« ґЬГј °ж±в - ЖА µҐЅєёЕДЎїН Б¦ѕР\n__________\nЗГ·№АМѕо:12-18"
+description polish "Liczne druпїЅyny - DM DruпїЅ. i Dominacja\n\n__________\nGracze: 12-18"
+description russian "пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ '''пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ'' пїЅ ''пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ'' пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 12-18"
+description japanese "пїЅпїЅlпїЅпїЅпїЅ`пїЅ[пїЅпїЅпїЅпїЅпїЅпїЅпїЅBпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅпїЅ\nпїЅhпїЅ~пїЅlпїЅ[пїЅVпїЅпїЅпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF12пїЅ`18"
+description korean "Е« пїЅпїЅГј пїЅпїЅпїЅ - пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎпїЅпїЅ пїЅпїЅпїЅпїЅ\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:12-18"
 unlockxp 3600
 maxparty 9
 rule party_minplayers 12
@@ -761,21 +761,21 @@ mp_underpass,tdm,1
 
 playlist 6 // dd gametype
 name english "Demolition"
-name french "Dйmolition"
+name french "DпїЅmolition"
 name italian "Demolizione"
 name german "Sprengkommando"
-name spanish "Demoliciуn"
+name spanish "DemoliciпїЅn"
 name polish "Wysadzanie"
-name russian "Уничтожение"
-name japanese "ѓfѓ‚ѓЉѓbѓVѓ‡ѓ“"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅfпїЅпїЅпїЅпїЅпїЅbпїЅVпїЅпїЅпїЅпїЅ"
 description english "Attackers must destroy the 2 bomb sites within the time limit.\n\n__________\nPlayers:8-12\nRespawning is ON"
-description french "Les assaillants doivent dйtruire les 2 sites oщ se trouvent les bombes dans le temps imparti.\n\n__________\nJoueurs : 8-12\n La rйapparition est activйe."
+description french "Les assaillants doivent dпїЅtruire les 2 sites oпїЅ se trouvent les bombes dans le temps imparti.\n\n__________\nJoueurs : 8-12\n La rпїЅapparition est activпїЅe."
 description italian "Gli attaccanti devono distruggere le 2 bombe entro il limite di tempo.\n\n__________\nGiocatori: 8-12\nRientri attivi"
-description german "Die Angreifer mьssen die beiden Bombenplдtze innerhalb des Zeitlimits zerstцren.\n\n__________\nSpieler: 8-12\nWiedereinstieg ist aktiviert."
+description german "Die Angreifer mпїЅssen die beiden BombenplпїЅtze innerhalb des Zeitlimits zerstпїЅren.\n\n__________\nSpieler: 8-12\nWiedereinstieg ist aktiviert."
 description spanish "Los atacantes deben destruir 2 zonas de bombas antes de que acabe el tiempo.\n\n__________\nJugadores: 8-12\nSe permiten las reapariciones"
-description polish "Atakuj№cy musz№ zniszczyж 2 cele w ci№gu okreњlonego czasu. Odradzanie dostкpne.\n__________\nGracze:8-12"
-description russian "Задача атакующих - уничтожить 2 цели с помощью бомб за отведенное время.\n\n__________\nИгроки: 8-12\nВозрождение ВОЗМОЖНО"
-description japanese "ЌUЊ‚‘¤‚Н2‰УЏЉ‚М”љ”jѓ|ѓCѓ“ѓg‚рЋћЉФ“а\n‚Й”j‰у‚µ‚И‚Ї‚к‚О‚И‚з‚И‚ўЃB•њЉ€‚ ‚иЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\n•њЉ€ЃFѓIѓ“"
+description polish "AtakujпїЅcy muszпїЅ zniszczyпїЅ 2 cele w ciпїЅgu okreпїЅlonego czasu. Odradzanie dostпїЅpne.\n__________\nGracze:8-12"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 2 пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+description japanese "пїЅUпїЅпїЅпїЅпїЅпїЅпїЅ2пїЅУЏпїЅпїЅМ”пїЅпїЅjпїЅ|пїЅCпїЅпїЅпїЅgпїЅпїЅпїЅпїЅпїЅФ“пїЅ\nпїЅЙ”jпїЅу‚µ‚И‚пїЅпїЅпїЅО‚И‚пїЅИ‚пїЅпїЅBпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nпїЅпїЅпїЅпїЅпїЅFпїЅIпїЅпїЅ"
 unlockxp 13500
 maxparty 6
 rule party_minplayers 8
@@ -805,17 +805,17 @@ name french "Sabotage"
 name italian "Sabotaggio"
 name german "Sabotage"
 name spanish "Sabotaje"
-name polish "Sabotaї"
-name russian "Диверсия"
-name japanese "ѓTѓ{ѓ^Ѓ[ѓWѓ…"
+name polish "SabotaпїЅ"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅTпїЅ{пїЅ^пїЅ[пїЅWпїЅпїЅ"
 description english "Grab the neutral bomb and plant it on the enemy's bomb site.  First to detonate wins!\n\n__________\nPlayers:8-12"
-description french "Rйcupйrez la bombe neutre et placez-la sur le site ennemi. Le premier а faire exploser la bombe gagne !\n\n__________\nJoueurs : 8-12"
+description french "RпїЅcupпїЅrez la bombe neutre et placez-la sur le site ennemi. Le premier пїЅ faire exploser la bombe gagne !\n\n__________\nJoueurs : 8-12"
 description italian "Prendi la bomba neutrale e piazzala sulla postazione bomba nemica. Il primo a farla detonare vince!\n\n__________\nGiocatori: 8-12"
-description german "Schnappen Sie sich die neutrale Bombe und platzieren Sie sie auf dem feindlichen Bombenplatz. Das Team, das die Bombe zuerst explodieren lдsst, gewinnt.\n\n__________\nSpieler: 8-12"
-description spanish "Coloca la bomba neutral en la zona enemiga. ЎGana quien detone primero!\n\n__________\nJugadores: 8-12"
-description polish "Weџ bombк i podіуї j№ w pobliїu wrog. celu. Osoba, ktуra pierwsza zdet. bombк, wygrywa\n__________\nGracze:8-12"
-description russian "Захватите нейтральную бомбу и взорвите объект противника. Команда, первой сделавшая это, побеждает!\n\n__________\nИгроки: 8-12"
-description japanese "”љ’e‚рЏE‚Б‚Д“Gђw‚М”љ”jѓ|ѓCѓ“ѓg‚ЙђЭ’u‚µ‚лЃB\nЌЕЏ‰‚Й‹N”љ‚µ‚Ѕ‘¤‚МЏџ—‚ѕЃI\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
+description german "Schnappen Sie sich die neutrale Bombe und platzieren Sie sie auf dem feindlichen Bombenplatz. Das Team, das die Bombe zuerst explodieren lпїЅsst, gewinnt.\n\n__________\nSpieler: 8-12"
+description spanish "Coloca la bomba neutral en la zona enemiga. пїЅGana quien detone primero!\n\n__________\nJugadores: 8-12"
+description polish "WeпїЅ bombпїЅ i podпїЅпїЅ jпїЅ w pobliпїЅu wrog. celu. Osoba, ktпїЅra pierwsza zdet. bombпїЅ, wygrywa\n__________\nGracze:8-12"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ!\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅпїЅпїЅeпїЅпїЅпїЅEпїЅпїЅпїЅД“GпїЅwпїЅМ”пїЅпїЅjпїЅ|пїЅCпїЅпїЅпїЅgпїЅЙђЭ’uпїЅпїЅпїЅпїЅB\nпїЅЕЏпїЅпїЅЙ‹NпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅМЏпїЅпїЅпїЅпїЅпїЅпїЅI\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
 unlockxp 29700
 maxparty 6
 rule party_minplayers 8
@@ -841,22 +841,22 @@ mp_underpass,sab,1
 
 playlist 8 // hq gametype
 name english "Headquarters Pro"
-name french "Quartier gйnйral Pro"
+name french "Quartier gпїЅnпїЅral Pro"
 name italian "QG Pro"
 name german "Hauptquartier Pro"
 name spanish "Cuarteles (Pro)"
 name polish "Sztab prof."
-name russian "Штаб, профи"
-name japanese "ѓwѓbѓhѓNѓHЃ[ѓ^Ѓ[ЃFѓvѓЌ"
-name korean "»з·ЙєО"
+name russian "пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅwпїЅbпїЅhпїЅNпїЅHпїЅ[пїЅ^пїЅ[пїЅFпїЅvпїЅпїЅ"
+name korean "пїЅпїЅЙєпїЅ"
 description english "A target HQ is marked and activates in 30 seconds.  Capture it and defend it.  You gain points the longer you hold it.\n__________\nPlayers:8-12"
-description french "Capturez et dйfendez le QG cible indiquй et activй dans les 30 secondes. Plus vous le tenez, plus vous marquez de points.\n__________\nJoueurs :8-12"
-description italian "Un QG bersaglio viene indicato e attivato in 30 secondi. Catturalo e difendilo. Piщ a lungo lo difendi, piщ punti ottieni.\n__________\nGiocatori: 8-12"
-description german "Ein Hauptquartier wird als Ziel markiert und nach 30 Sekunden aktiviert. Erobern und halten Sie es. Je lдnger sie es halten, desto mehr Punkte bekommen Sie.\n__________\nSpieler: 8-12"
+description french "Capturez et dпїЅfendez le QG cible indiquпїЅ et activпїЅ dans les 30 secondes. Plus vous le tenez, plus vous marquez de points.\n__________\nJoueurs :8-12"
+description italian "Un QG bersaglio viene indicato e attivato in 30 secondi. Catturalo e difendilo. PiпїЅ a lungo lo difendi, piпїЅ punti ottieni.\n__________\nGiocatori: 8-12"
+description german "Ein Hauptquartier wird als Ziel markiert und nach 30 Sekunden aktiviert. Erobern und halten Sie es. Je lпїЅnger sie es halten, desto mehr Punkte bekommen Sie.\n__________\nSpieler: 8-12"
 description spanish "Cuarteles marcados y activados en 30 seg. Tomar y defender. Retenlos.\n__________\nJugadores: 8-12"
-description polish "Wybrany sztab aktywuje siк za 30 sek.  Zajmij sztab i broс go. Im dіuїej utrzymasz kontrolк, tym wiкcej otrzymasz pkt.\n__________\nGracze:8-12"
-description russian "На территории есть штаб, захват которого можно начать спустя 30 секунд после старта. Захватите и удерживайте его. За контроль над штабом начисляются очки.\n__________\nИгроки: 8-12"
-description japanese "–Ъ•W‚МЋi—Я•”‚Нѓ}Ѓ[ѓLѓ“ѓO‚і‚кЃA30•b€И“а‚Й\n‹N“®‚·‚йЃB’DЋж‚µ‚Ѕ‚¤‚¦‚Е–h‰q‚µ‚лЃB\nЋз‚Б‚ЅЋћЉФ‚Є’·‚ў‚Щ‚ЗЃAЌ‚“ѕ“_‚рЉl“ѕ‚Е‚«‚йЃB\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
+description polish "Wybrany sztab aktywuje siпїЅ za 30 sek.  Zajmij sztab i broпїЅ go. Im dпїЅuпїЅej utrzymasz kontrolпїЅ, tym wiпїЅcej otrzymasz pkt.\n__________\nGracze:8-12"
+description russian "пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ 30 пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ. пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅЪ•WпїЅМЋiпїЅЯ•пїЅпїЅНѓ}пїЅ[пїЅLпїЅпїЅпїЅOпїЅпїЅпїЅпїЅA30пїЅbпїЅИ“пїЅпїЅпїЅ\nпїЅNпїЅпїЅпїЅпїЅпїЅпїЅBпїЅDпїЅж‚µпїЅпїЅпїЅпїЅпїЅпїЅпїЅЕ–hпїЅqпїЅпїЅпїЅпїЅB\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅФ‚пїЅпїЅпїЅпїЅпїЅпїЅЩ‚ЗЃAпїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅlпїЅпїЅпїЅЕ‚пїЅпїЅпїЅB\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
 unlockxp 29700
 maxparty 6
 rule party_minplayers 8
@@ -884,21 +884,21 @@ playlist 9 // sd gametype
 name english "Search and Destroy"
 name french "Recherche et destruction"
 name italian "Cerca e distruggi"
-name german "Suchen und Zerstцren"
+name german "Suchen und ZerstпїЅren"
 name spanish "Buscar y destruir"
-name polish "Znajdџ i zniszcz"
-name russian "Бомба"
-name japanese "ѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓC"
-name korean "јц»ц ј¶ёк"
+name polish "ZnajdпїЅ i zniszcz"
+name russian "пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅC"
+name korean "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ"
 description english "No respawning, defend and destroy the objective.\n\n__________\nPlayers:8-12\nRespawning is OFF"
-description french "Pas de rйapparition. Cherchez et dйtruisez l'objectif.\n\n__________\nJoueurs : 8-12\nLa rйapparition est DЙSACTIVЙE."
+description french "Pas de rпїЅapparition. Cherchez et dпїЅtruisez l'objectif.\n\n__________\nJoueurs : 8-12\nLa rпїЅapparition est DпїЅSACTIVпїЅE."
 description italian "Niente rientri, difendi e distruggi l'obiettivo.\n\n__________\nGiocatori: 8-12\nRientri disattivi"
-description german "Kein Wiedereinstieg; verteidigen oder zerstцren Sie das Ziel.\n\n__________\nSpieler: 8-12\nWiedereinstieg ist deaktiviert."
+description german "Kein Wiedereinstieg; verteidigen oder zerstпїЅren Sie das Ziel.\n\n__________\nSpieler: 8-12\nWiedereinstieg ist deaktiviert."
 description spanish "Defiende o destruye el objetivo sin reapariciones.\n\n__________\nJugadores: 8-12\nNo se permiten las reapariciones"
-description polish "Bez odradzania, obroс i zniszcz cel.\n\n__________\nGracze:8-12\nOdradzanie WYЈ."
-description russian "Захват и уничтожение ключевых объектов. Возможности возрождения нет.\n\n__________\nИгроки: 8-12\nВозрождение НЕВОЗМОЖНО"
-description japanese "•њЉ€‚И‚µЃB–Ъ•W‚М–h‰q‚Ь‚Ѕ‚Н”j‰у‚рЌs‚¤ЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\n•њЉ€ЃFѓIѓt"
-description korean "ё®ЅєЖщ ѕшАЅ. ёсЗҐё¦ №жѕоЗП°н ЖД±«ЗШ¶у.\n__________\nЗГ·№АМѕо:8-12"
+description polish "Bez odradzania, obroпїЅ i zniszcz cel.\n\n__________\nGracze:8-12\nOdradzanie WYпїЅ."
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+description japanese "пїЅпїЅпїЅпїЅпїЅИ‚пїЅпїЅBпїЅЪ•WпїЅМ–hпїЅqпїЅЬ‚пїЅпїЅН”jпїЅпїЅпїЅпїЅsпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nпїЅпїЅпїЅпїЅпїЅFпїЅIпїЅt"
+description korean "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ. пїЅпїЅЗҐпїЅпїЅ пїЅпїЅпїЅпїЅП°пїЅ пїЅД±пїЅпїЅШ¶пїЅ.\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:8-12"
 unlockxp 53100
 maxparty 6
 rule party_minplayers 8
@@ -929,16 +929,16 @@ name italian "Cattura la bandiera"
 name german "Capture the Flag"
 name spanish "Tomar la bandera"
 name polish "Zdobycie flagi"
-name russian "Захват флага"
-name japanese "ѓLѓѓѓvѓ`ѓѓЃ[ҐѓUҐѓtѓ‰ѓbѓO"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅLпїЅпїЅпїЅvпїЅ`пїЅпїЅпїЅ[пїЅпїЅUпїЅпїЅtпїЅпїЅпїЅbпїЅO"
 description english "Bring the enemy flag back to your team's base while your flag is there to score points.\n\n__________\nPlayers:8-12"
-description french "Apportez le drapeau ennemi а votre base alors que le vфtre s'y trouve aussi pour marquer des points.\n__________\nJoueurs : 8-12"
-description italian "Porta alla tua base la bandiera nemica mentre la tua bandiera si trova lм per ottenere punti.\n\n__________\nGiocatori: 8-12"
-description german "Bringen Sie die feindliche Flagge in Ihre Basis zum Punkten, wдhrend die eigene Flagge dort ist.\n\n__________\nSpieler: 8-12"
-description spanish "Lleva la bandera enemiga a la base de tu equipo mientras conservбis la vuestra para ganar puntos.\n\n__________\nJugadores: 8-12"
-description polish "Zanieњ flagк wroga do wі. bazy, kiedy znajduje siк w niej wasza flaga, aby zdobyж pkt.\n__________\nGracze:8-12"
-description russian "Для получения очков доставьте флаг противника на свою базу и защищайте собственный флаг.\n\n__________\nИгроки: 8-12"
-description japanese "“G‚Мѓtѓ‰ѓbѓO‚р’D‚Б‚Д–Ў•ы‚МЉо’n‚ЙЋќ‚ї‹A‚и\n‚»‚±‚Й–Ў•ы‘¤‚Мѓtѓ‰ѓbѓO‚ЄЋc‚Б‚Д‚ў‚к‚О\n“ѕ“_‚Ж‚И‚йЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
+description french "Apportez le drapeau ennemi пїЅ votre base alors que le vпїЅtre s'y trouve aussi pour marquer des points.\n__________\nJoueurs : 8-12"
+description italian "Porta alla tua base la bandiera nemica mentre la tua bandiera si trova lпїЅ per ottenere punti.\n\n__________\nGiocatori: 8-12"
+description german "Bringen Sie die feindliche Flagge in Ihre Basis zum Punkten, wпїЅhrend die eigene Flagge dort ist.\n\n__________\nSpieler: 8-12"
+description spanish "Lleva la bandera enemiga a la base de tu equipo mientras conservпїЅis la vuestra para ganar puntos.\n\n__________\nJugadores: 8-12"
+description polish "ZanieпїЅ flagпїЅ wroga do wпїЅ. bazy, kiedy znajduje siпїЅ w niej wasza flaga, aby zdobyпїЅ pkt.\n__________\nGracze:8-12"
+description russian "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅGпїЅМѓtпїЅпїЅпїЅbпїЅOпїЅпїЅDпїЅпїЅпїЅД–пїЅпїЅпїЅпїЅМЉпїЅnпїЅЙЋпїЅпїЅпїЅпїЅAпїЅпїЅ\nпїЅпїЅпїЅпїЅпїЅЙ–пїЅпїЅпїЅпїЅпїЅпїЅМѓtпїЅпїЅпїЅbпїЅOпїЅпїЅпїЅcпїЅпїЅпїЅД‚пїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅ_пїЅЖ‚И‚пїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
 unlockxp 85500
 maxparty 6
 rule party_minplayers 8
@@ -964,21 +964,21 @@ mp_underpass,ctf,1
 
 playlist 11 // tdm gametype
 name english "3rd Person Team Tactical"
-name french "3e personne par йquipe tactique"
-name italian "Modalitа Tattica a squadre 3° P."
+name french "3e personne par пїЅquipe tactique"
+name italian "ModalitпїЅ Tattica a squadre 3пїЅ P."
 name german "Externe Ansicht - Taktik-Teamspiele"
 name spanish "Duelo por equipos en TP"
-name polish "Druї. takt. z perp. 3. os"
-name russian "Командная тактика, от 3 лица"
-name japanese "TPSѓ`Ѓ[ѓЂѓ^ѓNѓeѓBѓJѓ‹"
+name polish "DruпїЅ. takt. z perp. 3. os"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3 пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅ`пїЅ[пїЅпїЅпїЅ^пїЅNпїЅeпїЅBпїЅJпїЅпїЅ"
 description english "Third person perspective with Team Deathmatch, Domination, Capture the Flag, and Demolition.\n\n__________\nPlayers:6-8"
-description french "Match а mort par йquipe, Domination, Capture du drapeau et Dйmolition avec vue а la 3e personne.\n\n__________\nJoueurs : 6-8"
-description italian "Modalitа in terza persona con Deathmatch a squadre, Dominazione, Cattura la bandiera e Demolizione.\n\n__________\nGiocatori: 6-8"
+description french "Match пїЅ mort par пїЅquipe, Domination, Capture du drapeau et DпїЅmolition avec vue пїЅ la 3e personne.\n\n__________\nJoueurs : 6-8"
+description italian "ModalitпїЅ in terza persona con Deathmatch a squadre, Dominazione, Cattura la bandiera e Demolizione.\n\n__________\nGiocatori: 6-8"
 description german "Team-Deathmatch, Herrschaft, Capture the Flag und Sprengkommando in der externen Ansicht.\n\n__________\nSpieler: 6-8"
-description spanish "Duelo por equipos, Dominio, Tomar la bandera y Demoliciуn en perspectiva de tercera persona.\n\n__________\nJugadores: 6-8"
-description polish "Tryby DM druїynowy, Dominacja, Zdob, flagк i Wysadzanie z perspektywy 3. osoby.\n__________\nGracze:6-8"
-description russian "Командный бой'', ''Превосходство'', ''Захват флага'' и ''Уничтожение'' с видом от третьего лица.\n\n__________\nИгроки: 6-8"
-description japanese "3ђlЏМЋ‹“_‚Мѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃA\nѓhѓ~ѓlЃ[ѓVѓ‡ѓ“ЃAѓLѓѓѓvѓ`ѓѓЃ[ЃEѓUЃEѓtѓ‰ѓbѓO\n‚Ё‚ж‚Сѓfѓ‚ѓЉѓbѓVѓ‡ѓ“ЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF6Ѓ`8"
+description spanish "Duelo por equipos, Dominio, Tomar la bandera y DemoliciпїЅn en perspectiva de tercera persona.\n\n__________\nJugadores: 6-8"
+description polish "Tryby DM druпїЅynowy, Dominacja, Zdob, flagпїЅ i Wysadzanie z perspektywy 3. osoby.\n__________\nGracze:6-8"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ'', ''пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ'', ''пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ'' пїЅ ''пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ'' пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 6-8"
+description japanese "3пїЅlпїЅМЋпїЅпїЅ_пїЅМѓ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅA\nпїЅhпїЅ~пїЅlпїЅ[пїЅVпїЅпїЅпїЅпїЅпїЅAпїЅLпїЅпїЅпїЅvпїЅ`пїЅпїЅпїЅ[пїЅEпїЅUпїЅEпїЅtпїЅпїЅпїЅbпїЅO\nпїЅпїЅпїЅпїЅСѓfпїЅпїЅпїЅпїЅпїЅbпїЅVпїЅпїЅпїЅпїЅпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF6пїЅ`8"
 unlockxp 126900
 maxparty 4
 rule party_minplayers 6
@@ -1054,20 +1054,20 @@ playlist 12 // ric_sd gametype
 name english "Hardcore Ricochet: SD"
 name french "Ricochet Hardcore : R&D"
 name italian "Ricochet veterano: Cerca e distruggi"
-name german "Hardcore-Querschlдger: S&Z"
+name german "Hardcore-QuerschlпїЅger: S&Z"
 name spanish "Extremo con rebote: BD"
 name polish "Rykoszet hardcore: ZZ"
-name russian "Бомба, повыш. сложность, рикошет"
-name japanese "HC/’µ’eЃFѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓC"
-name korean "ЗПµеДЪѕоїН јц»ц ј¶ёк"
+name russian "пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "HC/пїЅпїЅпїЅeпїЅFпїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅC"
+name korean "пїЅПµпїЅпїЅЪѕпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ"
 description english "Hardcore Search and Destroy with ricochet friendly fire.\n\n__________\nPlayers:8-12\nLimited HUD\nExtra bullet damage\nFriendly fire is directed back at the shooter"
-description french "Recherche et destruction Hardcore avec tir alliй renvoyй.\n\n__________\nJoueurs :8-12\nATH limitй.\nDйgвts supplйmentaires des balles.\nTir alliй renvoyй а l'auteur."
-description italian "Cerca e distruggi veterano con fuoco amico in modalitа Ricochet.\n\n__________\nGiocatori: 8-12\nInterfaccia ridotta\nDanno proiettili aumentato\nIl fuoco amico viene rispedito al mittente"
-description german "Hardcore-Suchen und Zerstцren mit Querschlдger-Teambeschuss.\n\n__________\nSpieler: 8-12\nEingeschrдnktes HUD\nErhцhter Patronenschaden\nTeambeschuss wird auf den Schьtzen zurьckgelenkt"
-description spanish "Buscar y destruir extremo con fuego amigo con rebote.\n\n__________\nJugadores: 8-12\nHUD limitado\nBalas mбs daсinas\nEl fuego amigo vuelve al tirador"
-description polish "Znajdџ i zniszcz hc z rykosz. ostrzaіem przyj.\n__________\nGracze:8-12\nOgranicz. HUD\nDod. obraїenia od pociskуw\nStrzaі do sojusz. jest odbijany w kierunku atak"
-description russian "Игра в режиме ''Бомба'' повышенной сложности с возвращением урона своим.\n\n__________\nИгроки: 8-12\nОтключенные индикаторы интерфейса\nУвеличенный урон от пуль\nУрон своим возвращается тому, кто его нанес"
-description japanese "–Ў•ы‚Ц‚МЊлЋЛ‚ЄЊ‚‚Б‚ЅЋТ‚Й’µ‚Л•Ф‚й\nѓnЃ[ѓhѓRѓAЃFѓTЃ[ѓ`Ѓ•ѓfѓXѓgѓЌѓCЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\nHUDђ§ЊА‚ ‚иЃA’eЉЫѓ_ѓЃЃ[ѓW‘ќЃB"
+description french "Recherche et destruction Hardcore avec tir alliпїЅ renvoyпїЅ.\n\n__________\nJoueurs :8-12\nATH limitпїЅ.\nDпїЅgпїЅts supplпїЅmentaires des balles.\nTir alliпїЅ renvoyпїЅ пїЅ l'auteur."
+description italian "Cerca e distruggi veterano con fuoco amico in modalitпїЅ Ricochet.\n\n__________\nGiocatori: 8-12\nInterfaccia ridotta\nDanno proiettili aumentato\nIl fuoco amico viene rispedito al mittente"
+description german "Hardcore-Suchen und ZerstпїЅren mit QuerschlпїЅger-Teambeschuss.\n\n__________\nSpieler: 8-12\nEingeschrпїЅnktes HUD\nErhпїЅhter Patronenschaden\nTeambeschuss wird auf den SchпїЅtzen zurпїЅckgelenkt"
+description spanish "Buscar y destruir extremo con fuego amigo con rebote.\n\n__________\nJugadores: 8-12\nHUD limitado\nBalas mпїЅs daпїЅinas\nEl fuego amigo vuelve al tirador"
+description polish "ZnajdпїЅ i zniszcz hc z rykosz. ostrzaпїЅem przyj.\n__________\nGracze:8-12\nOgranicz. HUD\nDod. obraпїЅenia od pociskпїЅw\nStrzaпїЅ do sojusz. jest odbijany w kierunku atak"
+description russian "пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ ''пїЅпїЅпїЅпїЅпїЅ'' пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+description japanese "пїЅпїЅпїЅпїЅпїЅЦ‚МЊпїЅЛ‚пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅТ‚Й’пїЅпїЅЛ•Ф‚пїЅ\nпїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFпїЅTпїЅ[пїЅ`пїЅпїЅпїЅfпїЅXпїЅgпїЅпїЅпїЅCпїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nHUDпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅAпїЅeпїЅЫѓ_пїЅпїЅпїЅ[пїЅWпїЅпїЅпїЅB"
 unlockxp 126900
 maxparty 6
 rule party_minplayers 8
@@ -1093,23 +1093,23 @@ mp_underpass,ric_sd,1
 
 playlist 13 // hc_tdm hc_sd gametype
 name english "Hardcore Team Deathmatch"
-name french "Match а mort par йquipe Hardcore."
+name french "Match пїЅ mort par пїЅquipe Hardcore."
 name italian "Deathmatch a squadre - veterano"
 name german "Hardcore-Team-Deathmatch"
 name spanish "Duelo por equipos extremo"
-name polish "Hardcore DM Druїynowe"
-name russian "Командный бой, повыш. сложность"
-name japanese "ѓnЃ[ѓhѓRѓAЃFѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
-name korean "ЗПµеДЪѕо ЖА µҐЅєёЕДЎ"
+name polish "Hardcore DM DruпїЅynowe"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
+name japanese "пїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
+name korean "пїЅПµпїЅпїЅЪѕпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ"
 description english "Team Deathmatch with:\n\n\n__________\nPlayers:8-12\nLimited HUD\nExtra bullet damage\nFriendly Fire is ON"
-description french "Match а mort en йquipe.\n\n\n__________\nJoueurs :8-12\nATH limitй.\nDйgвts supplйmentaires des balles.\nTir alliй activй."
+description french "Match пїЅ mort en пїЅquipe.\n\n\n__________\nJoueurs :8-12\nATH limitпїЅ.\nDпїЅgпїЅts supplпїЅmentaires des balles.\nTir alliпїЅ activпїЅ."
 description italian "Deathmatch a squadre con:\n\n\n__________\nGiocatori: 8-12\nInterfaccia ridotta\nDanno proiettili aumentato\nFuoco amico ATTIVO"
-description german "Team-Deathmatch mit:\n\n\n__________\nSpieler: 8-12\nEingeschrдnktes HUD\nErhцhter Patronenschaden\nTeambeschuss ist aktiviert."
-description spanish "Duelo por equipos con:\n\n\n__________\nJugadores: 8-12\nHUD limitado\nBalas mбs daсinas\nFuego amigo activado"
-description polish "DM Druїynowy z:\n\n\n__________\nGracze:8-12\nOgran. HUD\nZwiкkszone obraїenial\nOgieс sojuszn. WЈ."
-description russian "'Командный бой'' повышенной сложности.\n\n\n__________\nИгроки: 8-12\nОтключенные индикаторы интерфейса\nУвеличенный урон от пуль\nУрон своим"
-description japanese "HUDђ§ЊАЃA’eЉЫѓ_ѓЃЃ[ѓW‘ќЃA“ЇЋm“ў‚ї‚ ‚и‚М\nѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃB\n\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\n–Ў•ы‚Ц‚МЊлЋЛЃFѓIѓ“"
-description korean "ЖА µҐЅєёЕДЎ: HUD Б¦ЗС. ГСѕЛ јХ»у·В Зв»у. ѕЖ±є »з°Э Згїл.\n__________\nЗГ·№АМѕо:8-12"
+description german "Team-Deathmatch mit:\n\n\n__________\nSpieler: 8-12\nEingeschrпїЅnktes HUD\nErhпїЅhter Patronenschaden\nTeambeschuss ist aktiviert."
+description spanish "Duelo por equipos con:\n\n\n__________\nJugadores: 8-12\nHUD limitado\nBalas mпїЅs daпїЅinas\nFuego amigo activado"
+description polish "DM DruпїЅynowy z:\n\n\n__________\nGracze:8-12\nOgran. HUD\nZwiпїЅkszone obraпїЅenial\nOgieпїЅ sojuszn. WпїЅ."
+description russian "'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ'' пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+description japanese "HUDпїЅпїЅпїЅпїЅпїЅAпїЅeпїЅЫѓ_пїЅпїЅпїЅ[пїЅWпїЅпїЅпїЅAпїЅпїЅпїЅmпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ\nпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅB\n\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nпїЅпїЅпїЅпїЅпїЅЦ‚МЊпїЅЛЃFпїЅIпїЅпїЅ"
+description korean "пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅДЎ: HUD пїЅпїЅпїЅпїЅ. пїЅСѕпїЅ пїЅХ»пїЅпїЅ пїЅпїЅпїЅ. пїЅЖ±пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ.\n__________\nпїЅГ·пїЅпїЅМѕпїЅ:8-12"
 unlockxp 126900
 maxparty 6
 rule party_minplayers 8
@@ -1137,21 +1137,21 @@ mp_underpass,hc_tdm,1
 playlist 14 // cage_ffa gametype
 name english "3rd Person Cage Match"
 name french "Match en cage 3e personne"
-name italian "Duello 3° P."
-name german "Externe Ansicht - Kдfigschlacht"
+name italian "Duello 3пїЅ P."
+name german "Externe Ansicht - KпїЅfigschlacht"
 name spanish "Duelo personal en TP"
 name polish "Mecz w klatce - persp. 3. os"
-name russian "Бой в клетке, от 3-го лица"
-name japanese "TPSѓPЃ[ѓWѓ}ѓbѓ`"
-name korean "јцїлјТ °ж±в"
+name russian "пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ 3-пїЅпїЅ пїЅпїЅпїЅпїЅ"
+name japanese "TPSпїЅPпїЅ[пїЅWпїЅ}пїЅbпїЅ`"
+name korean "пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ"
 description english "1v1 deathmatch fought in 3rd Person mode.\n\n\n__________\nPlayers:2"
-description french "Match а mort 1v1 en vue а la 3e personne.\n\n\n__________\nJoueurs : 2"
-description italian "Deathmatch 1 vs 1 in 3° Persona.\n\n\n__________\nGiocatori: 2"
+description french "Match пїЅ mort 1v1 en vue пїЅ la 3e personne.\n\n\n__________\nJoueurs : 2"
+description italian "Deathmatch 1 vs 1 in 3пїЅ Persona.\n\n\n__________\nGiocatori: 2"
 description german "1-gegen-1-Deathmatch in externer Ansicht.\n\n\n__________\nSpieler: 2"
 description spanish "Duelo uno contra uno en tercera persona.\n\n\n__________\nJugadores: 2"
 description polish "DM 1 na 1 rozgrywany z persp. 3 os.\n\n\n__________\nGracze:2"
-description russian "Поединок между двумя бойцами с видом от третьего лица.\n\n\n__________\nИгроки: 2"
-description japanese "3ђlЏМЋ‹“_ѓ‚Ѓ[ѓh‚Еђн‚¤1‘О1‚МѓfѓXѓ}ѓbѓ`ЃB\n\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF2"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 2"
+description japanese "3пїЅlпїЅМЋпїЅпїЅ_пїЅпїЅпїЅ[пїЅhпїЅЕђн‚¤1пїЅпїЅ1пїЅМѓfпїЅXпїЅ}пїЅbпїЅ`пїЅB\n\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF2"
 unlockxp 126900
 maxparty 1
 rule scr_xpscale 2
@@ -1180,21 +1180,21 @@ mp_terminal,3p_cage_ffa,1
 
 playlist 15 // tdm gametype
 name english "Team Deathmatch Express"
-name french "Match а mort par йquipe Express"
+name french "Match пїЅ mort par пїЅquipe Express"
 name italian "Deathmatch a squadre turbo"
 name german "Express-Team-Deathmatch"
-name spanish "Duelo por equipos exprйs"
-name polish "Ekspresowy DM druїynowy"
-name russian "Быстрый командный бой"
-name japanese "’ZЏkЊ^ЃFѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`"
+name spanish "Duelo por equipos exprпїЅs"
+name polish "Ekspresowy DM druпїЅynowy"
+name russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ"
+name japanese "пїЅZпїЅkпїЅ^пїЅFпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`"
 description english "Team Deathmatch with shorter time between matches.\n\n__________\nPlayers:8-12"
-description french "Match а mort par йquipe avec dйlai plus court entre les matchs.\n\n__________\nJoueurs : 8-12"
-description italian "Deathmatch a squadre con pause piщ brevi tra le partite.\n\n__________\nGiocatori: 8-12"
-description german "Team-Deathmatch mit kьrzerer Zeit zwischen den Spielen.\n\n__________\nSpieler: 8-12"
+description french "Match пїЅ mort par пїЅquipe avec dпїЅlai plus court entre les matchs.\n\n__________\nJoueurs : 8-12"
+description italian "Deathmatch a squadre con pause piпїЅ brevi tra le partite.\n\n__________\nGiocatori: 8-12"
+description german "Team-Deathmatch mit kпїЅrzerer Zeit zwischen den Spielen.\n\n__________\nSpieler: 8-12"
 description spanish "Duelo por equipos con menos tiempo entre partidas.\n\n__________\nJugadores: 8-12"
-description polish "DM druїynowy ze skrуcon№ przerw№ pom. meczami.\n\n__________\nGracze:8-12"
-description russian "'Командный бой'' с меньшими интервалами между играми.\n\n__________\nИгроки: 8-12"
-description japanese "ѓ}ѓbѓ`ЉФЉu‚Є’Z‚ўѓ`Ѓ[ѓЂѓfѓXѓ}ѓbѓ`ЃB\n\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
+description polish "DM druпїЅynowy ze skrпїЅconпїЅ przerwпїЅ pom. meczami.\n\n__________\nGracze:8-12"
+description russian "'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ'' пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅ}пїЅbпїЅ`пїЅФЉuпїЅпїЅпїЅZпїЅпїЅпїЅ`пїЅ[пїЅпїЅпїЅfпїЅXпїЅ}пїЅbпїЅ`пїЅB\n\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
 unlockxp 0
 maxparty 6
 rule party_minplayers 8
@@ -1225,17 +1225,17 @@ name french "Fosse"
 name italian "Mosh Pit"
 name german "Mosh-Pit"
 name spanish "Foso"
-name polish "Kocioі"
-name russian "Микс"
-name japanese "ѓ~ѓbѓNѓX"
+name polish "KocioпїЅ"
+name russian "пїЅпїЅпїЅпїЅ"
+name japanese "пїЅ~пїЅbпїЅNпїЅX"
 description english "Mixed bag of many game modes in one playlist.\n__________\nPlayers:8-12"
-description french "Mйlange de plusieurs modes de jeu dans une seule sйlection.\n__________\nJoueurs : 8-12"
-description italian "Un elenco che include diverse modalitа di gioco.\n__________\nGiocatori: 8-12"
+description french "MпїЅlange de plusieurs modes de jeu dans une seule sпїЅlection.\n__________\nJoueurs : 8-12"
+description italian "Un elenco che include diverse modalitпїЅ di gioco.\n__________\nGiocatori: 8-12"
 description german "Viele verschiedene Spielmodi in einer Liste.\n__________\nSpieler: 8-12"
 description spanish "Diversos modos de juego en una sola lista de partidas.\n__________\nJugadores: 8-12"
-description polish "Rуїne tryby gry w jednej liњcie gier.\n__________\nGracze:8-12"
-description russian "Чередование разнообразных режимов игры в одном списке.\n__________\nИгроки: 8-12"
-description japanese "ЉeЋнѓQЃ[ѓЂѓ‚Ѓ[ѓh‚рѓ‰ѓ“ѓ_ѓЂ‚ЕЃB\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12"
+description polish "RпїЅne tryby gry w jednej liпїЅcie gier.\n__________\nGracze:8-12"
+description russian "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ: 8-12"
+description japanese "пїЅeпїЅпїЅQпїЅ[пїЅпїЅпїЅпїЅпїЅ[пїЅhпїЅпїЅпїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅЕЃB\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12"
 unlockxp 0
 maxparty 6
 rule party_minplayers 8
@@ -1373,21 +1373,21 @@ mp_underpass,sab,1
 
 playlist 17 // hq gametype
 name english "Hardcore Ricochet: HQ Pro"
-name french "Ricochet Hardcore : Quartier gйnйral Pro"
+name french "Ricochet Hardcore : Quartier gпїЅnпїЅral Pro"
 name italian "Ricochet veterano: QG Pro"
-name german "Hardcore-Querschlдger: HQ Pro"
+name german "Hardcore-QuerschlпїЅger: HQ Pro"
 name spanish "Extremo con rebote: Cuarteles (Pro)"
 name polish "Rykosz. hard.: Sztab pro."
-name russian "Штаб, профи (рикошет, повыш. сложность)"
-name japanese "’µ’eѓnЃ[ѓhѓRѓAЃFHQѓvѓЌ"
+name russian "пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)"
+name japanese "пїЅпїЅпїЅeпїЅnпїЅ[пїЅhпїЅRпїЅAпїЅFHQпїЅvпїЅпїЅ"
 description english "Headquarters Pro with Hardcore Ricochet rules.\n__________\nPlayers:8-12\nLimited HUD\nExtra bullet damage\nFriendly Fire is directed back at the shooter"
-description french "Quartier gйnйral Pro avec les rиgles Ricochet Hardcore.\n\n__________\nJoueurs :8-12\nATH limitй.\nDйgвts supplйmentaires des balles.\nTir alliй renvoyй а l'auteur."
-description italian "QG Pro con le regole della modalitа Ricochet veterano.\n__________\nGiocatori: 8-12\nInterfaccia ridotta\nDanno proiettili aumentato\nIl fuoco amico viene rispedito al mittente"
-description german "Hauptquartier Pro mit Hardcore-Querschlдger-Regeln.\n__________\nSpieler: 8-12\nEingeschrдnktes HUD\nErhцhter Patronenschaden\nTeambeschuss wird auf den Schьtzen zurьckgelenkt "
-description spanish "Cuarteles (Pro) con reglas de Extremo con rebote.\n__________\nJugadores: 8-12\nHUD limitado\nBalas mбs daсinas\nEl fuego amigo vuelve al tirador"
-description polish "Sztab Pro + Hardcore rykoszet\n__________\nGracze:8-12\nOgraniczony HUD\nWiкksze obraїenia\nOgieс sojuszniczy 'wraca' do strzelca"
-description russian "Режим ''Штаб, профи'' с правилами ''Рикошет'' и ''Повышенная сложность''.\n__________\nИгроки:8-12\nОтключенные индикаторы интерфейса\nУвеличенный урон от пуль\nУрон от огня по своим возвращается тому, кто его нанес"
-description japanese "ѓnЃ[ѓhѓRѓA‚МѓwѓbѓhѓNѓEѓHЃ[ѓ^Ѓ[ЃFѓvѓЌЃB\nHUDђ§ЊАЃA’eЉЫѓ_ѓЃЃ[ѓW‘ќЃB\n__________\nѓvѓЊѓCѓ„Ѓ[ђ”ЃF8Ѓ`12\n–Ў•ы‚Ц‚МЊлЋЛ‚НЋ©•Є‚Й’µ‚Л•Ф‚йЃB"
+description french "Quartier gпїЅnпїЅral Pro avec les rпїЅgles Ricochet Hardcore.\n\n__________\nJoueurs :8-12\nATH limitпїЅ.\nDпїЅgпїЅts supplпїЅmentaires des balles.\nTir alliпїЅ renvoyпїЅ пїЅ l'auteur."
+description italian "QG Pro con le regole della modalitпїЅ Ricochet veterano.\n__________\nGiocatori: 8-12\nInterfaccia ridotta\nDanno proiettili aumentato\nIl fuoco amico viene rispedito al mittente"
+description german "Hauptquartier Pro mit Hardcore-QuerschlпїЅger-Regeln.\n__________\nSpieler: 8-12\nEingeschrпїЅnktes HUD\nErhпїЅhter Patronenschaden\nTeambeschuss wird auf den SchпїЅtzen zurпїЅckgelenkt "
+description spanish "Cuarteles (Pro) con reglas de Extremo con rebote.\n__________\nJugadores: 8-12\nHUD limitado\nBalas mпїЅs daпїЅinas\nEl fuego amigo vuelve al tirador"
+description polish "Sztab Pro + Hardcore rykoszet\n__________\nGracze:8-12\nOgraniczony HUD\nWiпїЅksze obraпїЅenia\nOgieпїЅ sojuszniczy 'wraca' do strzelca"
+description russian "пїЅпїЅпїЅпїЅпїЅ ''пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ'' пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ ''пїЅпїЅпїЅпїЅпїЅпїЅпїЅ'' пїЅ ''пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ''.\n__________\nпїЅпїЅпїЅпїЅпїЅпїЅ:8-12\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ\nпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ"
+description japanese "пїЅnпїЅ[пїЅhпїЅRпїЅAпїЅМѓwпїЅbпїЅhпїЅNпїЅEпїЅHпїЅ[пїЅ^пїЅ[пїЅFпїЅvпїЅпїЅпїЅB\nHUDпїЅпїЅпїЅпїЅпїЅAпїЅeпїЅЫѓ_пїЅпїЅпїЅ[пїЅWпїЅпїЅпїЅB\n__________\nпїЅvпїЅпїЅпїЅCпїЅпїЅпїЅ[пїЅпїЅпїЅF8пїЅ`12\nпїЅпїЅпїЅпїЅпїЅЦ‚МЊпїЅЛ‚НЋпїЅпїЅпїЅпїЅЙ’пїЅпїЅЛ•Ф‚пїЅB"
 unlockxp 0
 maxparty 6
 rule party_minplayers 8

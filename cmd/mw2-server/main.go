@@ -50,6 +50,10 @@ func main() {
 		logger.Error("stats database initialization failed", "error", err)
 		os.Exit(1)
 	}
+	if err := authServer.SetProfileDatabase(cfg.ProfileDBPath); err != nil {
+		logger.Error("profile database initialization failed", "error", err)
+		os.Exit(1)
+	}
 	natEndpoint, err := net.ResolveUDPAddr("udp", cfg.NATAddr)
 	if err != nil {
 		logger.Error("bandwidth endpoint initialization failed", "error", err)

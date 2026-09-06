@@ -87,7 +87,7 @@ func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, rea
 		lsgIdleTimeout:          lsgIdleTimeout,
 		lsgSessions:             newLSGSessionStore(),
 		matchmakingSessions:     newMW2MatchmakingStore(),
-		userFiles:               newMW2UserFileStore(),
+		userFiles:               newMemoryMW2UserFileStore(),
 		bandwidthSendDurationMS: 50,
 	}
 }
@@ -120,6 +120,18 @@ func (s *RawServer) SetStatsDatabase(path string) error {
 		_ = s.stats.close()
 	}
 	s.stats = store
+	return nil
+}
+
+func (s *RawServer) SetProfileDatabase(path string) error {
+	store, err := newMW2UserFileStore(path)
+	if err != nil {
+		return err
+	}
+	if s.userFiles != nil {
+		_ = s.userFiles.close()
+	}
+	s.userFiles = store
 	return nil
 }
 

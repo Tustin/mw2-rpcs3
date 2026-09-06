@@ -23,6 +23,7 @@ type Config struct {
 	CaptureEnabled                   bool
 	CaptureDir                       string
 	StatsDBPath                      string
+	ProfileDBPath                    string
 	MaxFrameBytes                    uint32
 	ReadTimeout                      time.Duration
 	WriteTimeout                     time.Duration
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		LogLevel:                env("MW2_LOG_LEVEL", "info"),
 		CaptureDir:              env("MW2_CAPTURE_DIR", "captures"),
 		StatsDBPath:             env("MW2_STATS_DB_PATH", "mw2-stats.db"),
+		ProfileDBPath:           env("MW2_PROFILE_DB_PATH", "mw2-profiles.db"),
 		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
 		BandwidthSendDurationMS: 50,
 		MaxFrameBytes:           1 << 20,

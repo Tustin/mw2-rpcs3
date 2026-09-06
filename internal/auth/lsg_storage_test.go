@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -418,7 +419,7 @@ func TestMW2StorageOwnerListReplyIsSuccessfulAndEmpty(t *testing.T) {
 
 func TestMW2UserProfileUploadListGetAndUpdate(t *testing.T) {
 	const ownerID = uint64(0xb804d13e5ee3dafa)
-	store := newMW2UserFileStore()
+	store := newMemoryMW2UserFileStore()
 	first := &lsgConnection{entityID: ownerID, userFiles: store}
 	profile := bytes.Repeat([]byte{0x5a}, mw2ProfileSize)
 	_, uploadReply, handled := first.handleStorageTask(buildMW2StorageUploadRequest(profile))
@@ -507,7 +508,10 @@ func TestMW2UserProfileUploadListGetAndUpdate(t *testing.T) {
 	if count, err := update.readU32(); err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
-	updatedFile, ok := store.get(fileID)
+	updatedFile, ok, err := store.get(fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok || !bytes.Equal(updatedFile.data, updated) {
 		t.Fatal("updated profile was not retained")
 	}
@@ -516,9 +520,12 @@ func TestMW2UserProfileUploadListGetAndUpdate(t *testing.T) {
 func TestMW2UserProfileUpdateResolvesOwnersFileForRetailTransientID(t *testing.T) {
 	const ownerID = uint64(0xb804d13e5ee3dafa)
 	const transientID = uint64(0xd000f3a0)
-	store := newMW2UserFileStore()
+	store := newMemoryMW2UserFileStore()
 	connection := &lsgConnection{entityID: ownerID, userFiles: store}
-	file := store.upload(ownerID, mw2ProfileFilename, bytes.Repeat([]byte{0x12}, mw2ProfileSize))
+	file, err := store.upload(ownerID, mw2ProfileFilename, bytes.Repeat([]byte{0x12}, mw2ProfileSize))
+	if err != nil {
+		t.Fatal(err)
+	}
 	updatedProfile := bytes.Repeat([]byte{0x34}, mw2ProfileSize)
 	_, reply, handled := connection.handleStorageTask(buildMW2StorageUpdateRequest(transientID, updatedProfile))
 	if !handled || !connection.lastTaskSupported {
@@ -531,7 +538,10 @@ func TestMW2UserProfileUpdateResolvesOwnersFileForRetailTransientID(t *testing.T
 	if summary.errorCode != bdErrorNone || summary.operationID != bdStorageUpdateUserFile || summary.resultCount != 1 {
 		t.Fatalf("summary=%+v", summary)
 	}
-	updatedFile, ok := store.get(file.id)
+	updatedFile, ok, err := store.get(file.id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok || !bytes.Equal(updatedFile.data, updatedProfile) {
 		t.Fatal("retail transient-ID update was not retained")
 	}
@@ -539,7 +549,7 @@ func TestMW2UserProfileUpdateResolvesOwnersFileForRetailTransientID(t *testing.T
 
 func TestMW2UserProfileUpdateWithUnknownIDRequiresExistingOwnerFile(t *testing.T) {
 	const ownerID = uint64(0xb804d13e5ee3dafa)
-	connection := &lsgConnection{entityID: ownerID, userFiles: newMW2UserFileStore()}
+	connection := &lsgConnection{entityID: ownerID, userFiles: newMemoryMW2UserFileStore()}
 	_, reply, handled := connection.handleStorageTask(buildMW2StorageUpdateRequest(0xd000f3a0, bytes.Repeat([]byte{0x56}, mw2ProfileSize)))
 	if !handled {
 		t.Fatal("update was not handled")
@@ -554,14 +564,30 @@ func TestMW2UserProfileUpdateWithUnknownIDRequiresExistingOwnerFile(t *testing.T
 }
 
 func TestMW2UserProfileStorePersistsWhenConfigured(t *testing.T) {
-	t.Setenv("MW2_PROFILE_DIR", t.TempDir())
+	path := filepath.Join(t.TempDir(), "profiles.db")
 	const ownerID = uint64(0xb804d13e5ee3dafa)
 	profile := bytes.Repeat([]byte{0x3c}, mw2ProfileSize)
-	first := newMW2UserFileStore()
-	first.upload(ownerID, mw2ProfileFilename, profile)
-	second := newMW2UserFileStore()
-	files := second.list(ownerID)
-	if len(files) != 1 || files[0].name != mw2ProfileFilename || !bytes.Equal(files[0].data, profile) {
+	first, err := newMW2UserFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := first.upload(ownerID, mw2ProfileFilename, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := newMW2UserFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.close()
+	files, err := second.list(ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].id != file.id || files[0].name != mw2ProfileFilename || !bytes.Equal(files[0].data, profile) {
 		t.Fatalf("files=%+v", files)
 	}
 }
