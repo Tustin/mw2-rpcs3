@@ -513,6 +513,46 @@ func TestMW2UserProfileUploadListGetAndUpdate(t *testing.T) {
 	}
 }
 
+func TestMW2UserProfileUpdateResolvesOwnersFileForRetailTransientID(t *testing.T) {
+	const ownerID = uint64(0xb804d13e5ee3dafa)
+	const transientID = uint64(0xd000f3a0)
+	store := newMW2UserFileStore()
+	connection := &lsgConnection{entityID: ownerID, userFiles: store}
+	file := store.upload(ownerID, mw2ProfileFilename, bytes.Repeat([]byte{0x12}, mw2ProfileSize))
+	updatedProfile := bytes.Repeat([]byte{0x34}, mw2ProfileSize)
+	_, reply, handled := connection.handleStorageTask(buildMW2StorageUpdateRequest(transientID, updatedProfile))
+	if !handled || !connection.lastTaskSupported {
+		t.Fatalf("handled=%v supported=%v", handled, connection.lastTaskSupported)
+	}
+	summary, err := parseMW2StorageReplySummary(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.errorCode != bdErrorNone || summary.operationID != bdStorageUpdateUserFile || summary.resultCount != 1 {
+		t.Fatalf("summary=%+v", summary)
+	}
+	updatedFile, ok := store.get(file.id)
+	if !ok || !bytes.Equal(updatedFile.data, updatedProfile) {
+		t.Fatal("retail transient-ID update was not retained")
+	}
+}
+
+func TestMW2UserProfileUpdateWithUnknownIDRequiresExistingOwnerFile(t *testing.T) {
+	const ownerID = uint64(0xb804d13e5ee3dafa)
+	connection := &lsgConnection{entityID: ownerID, userFiles: newMW2UserFileStore()}
+	_, reply, handled := connection.handleStorageTask(buildMW2StorageUpdateRequest(0xd000f3a0, bytes.Repeat([]byte{0x56}, mw2ProfileSize)))
+	if !handled {
+		t.Fatal("update was not handled")
+	}
+	summary, err := parseMW2StorageReplySummary(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.errorCode != bdErrorNoFile || summary.operationID != bdStorageUpdateUserFile {
+		t.Fatalf("summary=%+v", summary)
+	}
+}
+
 func TestMW2UserProfileStorePersistsWhenConfigured(t *testing.T) {
 	t.Setenv("MW2_PROFILE_DIR", t.TempDir())
 	const ownerID = uint64(0xb804d13e5ee3dafa)

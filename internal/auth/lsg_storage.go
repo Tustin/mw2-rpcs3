@@ -340,10 +340,14 @@ func (s *mw2UserFileStore) update(ownerID, fileID uint64, data []byte) (mw2UserF
 	defer s.mu.Unlock()
 	file, ok := s.byID[fileID]
 	if !ok || file.ownerID != ownerID {
-		return mw2UserFile{}, false
+		ownerFileID := s.byOwner[ownerID]
+		file, ok = s.byID[ownerFileID]
+		if !ok || file.ownerID != ownerID || file.name != mw2ProfileFilename {
+			return mw2UserFile{}, false
+		}
 	}
 	file.data = append([]byte(nil), data...)
-	s.byID[fileID] = file
+	s.byID[file.id] = file
 	s.persist(file)
 	return file, true
 }
@@ -526,6 +530,11 @@ func parseMW2StorageReplySummary(payload []byte) (mw2StorageReplySummary, error)
 	}
 	if errorCode == bdErrorNone {
 		switch operationID {
+		case bdStorageUploadUserFile, bdStorageUpdateUserFile:
+			summary.resultCount, err = reader.readU32()
+			if err != nil {
+				return mw2StorageReplySummary{}, fmt.Errorf("read storage mutation result count: %w", err)
+			}
 		case bdStorageListFiles, bdStorageListOwnerFiles:
 			summary.resultCount, err = reader.readU32()
 			if err != nil {
