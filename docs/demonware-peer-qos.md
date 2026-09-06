@@ -116,6 +116,38 @@ retries while the send count is below four produces exactly four transmissions
 before timeout/removal. The bandwidth arbitrator replenishes at 0.2-second
 intervals.
 
+## Probe-stat bitrate calculation
+
+Live RPCS3 register capture at `QoSProbeStats_CalcScaledBitrate`
+(`0x003e0fc0..0x003e1000`) confirmed the eight-byte statistics input and exact
+calculation. For the observed value `00 00 0a 00 00 00 06 3f`, the two words are
+`sample_value = 2560` bytes and `elapsed_value = 1599` milliseconds. The client
+computes:
+
+```text
+(sample_value * 8) / (elapsed_value / 1000.0)
+= (2560 * 8) / 1.599
+= 12507.8 bits/s
+```
+
+The returned float is therefore `12.5078` after the function's final
+`0.0009765625` scale, and its matchmaking caller subsequently multiplies that
+result by `1000.0` and converts it to an integer near `12507`. A separate
+`sample_count = 2` observed beside these words is not an operand of this
+function. This measured result is below the eight-player upload requirement of
+`256000` bits/s.
+
+These statistics are not fields in a type-`0x29` peer-QoS reply. That packet
+only echoes the probe ID and request timestamp and optionally carries listener
+data. The central server cannot directly rewrite the measured elapsed time; any
+server influence must be indirect through bandwidth-service configuration or
+client pacing.
+
+Address `0x000771a0`, previously considered as a possible breakpoint, is
+`bdBandwidthTestResult_deserialize` in the separate World at War executable. In
+MW2 TU0 it is merely an instruction inside `sub_76E18` and is not a valid
+bandwidth-result deserializer breakpoint.
+
 ## NAT-traversal packet
 
 Exact size: 29 bytes.
