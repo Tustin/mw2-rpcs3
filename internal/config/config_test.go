@@ -13,6 +13,11 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_LOG_SENSITIVE", "")
 	t.Setenv("MW2_STATS_DB_PATH", "")
 	t.Setenv("MW2_PROFILE_DB_PATH", "")
+	t.Setenv("MW2_ADMIN_ENABLED", "")
+	t.Setenv("MW2_ADMIN_ALLOW_LOCAL", "")
+	t.Setenv("MW2_ADMIN_ACCESS_TEAM_DOMAIN", "")
+	t.Setenv("MW2_ADMIN_ACCESS_AUDIENCE", "")
+	t.Setenv("MW2_ADMIN_ASSETS_DIR", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
 	t.Setenv("MW2_BANDWIDTH_SEND_DURATION_MS", "")
 	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "")
@@ -31,10 +36,53 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.LogSensitive ||
 		cfg.StatsDBPath != "mw2-stats.db" ||
 		cfg.ProfileDBPath != "mw2-profiles.db" ||
+		cfg.AdminEnabled ||
+		cfg.AdminAllowLocal ||
+		cfg.AdminAccessTeamDomain != "" ||
+		cfg.AdminAccessAudience != "" ||
+		cfg.AdminAssetsDir != "web/dist" ||
 		cfg.MaxFrameBytes != 1<<20 ||
 		cfg.BandwidthSendDurationMS != 50 ||
 		cfg.BandwidthFinalizeReceivePeriodMS != nil {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadAdminConfiguration(t *testing.T) {
+	t.Setenv("MW2_ADMIN_ENABLED", "true")
+	t.Setenv("MW2_ADMIN_ACCESS_TEAM_DOMAIN", "team.cloudflareaccess.com")
+	t.Setenv("MW2_ADMIN_ACCESS_AUDIENCE", "audience")
+	t.Setenv("MW2_ADMIN_ASSETS_DIR", "/srv/admin")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AdminEnabled || cfg.AdminAccessTeamDomain != "team.cloudflareaccess.com" || cfg.AdminAccessAudience != "audience" || cfg.AdminAssetsDir != "/srv/admin" {
+		t.Fatalf("unexpected admin configuration: %+v", cfg)
+	}
+}
+
+func TestLoadAdminRequiresAccessConfiguration(t *testing.T) {
+	t.Setenv("MW2_ADMIN_ENABLED", "true")
+	t.Setenv("MW2_ADMIN_ALLOW_LOCAL", "")
+	t.Setenv("MW2_ADMIN_ACCESS_TEAM_DOMAIN", "")
+	t.Setenv("MW2_ADMIN_ACCESS_AUDIENCE", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted admin UI without Cloudflare Access configuration")
+	}
+}
+
+func TestLoadAdminAllowsLocalDevelopment(t *testing.T) {
+	t.Setenv("MW2_ADMIN_ENABLED", "true")
+	t.Setenv("MW2_ADMIN_ALLOW_LOCAL", "true")
+	t.Setenv("MW2_ADMIN_ACCESS_TEAM_DOMAIN", "")
+	t.Setenv("MW2_ADMIN_ACCESS_AUDIENCE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AdminEnabled || !cfg.AdminAllowLocal {
+		t.Fatalf("unexpected admin configuration: %+v", cfg)
 	}
 }
 

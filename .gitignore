@@ -4,6 +4,8 @@ captures/*
 !captures/.gitkeep
 .env
 compose.override.yaml
+web/node_modules/
+web/dist/
 
 tools/*
 *.self

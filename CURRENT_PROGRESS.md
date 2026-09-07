@@ -1,8 +1,12 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-09-06 after implementing service 4 MW2 stats write/read-by-entity persistence and protocol tests._
+_Last updated: 2026-09-06 after implementing the protected operator admin web UI and API._
 
-## Latest implementation: service 4 stats
+## Latest implementation: operator admin UI
+
+Implemented a React/Vite operator dashboard served at `/admin/` by the Go server. The dashboard shows live connection/request counters, active playlist metadata and SHA-256, stored profile metadata, and board-1 leaderboard rows using TanStack Query and TanStack Table. The new read-only `/admin/api/v1` endpoints expose status, profiles, leaderboards, and playlist metadata; SQLite-backed admin queries are paginated. Admin access is disabled by default and supports Cloudflare Access JWT validation with configurable team domain and audience. Explicit local development mode is available with `MW2_ADMIN_ENABLED=true MW2_ADMIN_ALLOW_LOCAL=true go run ./cmd/mw2-server`; its authentication bypass accepts loopback clients only, allowing the Vite proxy at localhost:5173 to reach the Go API. Focused admin middleware/API tests, the full Go test suite, `go vet ./...`, `npm run lint`, the production web build, and a local API smoke test pass.
+
+## Prior implementation: service 4 stats
 
 Implemented the observed service 4 operations `bdStats::write` (operation 1) and `bdStats::readByEntityID` (operation 2). Writes parse MW2's board ID, entity ID, signed rating, write type, and 49 signed stat columns; replace semantics persist the complete row in SQLite. Reads preserve the requested entity set, assign leaderboard ranks by rating descending with entity-ID tie-breaking, and serialize the observed MW2 result shape: entity ID, signed rating, rank, bounded player name, and 49 signed columns. The server now opens the configurable `MW2_STATS_DB_PATH` (default `mw2-stats.db`) and closes it during shutdown. Focused round-trip, persistence, ranking, dispatcher, and configuration tests pass; `go test ./internal/auth ./internal/config ./cmd/mw2-server` and `go vet ./...` are clean.
 

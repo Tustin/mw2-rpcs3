@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
+	"github.com/josh/mw2-rpcs3/internal/admin"
 	"github.com/josh/mw2-rpcs3/internal/auth"
 	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
@@ -88,10 +91,35 @@ func main() {
 		name string
 		run  func(context.Context) error
 	}
+	stats := func() map[string]uint64 {
+		return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets()}
+	}
+	var adminHandler http.Handler
+	if cfg.AdminEnabled {
+		assets, err := fs.Sub(os.DirFS(cfg.AdminAssetsDir), ".")
+		if err != nil {
+			logger.Error("open admin assets", "error", err)
+			os.Exit(2)
+		}
+		var protect func(http.Handler) http.Handler
+		if cfg.AdminAllowLocal {
+			protect = admin.LocalOnly
+		} else {
+			validator, err := admin.NewAccessValidator(cfg.AdminAccessTeamDomain, cfg.AdminAccessAudience)
+			if err != nil {
+				logger.Error("configure admin authentication", "error", err)
+				os.Exit(2)
+			}
+			protect = validator.Middleware
+		}
+		playlistPath := os.Getenv("MW2_PLAYLISTS_FILE")
+		if playlistPath == "" {
+			playlistPath = "playlists.info"
+		}
+		adminHandler = protect(admin.NewServer(authServer, stats, playlistPath, assets).Handler())
+	}
 	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"http", func(ctx context.Context) error {
-		return health.Serve(ctx, cfg.HTTPAddr, func() map[string]uint64 {
-			return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets()}
-		})
+		return health.ServeWithHandler(ctx, cfg.HTTPAddr, stats, adminHandler)
 	}}}
 	errCh := make(chan error, len(runners))
 	var wg sync.WaitGroup

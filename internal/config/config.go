@@ -31,6 +31,11 @@ type Config struct {
 	StaticMOTD                       string
 	BandwidthSendDurationMS          uint32
 	BandwidthFinalizeReceivePeriodMS *uint32
+	AdminEnabled                     bool
+	AdminAllowLocal                  bool
+	AdminAccessTeamDomain            string
+	AdminAccessAudience              string
+	AdminAssetsDir                   string
 }
 
 func Load() (Config, error) {
@@ -46,6 +51,9 @@ func Load() (Config, error) {
 		StatsDBPath:             env("MW2_STATS_DB_PATH", "mw2-stats.db"),
 		ProfileDBPath:           env("MW2_PROFILE_DB_PATH", "mw2-profiles.db"),
 		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
+		AdminAccessTeamDomain:   env("MW2_ADMIN_ACCESS_TEAM_DOMAIN", ""),
+		AdminAccessAudience:     env("MW2_ADMIN_ACCESS_AUDIENCE", ""),
+		AdminAssetsDir:          env("MW2_ADMIN_ASSETS_DIR", "web/dist"),
 		BandwidthSendDurationMS: 50,
 		MaxFrameBytes:           1 << 20,
 		ReadTimeout:             30 * time.Second,
@@ -55,6 +63,12 @@ func Load() (Config, error) {
 
 	var err error
 	if cfg.LogSensitive, err = envBool("MW2_LOG_SENSITIVE", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.AdminEnabled, err = envBool("MW2_ADMIN_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.AdminAllowLocal, err = envBool("MW2_ADMIN_ALLOW_LOCAL", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.CaptureEnabled, err = envBool("MW2_CAPTURE_ENABLED", false); err != nil {
@@ -100,6 +114,9 @@ func Load() (Config, error) {
 	}
 	if primaryAddr.Port == alternateAddr.Port {
 		return Config{}, fmt.Errorf("MW2_NAT_ADDR and MW2_NAT_ALT_ADDR must use different UDP ports")
+	}
+	if cfg.AdminEnabled && !cfg.AdminAllowLocal && (cfg.AdminAccessTeamDomain == "" || cfg.AdminAccessAudience == "") {
+		return Config{}, fmt.Errorf("MW2_ADMIN_ACCESS_TEAM_DOMAIN and MW2_ADMIN_ACCESS_AUDIENCE are required when MW2_ADMIN_ENABLED=true unless MW2_ADMIN_ALLOW_LOCAL=true")
 	}
 	if cfg.NATAdvertisedIP != "" {
 		ipv4 := net.ParseIP(cfg.NATAdvertisedIP).To4()
