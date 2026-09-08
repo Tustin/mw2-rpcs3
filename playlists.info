@@ -60,7 +60,7 @@ name english "Global Thermonuclear War"
 description english "Yep its here now"
 unlockxp 0
 maxparty 2
-rule party_minplayers 1
+rule party_minplayers 2
 rule party_maxplayers 18
 rule party_matchedplayercount 1
 
