@@ -21,6 +21,12 @@ name russian "������ �� ����"
 name japanese "�t���[�E�t�H�[�E�I�[��"
 script dm
 
+gametype nuke
+name english "Global Thermonuclear War"
+script gtnw
+teambased
+
+
 playlist 1 // ffa gametype
 name english "Christmas 24/7"
 name french "M�l�e g�n�rale"
@@ -47,5 +53,17 @@ rule party_matchedplayercount 1
 rule scr_dm_scorelimit 1500
 rule cg_everyonehearseveryone 1
 
+playlist 2 //gtnw
+name english "Global Thermonuclear War"
+description english "Yep its here now"
+unlockxp 0
+maxparty 2
+rule party_minplayers 1
+rule party_maxplayers 18
+rule party_matchedplayercount 1
+
+
 
 mp_havana,ffa,1
+
+mp_havana,nuke,1
