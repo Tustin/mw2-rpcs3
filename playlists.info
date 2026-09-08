@@ -28,7 +28,7 @@ teambased
 
 
 playlist 1 // ffa gametype
-name english "Christmas 24/7"
+name english "Custom Map Moshpit"
 name french "M�l�e g�n�rale"
 name italian "Tutti contro tutti"
 name german "Frei f�r alle"
@@ -37,7 +37,7 @@ name polish "Tryb dowolny"
 name russian "������ �� ����"
 name japanese "�t���[�E�t�H�[�E�I�[��"
 name korean "������"
-description english "Custom Christmas map 24/7"
+description english "Only Custom Maps (ONLY FOR MODDED CLIENTS!!)"
 description french "Match � mort classique. Une r�gle : chacun pour soi. N'�pargnez personne.\n\n__________\nJoueurs : 4-8"
 description italian "Deathmatch, nudo e crudo. Ognuno per s�. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
 description german "Ganz normales Deathmatch. Jeder k�mpft hier f�r sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
