@@ -53,6 +53,8 @@ rule party_matchedplayercount 1
 rule scr_dm_scorelimit 1500
 rule cg_everyonehearseveryone 1
 
+mp_havana,ffa,1
+
 playlist 2 //gtnw
 name english "Global Thermonuclear War"
 description english "Yep its here now"
@@ -61,9 +63,5 @@ maxparty 2
 rule party_minplayers 1
 rule party_maxplayers 18
 rule party_matchedplayercount 1
-
-
-
-mp_havana,ffa,1
 
 mp_havana,nuke,1
