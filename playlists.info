@@ -37,7 +37,7 @@ name polish "Tryb dowolny"
 name russian "������ �� ����"
 name japanese "�t���[�E�t�H�[�E�I�[��"
 name korean "������"
-description english "Only Custom Maps (ONLY FOR MODDED CLIENTS!!)"
+description english "Custom Maps\n\n(ONLY FOR MODDED CLIENTS!!)"
 description french "Match � mort classique. Une r�gle : chacun pour soi. N'�pargnez personne.\n\n__________\nJoueurs : 4-8"
 description italian "Deathmatch, nudo e crudo. Ognuno per s�. Uccidi tutti.\n\n__________\nGiocatori: 4-8"
 description german "Ganz normales Deathmatch. Jeder k�mpft hier f�r sich allein und gegen jeden.\n\n__________\nSpieler: 4-8"
@@ -64,4 +64,4 @@ rule party_minplayers 2
 rule party_maxplayers 18
 rule party_matchedplayercount 1
 
-mp_havana,nuke,1
+mp_rust,nuke,1
