@@ -35,7 +35,7 @@ func TestHandler(t *testing.T) {
 		bodyLength  int
 		body        string
 	}{
-		{"/ez_patch/unknown_version.txt", http.StatusOK, "text/plain", 1, "1"},
+		{"/ez_patch/unknown_version.txt", http.StatusOK, "text/plain", 3, "999"},
 		{"/ez_patch/unknown.cbo", http.StatusOK, "application/octet-stream", IndexSize, ""},
 		{"/ez_patch/unknown", http.StatusNotFound, "text/plain; charset=utf-8", 19, "404 page not found\n"},
 	}

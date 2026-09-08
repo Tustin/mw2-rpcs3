@@ -1,6 +1,6 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-09-08 after implementing the UDP LSP command-4 server-list responder._
+_Last updated: 2026-09-08 after raising the EZ Patch download probe version to 999._
 
 ## Latest implementation: UDP LSP server list
 
@@ -8,7 +8,7 @@ Implemented a UDP listener on port `2005` for MW2's retained LSP protocol. Packe
 
 ## Prior implementation: EZ Patch download probe
 
-Added a minimal generated `ez_patch.cbo` download probe and wildcard HTTP handlers for `/ez_patch/*_version.txt` and `/ez_patch/*.cbo`. The version response is `1`; the CBO is a `0xB14`-byte big-endian index with format version `269`, content version `0`, patch version `1`, and zero entries, so this stage tests only HTTP download and local write behavior. The active `playlists.info` now includes `rule ezpatch 1`. The unmodified retail URL requires running the HTTP listener on port 80 with `MW2_HTTP_ADDR=:80`. Focused handler tests, the full Go test suite, `go vet ./...`, and `git diff --check` pass.
+Added a minimal generated `ez_patch.cbo` download probe and wildcard HTTP handlers for `/ez_patch/*_version.txt` and `/ez_patch/*.cbo`. RPCS3 confirmed that DNS and the port-80 reverse proxy now deliver the version response correctly, but version `1` did not trigger a CBO request. The probe version and generated CBO patch version are now `999`; the CBO remains a `0xB14`-byte big-endian index with format version `269`, content version `0`, and zero entries, so this stage tests only HTTP download and local write behavior. The active `playlists.info` includes `rule ezpatch 1`. The unmodified retail URL requires routing port 80 to the HTTP listener. Focused handler tests, the full Go test suite, `go vet ./...`, and `git diff --check` pass.
 
 ## Prior investigation: PS3 EZ Patch CBO
 

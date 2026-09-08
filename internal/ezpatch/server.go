@@ -9,7 +9,7 @@ import (
 const (
 	FormatVersion = 269
 	IndexSize     = 0xB14
-	TestVersion   = 1
+	TestVersion   = 999
 )
 
 func TestCBO() []byte {
@@ -28,7 +28,7 @@ func Handler() http.Handler {
 		switch {
 		case strings.HasSuffix(name, "_version.txt"):
 			w.Header().Set("Content-Type", "text/plain")
-			_, _ = w.Write([]byte("1"))
+			_, _ = w.Write([]byte("999"))
 		case strings.HasSuffix(name, ".cbo"):
 			data := TestCBO()
 			w.Header().Set("Content-Type", "application/octet-stream")
