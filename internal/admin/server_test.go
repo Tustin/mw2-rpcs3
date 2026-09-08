@@ -68,42 +68,6 @@ func TestServerRequiresBoardID(t *testing.T) {
 	}
 }
 
-func TestLocalOnlyMiddleware(t *testing.T) {
-	handler := LocalOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	for _, test := range []struct {
-		remote string
-		status int
-	}{
-		{"127.0.0.1:1234", http.StatusNoContent},
-		{"[::1]:1234", http.StatusNoContent},
-		{"192.0.2.1:1234", http.StatusForbidden},
-	} {
-		request := httptest.NewRequest(http.MethodGet, "/admin/", nil)
-		request.RemoteAddr = test.remote
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if response.Code != test.status {
-			t.Fatalf("remote %q status = %d, want %d", test.remote, response.Code, test.status)
-		}
-	}
-}
-
-func TestAccessMiddlewareRequiresAssertion(t *testing.T) {
-	validator, err := NewAccessValidator("team.cloudflareaccess.com", "audience")
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	validator.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Fatal("protected handler was called")
-	})).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/", nil))
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
-	}
-}
-
 func contains(value, substring string) bool {
 	for index := 0; index+len(substring) <= len(value); index++ {
 		if value[index:index+len(substring)] == substring {

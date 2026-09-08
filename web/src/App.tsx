@@ -75,7 +75,7 @@ function DataTable<T extends TableData>({ title, table, empty }: { title: string
 function App() {
   return <div className="shell"><aside><div className="brand"><span>IW4</span><div>MW2<br/><small>operations</small></div></div><nav>
     <NavLink to="/">Overview</NavLink><NavLink to="/profiles">Profiles</NavLink><NavLink to="/leaderboards">Leaderboards</NavLink>
-  </nav><div className="access">Protected by<br/><strong>Cloudflare Access</strong></div></aside><main><header><div><p>DEMONWARE EMULATOR</p><h1>Operations Console</h1></div><span className="live">LIVE</span></header><Routes><Route path="/" element={<Overview />} /><Route path="/profiles" element={<Profiles />} /><Route path="/leaderboards" element={<Leaderboards />} /></Routes></main></div>
+  </nav></aside><main><header><div><p>DEMONWARE EMULATOR</p><h1>Operations Console</h1></div><span className="live">LIVE</span></header><Routes><Route path="/" element={<Overview />} /><Route path="/profiles" element={<Profiles />} /><Route path="/leaderboards" element={<Leaderboards />} /></Routes></main></div>
 }
 
 export default App

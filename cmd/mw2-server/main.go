@@ -101,22 +101,11 @@ func main() {
 			logger.Error("open admin assets", "error", err)
 			os.Exit(2)
 		}
-		var protect func(http.Handler) http.Handler
-		if cfg.AdminAllowLocal {
-			protect = admin.LocalOnly
-		} else {
-			validator, err := admin.NewAccessValidator(cfg.AdminAccessTeamDomain, cfg.AdminAccessAudience)
-			if err != nil {
-				logger.Error("configure admin authentication", "error", err)
-				os.Exit(2)
-			}
-			protect = validator.Middleware
-		}
 		playlistPath := os.Getenv("MW2_PLAYLISTS_FILE")
 		if playlistPath == "" {
 			playlistPath = "playlists.info"
 		}
-		adminHandler = protect(admin.NewServer(authServer, stats, playlistPath, assets).Handler())
+		adminHandler = admin.NewServer(authServer, stats, playlistPath, assets).Handler()
 	}
 	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"http", func(ctx context.Context) error {
 		return health.ServeWithHandler(ctx, cfg.HTTPAddr, stats, adminHandler)

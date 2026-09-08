@@ -12,8 +12,6 @@ aside { position: fixed; inset: 0 auto 0 0; width: 230px; padding: 34px 24px; bo
 nav { margin-top: 55px; display: grid; gap: 8px; }
 nav a { color: #92999e; text-decoration: none; padding: 13px 15px; border-left: 2px solid transparent; text-transform: uppercase; font: 600 15px 'Barlow Condensed'; letter-spacing: .09em; }
 nav a.active, nav a:hover { color: #fff; border-color: #ff7a18; background: linear-gradient(90deg, rgba(255,122,24,.13), transparent); }
-.access { margin-top: auto; color: #686f74; font-size: 11px; line-height: 1.7; text-transform: uppercase; letter-spacing: .08em; }
-.access strong { color: #a9afb3; }
 main { grid-column: 2; padding: 42px 52px 70px; max-width: 1480px; width: 100%; }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 34px; padding-bottom: 25px; border-bottom: 1px solid #282d30; }
 header p { margin: 0 0 7px; color: #ff7a18; font: 600 11px 'Barlow Condensed'; letter-spacing: .22em; }
@@ -43,5 +41,5 @@ th, td { padding: 14px 20px; border-top: 1px solid #292e31; }
 td { font-size: 13px; color: #c9ced1; }
 tbody tr:hover { background: rgba(255,122,24,.035); }
 .empty { padding: 42px; color: #656d72; text-align: center; border-top: 1px solid #292e31; }
-@media (max-width: 900px) { .shell { display: block; } aside { position: static; width: auto; height: auto; padding: 18px; flex-direction: row; align-items: center; } nav { margin: 0 0 0 auto; display: flex; } .access { display: none; } main { padding: 28px 20px; } .cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .shell { display: block; } aside { position: static; width: auto; height: auto; padding: 18px; flex-direction: row; align-items: center; } nav { margin: 0 0 0 auto; display: flex; } main { padding: 28px 20px; } .cards { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .brand div { display: none; } nav a { padding: 10px 8px; font-size: 12px; } .cards { grid-template-columns: 1fr; } dl > div { grid-template-columns: 1fr; gap: 7px; } }
