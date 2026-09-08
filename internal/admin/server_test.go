@@ -22,6 +22,10 @@ func (testBackend) AdminLeaderboard(context.Context, int32, int, int) ([]auth.Ad
 	return []auth.AdminLeaderboardRow{{BoardID: 1, EntityID: 44, Rating: 55, Rank: 1, Name: "player", Columns: []int32{66}}}, nil
 }
 
+func (testBackend) Population() auth.PopulationSnapshot {
+	return auth.PopulationSnapshot{OnlinePlayers: 2, AdvertisedPlayers: 3, Sessions: 1}
+}
+
 func TestServerAPI(t *testing.T) {
 	playlistPath := filepath.Join(t.TempDir(), "playlists.info")
 	if err := os.WriteFile(playlistPath, []byte("playlist"), 0o600); err != nil {
@@ -34,6 +38,7 @@ func TestServerAPI(t *testing.T) {
 		body string
 	}{
 		{"/admin/api/v1/status", `"requests":7`},
+		{"/admin/api/v1/population", `"onlinePlayers":2`},
 		{"/admin/api/v1/profiles", `"filename":"mpdata"`},
 		{"/admin/api/v1/leaderboards?boardId=1", `"name":"player"`},
 		{"/admin/api/v1/playlist", `"filename":"playlists.info"`},

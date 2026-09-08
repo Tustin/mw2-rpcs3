@@ -56,9 +56,11 @@ type RawServer struct {
 	requests                         atomic.Uint64
 	lsgConnections                   atomic.Uint64
 	lsgFrames                        atomic.Uint64
+	activeLSGConnections             atomic.Uint64
 	lsgSessions                      *lsgSessionStore
 	matchmakingOnce                  sync.Once
 	matchmakingSessions              *mw2MatchmakingStore
+	population                       *populationTracker
 	userFiles                        *mw2UserFileStore
 	stats                            *mw2StatsStore
 	suppressSelfOnly                 bool
@@ -86,16 +88,18 @@ func NewRawServer(addr string, log *slog.Logger, recorder *capture.Recorder, rea
 		writeTimeout:            writeTimeout,
 		lsgIdleTimeout:          lsgIdleTimeout,
 		lsgSessions:             newLSGSessionStore(),
+		population:              newPopulationTracker(),
 		matchmakingSessions:     newMW2MatchmakingStore(),
 		userFiles:               newMemoryMW2UserFileStore(),
 		bandwidthSendDurationMS: 50,
 	}
 }
 
-func (s *RawServer) Connections() uint64    { return s.connections.Load() }
-func (s *RawServer) Requests() uint64       { return s.requests.Load() }
-func (s *RawServer) LSGConnections() uint64 { return s.lsgConnections.Load() }
-func (s *RawServer) LSGFrames() uint64      { return s.lsgFrames.Load() }
+func (s *RawServer) Connections() uint64          { return s.connections.Load() }
+func (s *RawServer) Requests() uint64             { return s.requests.Load() }
+func (s *RawServer) LSGConnections() uint64       { return s.lsgConnections.Load() }
+func (s *RawServer) LSGFrames() uint64            { return s.lsgFrames.Load() }
+func (s *RawServer) ActiveLSGConnections() uint64 { return s.activeLSGConnections.Load() }
 
 // SetSensitiveLogging enables credential-bearing protocol diagnostics for an
 // isolated development environment. It must be called before Serve.
@@ -332,6 +336,8 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		log.Warn("retail LSG session setup failed", "error", err)
 		return
 	}
+	s.activeLSGConnections.Add(1)
+	s.population.connected(session.connectionID)
 	session.bandwidthIPv4 = s.bandwidthIPv4
 	session.bandwidthPort = s.bandwidthPort
 	session.bandwidthConfigured = s.bandwidthConfigured
@@ -352,6 +358,8 @@ func (s *RawServer) handleLSG(conn net.Conn, remote string, prefix [4]byte) {
 		}
 	}
 	defer func() {
+		s.activeLSGConnections.Add(^uint64(0))
+		s.population.disconnected(session.connectionID)
 		if removed := session.matchmakingSessions.deleteOwner(session.connectionID); removed > 0 {
 			log.Info("reclaimed matchmaking sessions for closed LSG connection", "sessions", removed)
 		}
@@ -721,6 +729,7 @@ func (s *RawServer) newLSGConnection(key, pendingKey [24]byte) (*lsgConnection, 
 		return nil, err
 	}
 	connection.matchmakingSessions = s.matchmakingStore()
+	connection.population = s.population
 	connection.userFiles = s.userFiles
 	connection.stats = s.stats
 	connection.suppressSelfOnly = s.suppressSelfOnly

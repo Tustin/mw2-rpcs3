@@ -815,6 +815,7 @@ func (c *lsgConnection) handleStorageTask(payload []byte) (byte, []byte, bool) {
 		reply = c.storageMutationReply(request.operationID, file.id)
 	case bdStorageListOwnerFiles:
 		c.entityID = request.ownerID
+		c.population.identified(c.connectionID, c.entityID)
 		c.lastTaskSupported = true
 		files, err := c.userFiles.list(request.ownerID)
 		if err != nil {

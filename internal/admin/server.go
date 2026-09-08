@@ -20,6 +20,7 @@ import (
 type ServerBackend interface {
 	AdminProfiles(ctx context.Context, limit, offset int) ([]auth.AdminProfile, error)
 	AdminLeaderboard(ctx context.Context, boardID int32, limit, offset int) ([]auth.AdminLeaderboardRow, error)
+	Population() auth.PopulationSnapshot
 }
 
 type Stats func() map[string]uint64
@@ -39,6 +40,7 @@ func NewServer(backend ServerBackend, stats Stats, playlistPath string, assets f
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /admin/api/v1/status", s.status)
+	mux.HandleFunc("GET /admin/api/v1/population", s.population)
 	mux.HandleFunc("GET /admin/api/v1/profiles", s.profiles)
 	mux.HandleFunc("GET /admin/api/v1/leaderboards", s.leaderboards)
 	mux.HandleFunc("GET /admin/api/v1/playlist", s.playlist)
@@ -51,6 +53,10 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "uptimeSeconds": uint64(time.Since(s.started).Seconds()), "metrics": s.stats()})
+}
+
+func (s *Server) population(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.backend.Population())
 }
 
 func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {

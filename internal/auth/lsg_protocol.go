@@ -101,6 +101,7 @@ type lsgConnection struct {
 	bandwidthFinalizeReceivePeriodMS *uint32
 	lastBandwidthPhase               string
 	matchmakingSessions              *mw2MatchmakingStore
+	population                       *populationTracker
 	userFiles                        *mw2UserFileStore
 	stats                            *mw2StatsStore
 	suppressSelfOnly                 bool

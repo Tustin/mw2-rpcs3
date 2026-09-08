@@ -182,6 +182,45 @@ func (s *mw2MatchmakingStore) deleteOwner(ownerID uint64) int {
 	return removed
 }
 
+func (s *mw2MatchmakingStore) population() PopulationSnapshot {
+	if s == nil {
+		return PopulationSnapshot{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	byPlaylist := make(map[int32]*PlaylistPopulation)
+	var snapshot PopulationSnapshot
+	for _, session := range s.sessions {
+		if !session.ready {
+			continue
+		}
+		players := session.filledPublic + session.filledPrivate
+		if players < 1 {
+			players = 1
+		}
+		playerCount := uint64(players)
+		snapshot.Sessions++
+		snapshot.AdvertisedPlayers += playerCount
+		playlistID := session.attributes[mw2MatchmakingAttributeGameMode]
+		playlist := byPlaylist[playlistID]
+		if playlist == nil {
+			playlist = &PlaylistPopulation{PlaylistID: playlistID}
+			byPlaylist[playlistID] = playlist
+		}
+		playlist.Sessions++
+		playlist.Players += playerCount
+	}
+	playlistIDs := make([]int, 0, len(byPlaylist))
+	for playlistID := range byPlaylist {
+		playlistIDs = append(playlistIDs, int(playlistID))
+	}
+	sort.Ints(playlistIDs)
+	for _, playlistID := range playlistIDs {
+		snapshot.Playlists = append(snapshot.Playlists, *byPlaylist[int32(playlistID)])
+	}
+	return snapshot
+}
+
 func (s *mw2MatchmakingStore) hasEntity(entityID uint64) bool {
 	if s == nil || entityID == 0 {
 		return false
