@@ -17,9 +17,11 @@ import (
 	"github.com/josh/mw2-rpcs3/internal/bandwidth"
 	"github.com/josh/mw2-rpcs3/internal/capture"
 	"github.com/josh/mw2-rpcs3/internal/config"
+	"github.com/josh/mw2-rpcs3/internal/ezpatch"
 	"github.com/josh/mw2-rpcs3/internal/health"
 	"github.com/josh/mw2-rpcs3/internal/protocol"
 	"github.com/josh/mw2-rpcs3/internal/server"
+	"github.com/josh/mw2-rpcs3/internal/services/lsp"
 	"github.com/josh/mw2-rpcs3/internal/services/nat"
 	"github.com/josh/mw2-rpcs3/internal/services/sessions"
 	"github.com/josh/mw2-rpcs3/internal/services/storage"
@@ -85,6 +87,15 @@ func main() {
 		recorder,
 	)
 	natServer.SetBandwidthMeasurements(bandwidthMeasurements)
+	lspServer := lsp.New(
+		cfg.LSPAddr,
+		[]lsp.ServerEntry{{ID: 0x417e, Type: 0}},
+		cfg.LSPMessage,
+		cfg.LSPVersion,
+		cfg.LSPMaxServers,
+		logger,
+		recorder,
+	)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	type runner struct {
@@ -92,7 +103,7 @@ func main() {
 		run  func(context.Context) error
 	}
 	stats := func() map[string]uint64 {
-		return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets()}
+		return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets(), "lsp_packets": lspServer.Packets()}
 	}
 	var adminHandler http.Handler
 	if cfg.AdminEnabled {
@@ -107,8 +118,8 @@ func main() {
 		}
 		adminHandler = admin.NewServer(authServer, stats, playlistPath, assets).Handler()
 	}
-	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"http", func(ctx context.Context) error {
-		return health.ServeWithHandler(ctx, cfg.HTTPAddr, stats, adminHandler)
+	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"lsp", lspServer.Serve}, {"http", func(ctx context.Context) error {
+		return health.ServeWithHandlers(ctx, cfg.HTTPAddr, stats, ezpatch.Handler(), adminHandler)
 	}}}
 	errCh := make(chan error, len(runners))
 	var wg sync.WaitGroup

@@ -88,20 +88,34 @@ MW2_LOG_LEVEL=debug go run ./cmd/mw2-server
 ```
 
 Or with Docker Compose, replacing the example with the IPv4 address reachable
-by the game clients:
+by the game clients. Use the Hyper-V VM's LAN IPv4 for local clients and the
+cloud server's public IPv4 for remote clients:
 
 ```bash
-echo "MW2_NAT_ADVERTISED_IP=192.168.1.10" > .env
+cat > .env <<'EOF'
+MW2_NAT_ADVERTISED_IP=192.168.1.10
+MW2_DNS_REDIRECT_IP=192.168.1.10
+# Set only when host port 80 is occupied by another service:
+# MW2_HTTP_HOST_PORT=18080
+EOF
 docker compose up --build
 ```
 
+Configure the PS3 or RPCS3 DNS server as that same IPv4. The Compose stack
+runs dnsmasq on TCP/UDP `53`; dnsmasq listens on all container interfaces and
+returns `MW2_DNS_REDIRECT_IP` for the MW2 authentication, LSG, and EZ Patch
+hostnames. The host must make TCP/UDP `53` reachable and must not already have
+a DNS service bound to those ports.
+
 Default listeners:
 
+- DNS TCP/UDP `53`;
+- EZ Patch and health/metrics HTTP on host port `80` by default, configurable
+  through `MW2_HTTP_HOST_PORT`;
 - retail authentication and LSG TCP `3074`, exercised by prior RPCS3 runs;
 - recovered MW2 public-address/NAT discovery UDP `3074` plus alternate reply
   source UDP `3075`, both of which coexist with TCP;
-- experimental custom lobby TCP `3075`, not a retail Demonware service;
-- health/metrics HTTP `8080`.
+- experimental custom lobby TCP `3075`, not a retail Demonware service.
 
 ## Configuration
 
@@ -116,8 +130,17 @@ All configuration is environment-based:
   client-reachable alternate/source-check IPv4 for `0x15` replies and the
   service-18 bandwidth upload target; otherwise the alternate socket's
   specific bind or a route-derived IPv4)
+- `MW2_DNS_REDIRECT_IP`, Docker-only client-reachable IPv4 returned by dnsmasq;
+  the root Compose stack defaults it to `MW2_NAT_ADVERTISED_IP`
+- `MW2_HTTP_HOST_PORT`, Docker-only host port for EZ Patch HTTP, default `80`;
+  the game's stock EZ Patch URL requires port `80`, so an alternate port needs
+  an existing reverse proxy or equivalent port-80 forwarding rule
 - `MW2_NAT_RELAY_ENABLED`, default `false` (enables the exact unauthenticated
   introducer forwarder; use only in an isolated/trusted lab)
+- `MW2_LSP_ADDR`, default `:2005` (UDP LSP server-list listener)
+- `MW2_LSP_MESSAGE`, default `MW2 RPCS3 LSP`
+- `MW2_LSP_VERSION`, default `361`
+- `MW2_LSP_MAX_SERVERS`, default `120`
 - `MW2_HTTP_ADDR`, default `:8080`
 - `MW2_LOG_LEVEL`, one of `debug`, `info`, `warn`, or `error`
 - `MW2_LOG_SENSITIVE`, default `false` (development-only credential, key, raw

@@ -6,6 +6,7 @@ version 361
 rule party_gameStartTimerLength 8
 rule scr_xpscale 1
 rule scr_restxp_enable 0
+rule ezpatch 1
 rule newsFeed_updateInterval 600
 rule session_immediateDeleteTinySessions 1
 rule party_minlobbytime 60

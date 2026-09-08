@@ -1,10 +1,9 @@
 services:
   ps3-dns:
-    image: jpillora/dnsmasq
-    container_name: ps3-dns-server
-    restart: unless-stopped
+    build: .
+    environment:
+      MW2_DNS_REDIRECT_IP: ${MW2_DNS_REDIRECT_IP:?set MW2_DNS_REDIRECT_IP to the client-reachable host IPv4}
     ports:
       - "53:53/udp"
       - "53:53/tcp"
-    volumes:
-      - ./dnsmasq.conf:/etc/dnsmasq.conf:ro
+    restart: unless-stopped

@@ -1,8 +1,20 @@
 # Current status of MW2 Demonware server emulation
 
-_Last updated: 2026-09-06 after implementing live population tracking and reporting._
+_Last updated: 2026-09-08 after implementing the UDP LSP command-4 server-list responder._
 
-## Latest implementation: population reporting
+## Latest implementation: UDP LSP server list
+
+Implemented a UDP listener on port `2005` for MW2's retained LSP protocol. Packet type `0x0e`, command `4` now returns the big-endian server-list structure consumed by `sub_348940`: count, repeated `uint16` server ID plus `uint32` type entries, NUL-terminated message, version, and maximum-server count. The default response advertises server ID `0x417e`, version `361`, and maximum `120`; command `3` registrations are recorded but intentionally receive no server-list response. The listener is configurable through `MW2_LSP_ADDR`, `MW2_LSP_MESSAGE`, `MW2_LSP_VERSION`, and `MW2_LSP_MAX_SERVERS`, is included in capture/metrics output, and UDP `2005` is exposed by Compose. Unit and UDP loopback tests cover the wire response and shutdown path.
+
+## Prior implementation: EZ Patch download probe
+
+Added a minimal generated `ez_patch.cbo` download probe and wildcard HTTP handlers for `/ez_patch/*_version.txt` and `/ez_patch/*.cbo`. The version response is `1`; the CBO is a `0xB14`-byte big-endian index with format version `269`, content version `0`, patch version `1`, and zero entries, so this stage tests only HTTP download and local write behavior. The active `playlists.info` now includes `rule ezpatch 1`. The unmodified retail URL requires running the HTTP listener on port 80 with `MW2_HTTP_ADDR=:80`. Focused handler tests, the full Go test suite, `go vet ./...`, and `git diff --check` pass.
+
+## Prior investigation: PS3 EZ Patch CBO
+
+Reverse engineered the retained `ez_patch.cbo` online-update path in `default_mp.elf`. The client reads a fixed `0xB14`-byte big-endian control block, validates format version `269`, a 64-bit content version, a 1..65535 patch version, and a 64-record filename index, then conditionally loads the hard-coded `ez_ui_mp`, localized EZ UI, `ez_common_mp`, and localized EZ common zones. A 44-byte filename table redirects normal file opens to offsets inside the shared CBO file, strongly indicating that the CBO is a packed container/control structure for embedded EZ fastfiles rather than executable native code. No authentic CBO sample is currently available. The inferred layout, capabilities, unknowns, minimal generator, and staged RPCS3 test plan are documented in `docs/mw2-ez-patch-cbo.md`.
+
+## Prior implementation: population reporting
 
 Implemented server-side live population tracking from authenticated LSG connections and ready matchmaking advertisements. The new read-only `/admin/api/v1/population` response reports deduplicated online players, advertised players, ready session count, and per-playlist player/session totals derived from MW2's matchmaking game-mode attribute. Connections are associated with entity IDs when storage owner requests identify the authenticated player and are removed on disconnect; advertised player counts use filled public/private slots with one host minimum per ready session. Focused admin API coverage, the full Go test suite, `go vet ./...`, and `git diff --check` pass.
 
@@ -1939,6 +1951,8 @@ Server startup now resolves the same reachable IPv4 used by the NAT/bandwidth se
 
 Service 18 timing remains configurable through `MW2_BANDWIDTH_SEND_DURATION_MS` and `MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS`. A two-client PS3/RPCS3 test proved that a send duration of `50` ms allows the clients to join immediately, while the retail-capture `2000` ms value leaves both clients searching despite successful discovery. The working `50` ms value is now the default; the environment override remains available for compatibility testing. Packet size/count and all other service-18 request fields remain unchanged.
 
+The root Docker Compose stack now builds and runs a dnsmasq sidecar from `dns-server/dnsmasq.conf`, publishes TCP/UDP port `53`, and maps `MW2_HTTP_HOST_PORT` (default host TCP port `80`) to the existing EZ Patch HTTP handler on container port `8080`. dnsmasq listens on `0.0.0.0` inside its container; its three MW2 hostname answers are rendered at startup from `MW2_DNS_REDIRECT_IP`, which defaults to `MW2_NAT_ADVERTISED_IP` in the root stack. This separates the container bind address from the client-reachable Hyper-V LAN or cloud public IPv4. The standalone `dns-server/docker-compose.yml` remains usable with an explicit `MW2_DNS_REDIRECT_IP`. On the current Hyper-V host, nginx-proxy-manager already owns port `80`, so `.env` uses `MW2_HTTP_HOST_PORT=18080`; the game still requires an existing port-80 reverse-proxy/forwarding rule for the EZ Patch hostname. The current Windows LAN interface is `192.168.0.117`, which is used for both the DNS redirect and NAT advertised address. `docker compose config` and `git diff --check` pass for the root stack.
+
 The timing experiment also revealed that MW2 can advertise public-playlist capacity in either of service 5's two wire slot pools: the `2000` ms path advertised `open_private`, while the working `50` ms path advertised `open_public`. These names describe Demonware wire fields and do not map reliably to MW2's Public Match versus Private Match UI modes. `findForSearch` treats the larger of the two open-slot values as available capacity for playlist matchmaking while preserving explicit low-level private-pool searches. Focused tests cover sessions advertising capacity exclusively in either pool.
 
 ## Reference material
@@ -1953,6 +1967,7 @@ The timing experiment also revealed that MW2 can advertise public-playlist capac
   - `docs/demonware-ip-discovery.md`
   - `docs/demonware-peer-qos.md`
   - `docs/demonware-peer-dtls.md`
+  - `docs/mw2-ez-patch-cbo.md`
 - `docs/demonware-lobby-messages.md`
 - `docs/demonware-storage-playlists.md`
 

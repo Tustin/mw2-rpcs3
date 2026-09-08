@@ -15,6 +15,10 @@ type Config struct {
 	NATAlternateAddr                 string
 	NATAdvertisedIP                  string
 	NATRelayEnabled                  bool
+	LSPAddr                          string
+	LSPMessage                       string
+	LSPVersion                       uint32
+	LSPMaxServers                    uint32
 	SuppressSelfOnly                 bool
 	PreferEarlierHosts               bool
 	HTTPAddr                         string
@@ -42,6 +46,10 @@ func Load() (Config, error) {
 		NATAddr:                 env("MW2_NAT_ADDR", ":3074"),
 		NATAlternateAddr:        env("MW2_NAT_ALT_ADDR", ":3075"),
 		NATAdvertisedIP:         env("MW2_NAT_ADVERTISED_IP", ""),
+		LSPAddr:                 env("MW2_LSP_ADDR", ":2005"),
+		LSPMessage:              env("MW2_LSP_MESSAGE", "MW2 RPCS3 LSP"),
+		LSPVersion:              361,
+		LSPMaxServers:           120,
 		HTTPAddr:                env("MW2_HTTP_ADDR", ":8080"),
 		LogLevel:                env("MW2_LOG_LEVEL", "info"),
 		CaptureDir:              env("MW2_CAPTURE_DIR", "captures"),
@@ -79,6 +87,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.BandwidthSendDurationMS, err = envUint32("MW2_BANDWIDTH_SEND_DURATION_MS", cfg.BandwidthSendDurationMS); err != nil {
+		return Config{}, err
+	}
+	if cfg.LSPVersion, err = envUint32("MW2_LSP_VERSION", cfg.LSPVersion); err != nil {
+		return Config{}, err
+	}
+	if cfg.LSPMaxServers, err = envUint32("MW2_LSP_MAX_SERVERS", cfg.LSPMaxServers); err != nil {
 		return Config{}, err
 	}
 	if cfg.BandwidthFinalizeReceivePeriodMS, err = envOptionalUint32("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS"); err != nil {

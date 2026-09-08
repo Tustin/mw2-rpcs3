@@ -8,6 +8,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_NAT_ALT_ADDR", "")
 	t.Setenv("MW2_NAT_ADVERTISED_IP", "")
 	t.Setenv("MW2_NAT_RELAY_ENABLED", "")
+	t.Setenv("MW2_LSP_ADDR", "")
+	t.Setenv("MW2_LSP_MESSAGE", "")
+	t.Setenv("MW2_LSP_VERSION", "")
+	t.Setenv("MW2_LSP_MAX_SERVERS", "")
 	t.Setenv("MW2_MATCHMAKING_SUPPRESS_SELF_ONLY", "")
 	t.Setenv("MW2_MATCHMAKING_PREFER_EARLIER_HOSTS", "")
 	t.Setenv("MW2_LOG_SENSITIVE", "")
@@ -28,6 +32,10 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.NATAlternateAddr != ":3075" ||
 		cfg.NATAdvertisedIP != "" ||
 		cfg.NATRelayEnabled ||
+		cfg.LSPAddr != ":2005" ||
+		cfg.LSPMessage != "MW2 RPCS3 LSP" ||
+		cfg.LSPVersion != 361 ||
+		cfg.LSPMaxServers != 120 ||
 		cfg.SuppressSelfOnly ||
 		cfg.PreferEarlierHosts ||
 		cfg.LogSensitive ||
