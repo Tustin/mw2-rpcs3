@@ -112,11 +112,7 @@ func main() {
 			logger.Error("open admin assets", "error", err)
 			os.Exit(2)
 		}
-		playlistPath := os.Getenv("MW2_PLAYLISTS_FILE")
-		if playlistPath == "" {
-			playlistPath = "playlists.info"
-		}
-		adminHandler = admin.NewServer(authServer, stats, playlistPath, assets).Handler()
+		adminHandler = admin.NewServer(authServer, stats, cfg.PlaylistsFile, assets).Handler()
 	}
 	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"lsp", lspServer.Serve}, {"http", func(ctx context.Context) error {
 		return health.ServeWithHandlers(ctx, cfg.HTTPAddr, stats, ezpatch.Handler(), adminHandler)

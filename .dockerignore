@@ -5,6 +5,8 @@
 .env.*
 bin
 captures
+web/node_modules
+web/dist
 coverage.out
 tools
 *.elf

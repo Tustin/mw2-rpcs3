@@ -146,16 +146,21 @@ All configuration is environment-based:
 - `MW2_LOG_SENSITIVE`, default `false` (development-only credential, key, raw
   frame, and decrypted payload logging; never publish its output unredacted)
 - `MW2_MAX_FRAME_BYTES`, default 1 MiB, valid range 64 bytes to 16 MiB
-- `MW2_BANDWIDTH_SEND_DURATION_MS`, default `50` (service-18 request value; override for compatibility testing)
-- `MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS`, default unset (experimental override for the measured service-18 finalize period)
+- `MW2_BANDWIDTH_SEND_DURATION_MS`, default `50` (service-18 request value; override for compatibility testing; also used as the nominal finalize period if container networking drops the UDP upload burst)
+- `MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS`, default unset (experimental override for the measured or nominal service-18 finalize period)
 - `MW2_READ_TIMEOUT`, default `30s`
 - `MW2_WRITE_TIMEOUT`, default `10s`
 - `MW2_SESSION_TTL`, default `2m` (experimental TCP-3075 session scaffold
   only; the retail service-5 directory does not invent a backend TTL)
 - `MW2_CAPTURE_ENABLED`, default `false`
 - `MW2_CAPTURE_DIR`, default `captures`
-- `MW2_PLAYLISTS_FILE`, default runtime fallbacks include `./playlists.info`
+- `MW2_PROFILE_DB_PATH`, default `mw2-profiles.db`; Docker uses the persistent `/data/mw2-profiles.db`
+- `MW2_PLAYLISTS_FILE`, default runtime fallbacks include `./playlists.info`; Docker uses the persistent `/data/playlists.info`
+- `MW2_ADMIN_ENABLED`, default `false` for native runs; Compose defaults it to `true` and serves the operator console at `/admin/`
+- `MW2_ADMIN_ASSETS_DIR`, default `web/dist`; Docker uses `/web/dist`
 - `MW2_MOTD`, independently authored text returned by the experimental storage service
+
+The operator console includes a playlist text editor and a profile manager. Profiles are stored as exact 8192-byte `iw4-mpdata` blobs in SQLite and can be viewed as hex, uploaded, downloaded, edited, or deleted. Playlist and profile changes apply to new storage requests without restarting the server. Docker stores both in the `mw2-data` named volume, so normal rebuilds and `docker compose down` preserve them; `docker compose down -v` resets the data. The console has no authentication and should only be enabled on a trusted network.
 
 Endpoints:
 

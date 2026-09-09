@@ -6,7 +6,7 @@ version 361
 rule party_gameStartTimerLength 8
 rule scr_xpscale 1
 rule scr_restxp_enable 0
-rule ezpatch 1
+//rule ezpatch 1
 rule newsFeed_updateInterval 600
 rule session_immediateDeleteTinySessions 1
 rule party_minlobbytime 60
@@ -72,8 +72,10 @@ name english "Solo Testing"
 unlockxp 0
 maxparty 2
 rule party_minplayers 1
-rule party_maxplayers 18
-rule party_matchedplayercount 1
+rule party_maxplayers 2
+rule party_minlobbytime 0
+rule party_gameStartTimerLength 1
+rule party_matchedplayercount 0
 rule scr_dm_scorelimit 9999
 
 mp_rust,ffa,1

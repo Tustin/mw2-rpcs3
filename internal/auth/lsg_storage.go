@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/josh/mw2-rpcs3/internal/playlist"
 	_ "modernc.org/sqlite"
 )
 
@@ -14,7 +15,7 @@ const (
 	mw2PlaylistFilename     = "playlists.info"
 	mw2PlaylistPatch3FileID = uint64(0x112233445566778a)
 	mw2PlaylistPatch3Name   = "playlists.patch3"
-	mw2PlaylistMaxSize      = 0x20000
+	mw2PlaylistMaxSize      = playlist.MaxSize
 	mw2MOTDFileID           = uint64(0x1122334455667789)
 	mw2MOTDFilename         = "messageoftheday.info"
 	mw2MOTDMaxSize          = 0x100
@@ -706,16 +707,10 @@ func loadMW2Playlist() ([]byte, error) {
 		if path == "" {
 			continue
 		}
-		data, err := os.ReadFile(path)
+		data, err := playlist.Read(path)
 		if err != nil {
 			lastErr = err
 			continue
-		}
-		if len(data) == 0 {
-			return nil, fmt.Errorf("playlist file %q is empty", path)
-		}
-		if len(data) > mw2PlaylistMaxSize {
-			return nil, fmt.Errorf("playlist file %q is %d bytes, maximum is %d", path, len(data), mw2PlaylistMaxSize)
 		}
 		return data, nil
 	}

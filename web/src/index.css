@@ -3,7 +3,7 @@
 :root { font-family: Inter, sans-serif; color: #e9edf2; background: #090b0d; font-synthesis: none; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 75% 0%, #20282a 0, #0b0e10 35%, #08090b 70%); }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: 230px 1fr; }
 aside { position: fixed; inset: 0 auto 0 0; width: 230px; padding: 34px 24px; border-right: 1px solid #252a2d; background: rgba(8, 10, 11, .94); display: flex; flex-direction: column; }
 .brand { display: flex; align-items: center; gap: 13px; font: 600 19px/18px 'Barlow Condensed'; letter-spacing: .08em; }
@@ -41,5 +41,29 @@ th, td { padding: 14px 20px; border-top: 1px solid #292e31; }
 td { font-size: 13px; color: #c9ced1; }
 tbody tr:hover { background: rgba(255,122,24,.035); }
 .empty { padding: 42px; color: #656d72; text-align: center; border-top: 1px solid #292e31; }
+.editor-panel { padding: 0; overflow: hidden; }
+.editor-heading { padding: 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.editor-heading h2 { margin-bottom: 6px; }
+.editor-heading p { margin: 0; color: #737b80; font-size: 12px; }
+.editor-actions { display: flex; gap: 10px; flex-shrink: 0; }
+button { border: 1px solid #c65f13; border-radius: 2px; padding: 10px 15px; color: #fff; background: #d86616; cursor: pointer; text-transform: uppercase; font: 600 12px 'Barlow Condensed'; letter-spacing: .08em; }
+button.secondary { color: #aab0b4; border-color: #3a4145; background: #1a1e20; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+textarea { display: block; width: 100%; min-height: 65vh; resize: vertical; padding: 20px; border: 0; border-top: 1px solid #292e31; border-bottom: 1px solid #292e31; outline: none; color: #d9dedf; background: #0b0e0f; font: 13px/1.55 monospace; tab-size: 4; }
+textarea:focus { box-shadow: inset 0 0 0 1px #8b4a1e; }
+.editor-meta { padding: 13px 20px; display: grid; grid-template-columns: 150px 190px 1fr; gap: 18px; color: #737b80; font-size: 11px; }
+.dirty { color: #ff9a4c; }
+.notice { margin: 0; padding: 11px 24px; border-top: 1px solid; font-size: 12px; }
+.notice.success { color: #9ddd7d; border-color: #36522b; background: #132012; }
+.notice.error, .error-text { color: #ff806f; }
+.notice.error { border-color: #63342e; background: #281412; }
+td a, .back-link { color: #ff9a4c; text-decoration: none; }
+td a:hover, .back-link:hover { text-decoration: underline; }
+.back-link { display: inline-block; margin-bottom: 8px; font-size: 12px; }
+.button-link { display: inline-flex; align-items: center; border: 1px solid #c65f13; border-radius: 2px; padding: 10px 15px; color: #fff; background: #d86616; cursor: pointer; text-decoration: none; text-transform: uppercase; font: 600 12px 'Barlow Condensed'; letter-spacing: .08em; }
+.button-link.secondary { color: #aab0b4; border-color: #3a4145; background: #1a1e20; }
+button.danger { border-color: #7b342c; background: #742c24; }
+.hex-editor { min-height: 58vh; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 16px; color: #737b80; font-size: 12px; }
 @media (max-width: 900px) { .shell { display: block; } aside { position: static; width: auto; height: auto; padding: 18px; flex-direction: row; align-items: center; } nav { margin: 0 0 0 auto; display: flex; } main { padding: 28px 20px; } .cards { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .brand div { display: none; } nav a { padding: 10px 8px; font-size: 12px; } .cards { grid-template-columns: 1fr; } dl > div { grid-template-columns: 1fr; gap: 7px; } }
+@media (max-width: 560px) { .brand div { display: none; } nav a { padding: 10px 8px; font-size: 12px; } .cards { grid-template-columns: 1fr; } dl > div { grid-template-columns: 1fr; gap: 7px; } .editor-heading { align-items: stretch; flex-direction: column; } .editor-actions button { flex: 1; } .editor-meta { grid-template-columns: 1fr; gap: 7px; } }

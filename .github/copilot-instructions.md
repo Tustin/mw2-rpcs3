@@ -2,6 +2,8 @@ You are tasked with emulating the Demonware matchmaking service for Call of Duty
 
 Before patching, signing, installing, or verifying any ELF/SELF, read and follow `docs/BUILD_PATCHED_SELF.md`.
 
+After making server changes that affect the running deployment, rebuild and restart the Docker services with `docker compose up -d --build` before runtime testing or verification.
+
 The captures/ folder contains useful debugging and reverse engineering items:
 
 - mw2 ps3.pcapng is a full capture from game start to lobby on a retail PS3 with successful demonware authentication. It should be used as the source of truth. If you refer to any 3rd party demonware projects, they might be implemtning demonware from another Call of Duty title that won't necessarily match Modern Warfare 2.
@@ -14,4 +16,7 @@ The captures/ folder contains useful debugging and reverse engineering items:
 
 - server_log.log is the latest log from the server. It was ran in debug mode so it can provide as much detail as necessary.
 
-You also have access to IDA Pro MCP server which has default_mp.elf loaded for debugging purposes if you need to reverse engineer any of the demonware structures, enums or functions for more clarity.
+You also have access to two IDA Pro MCP databases:
+
+- `ida-latest` has the PS3 `default_mp.elf` loaded and is the authoritative target for PS3 behavior, addresses, and patches.
+- `ida-tu0` has an MW2 Xbox 360 TU0 XEX with debug symbols loaded. Use its symbols to identify matching functions, structures, enums, and control flow, then verify all conclusions against the PS3 ELF in `ida-latest`.

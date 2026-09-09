@@ -19,6 +19,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("MW2_PROFILE_DB_PATH", "")
 	t.Setenv("MW2_ADMIN_ENABLED", "")
 	t.Setenv("MW2_ADMIN_ASSETS_DIR", "")
+	t.Setenv("MW2_PLAYLISTS_FILE", "")
 	t.Setenv("MW2_MAX_FRAME_BYTES", "")
 	t.Setenv("MW2_BANDWIDTH_SEND_DURATION_MS", "")
 	t.Setenv("MW2_BANDWIDTH_FINALIZE_RECEIVE_PERIOD_MS", "")
@@ -43,6 +44,7 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.ProfileDBPath != "mw2-profiles.db" ||
 		cfg.AdminEnabled ||
 		cfg.AdminAssetsDir != "web/dist" ||
+		cfg.PlaylistsFile != "playlists.info" ||
 		cfg.MaxFrameBytes != 1<<20 ||
 		cfg.BandwidthSendDurationMS != 50 ||
 		cfg.BandwidthFinalizeReceivePeriodMS != nil {
@@ -53,11 +55,12 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadAdminConfiguration(t *testing.T) {
 	t.Setenv("MW2_ADMIN_ENABLED", "true")
 	t.Setenv("MW2_ADMIN_ASSETS_DIR", "/srv/admin")
+	t.Setenv("MW2_PLAYLISTS_FILE", "/data/playlists.info")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.AdminEnabled || cfg.AdminAssetsDir != "/srv/admin" {
+	if !cfg.AdminEnabled || cfg.AdminAssetsDir != "/srv/admin" || cfg.PlaylistsFile != "/data/playlists.info" {
 		t.Fatalf("unexpected admin configuration: %+v", cfg)
 	}
 }

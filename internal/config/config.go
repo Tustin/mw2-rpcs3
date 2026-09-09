@@ -37,6 +37,7 @@ type Config struct {
 	BandwidthFinalizeReceivePeriodMS *uint32
 	AdminEnabled                     bool
 	AdminAssetsDir                   string
+	PlaylistsFile                    string
 }
 
 func Load() (Config, error) {
@@ -57,6 +58,7 @@ func Load() (Config, error) {
 		ProfileDBPath:           env("MW2_PROFILE_DB_PATH", "mw2-profiles.db"),
 		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
 		AdminAssetsDir:          env("MW2_ADMIN_ASSETS_DIR", "web/dist"),
+		PlaylistsFile:           env("MW2_PLAYLISTS_FILE", "playlists.info"),
 		BandwidthSendDurationMS: 50,
 		MaxFrameBytes:           1 << 20,
 		ReadTimeout:             30 * time.Second,

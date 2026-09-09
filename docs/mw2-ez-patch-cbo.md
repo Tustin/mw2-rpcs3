@@ -143,10 +143,24 @@ The table makes the CBO behave like a small packed-file backend: callers ask to 
 - Let existing filesystem/streaming code read embedded data using the shared CBO descriptor.
 - Be downloaded and replaced without shipping a conventional title update.
 
+### Confirmed fastfile routing and startup order
+
+The retail Xbox 360 TU0 symbols and the PS3 ELF implement the same flow:
+
+1. `Com_InitXAssets` synchronously requests `code_post_gfx_mp` and `patch_mp` together, in that order.
+2. Only after that load returns does it mount `ez_patch.cbo`.
+3. If the mounted CBO has entries, it synchronously requests `ez_common_mp` and `ez_common_<language>_mp`.
+4. It then enters `Com_LoadUiFastFileInternal`, which synchronously requests `ez_ui_mp` and `ez_ui_<language>_mp` before requesting the normal `ui_mp` and `common_mp` zones.
+5. Each requested zone name is converted to `<zone>.ff`. The normal file-open path calls `Sys_FindComboFile`; a matching CBO record supplies the shared CBO descriptor and embedded-file start offset, and the ordinary DB fastfile loader parses the bytes at that offset.
+
+Therefore the CBO does carry normal embedded fastfiles rather than merely metadata. The automatically loaded embedded filenames are the four hard-coded EZ zone names with `.ff` appended by the DB loader. All EZ fastfiles are loaded after `patch_mp.ff`. Within the EZ set, the observed request order is common, localized common, UI, localized UI; the ordinary `ui_mp.ff` and `common_mp.ff` requests occur afterward.
+
+This also establishes asset precedence more precisely: `ez_common*` is later than `patch_mp`, while `ez_ui*` is later than `ez_common*` but earlier than the normal UI/common request made by this routine. Final duplicate-asset behavior still depends on the regular database loader's per-asset rules.
+
+Relevant Xbox 360 TU0 functions are `Com_InitXAssets` at `0x8236C8A8`, `Com_LoadUiFastFileInternal` at `0x8236C7E0`, `DB_TryLoadXFileInternal` at `0x8228EC38`, `Sys_CreateFile` at `0x82466C48`, and `Sys_FindComboFile` at `0x8244F350`. Their PS3 counterparts are `Com_InitXAssets` at `0x1E8F10`, `Com_LoadUiFastFileInternal` at `0x1E6238`, the DB zone open/load path at `0x11EF70`, the filesystem fallback at `0x296BD8`, and `Sys_FindComboFile` at `0x285530`.
+
 ### Strongly suggested
 
-- Carry one or more complete `.ff` zone images inside the container, referenced by filename-table offsets.
-- Override assets from base zones using normal fastfile precedence. The exact override rules are enforced by the regular database loader, not by CBO-specific code.
 - Update UI assets and common multiplayer assets. The hard-coded zone names make UI/menu/string/script-table-style updates plausible.
 - Supply language-specific variants through the localized EZ zone names.
 
@@ -258,7 +272,7 @@ Names are provisional because the retail ELF lacks symbols.
 ## Confidence assessment
 
 - High: total control-block size, byte order, leading-field offsets, validation constants, 44-byte records, filename offset, hard-coded EZ zone names, HTTP endpoint strings, and packed-file fallback behavior.
-- Medium: `entry_count`, `base_offset`, and the conclusion that embedded payloads are fastfiles.
+- Medium: `entry_count` and `base_offset` field names; their routing behavior is confirmed. Embedded EZ payloads being ordinary fastfiles, and their startup order after `patch_mp.ff`, are high confidence from matching TU0 symbols and PS3 control flow.
 - Low: payload alignment, exact filenames, any flag semantics in `base_offset`, and the full set of asset capabilities.
 
 An authentic retail `ez_patch.cbo` remains the fastest way to settle the remaining layout questions. Until then, the empty-header and one-entry routing tests are low-risk ways to validate the inferred format under RPCS3.

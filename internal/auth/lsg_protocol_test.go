@@ -343,6 +343,30 @@ func TestHandleObservedLSGBandwidthUsesServiceTaskReply(t *testing.T) {
 	}
 }
 
+func TestHandleLSGBandwidthFinalizeUsesNominalResultsWithoutUDPMeasurement(t *testing.T) {
+	session, err := newLSGConnection(candidateSessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.bandwidthConfigured = true
+	session.bandwidthSendDurationMS = 50
+	session.bandwidthMeasurementKey = "client-a"
+	session.bandwidthMeasurements = bandwidth.NewStore()
+
+	finalizePayload := make([]byte, 21)
+	finalizePayload[0] = 1
+	_, result, ok, reply := handleLSGMessage(session, bdServiceBandwidth, finalizePayload)
+	if !ok || !reply {
+		t.Fatalf("bandwidth finalize payload=%x ok=%v reply=%v", result, ok, reply)
+	}
+	wantResults := []uint32{2560, 50, 2, 0, 4}
+	for index, want := range wantResults {
+		if got := binary.LittleEndian.Uint32(result[9+index*4:]); got != want {
+			t.Fatalf("bandwidth result[%d]=%d want=%d payload=%x", index, got, want, result)
+		}
+	}
+}
+
 func TestHandleLSGBandwidthExperimentOverrides(t *testing.T) {
 	session, err := newLSGConnection(candidateSessionKey)
 	if err != nil {
