@@ -1,6 +1,6 @@
 # Modern Warfare 2 RPCS3 Private-Match Emulator
 
-A clean-room Go research backend for restoring private-match connectivity to **Call of Duty: Modern Warfare 2** on RPCS3.
+Vibecoded backend for MW2 Demonware server emulation. No idea how it works cuz turns out vibe modding sux. Works on retail PS3 and RPCS3 via DNS server
 
 ## Current status
 
