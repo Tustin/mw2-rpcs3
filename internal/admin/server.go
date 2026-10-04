@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/josh/mw2-rpcs3/internal/auth"
+	"github.com/josh/mw2-rpcs3/internal/ezpatch"
 	"github.com/josh/mw2-rpcs3/internal/playlist"
 )
 
@@ -36,13 +37,14 @@ type Server struct {
 	backend      ServerBackend
 	stats        Stats
 	playlistPath string
+	ezPatch      *ezpatch.Store
 	started      time.Time
 	assets       fs.FS
 	playlistMu   sync.Mutex
 }
 
-func NewServer(backend ServerBackend, stats Stats, playlistPath string, assets fs.FS) *Server {
-	return &Server{backend: backend, stats: stats, playlistPath: playlistPath, started: time.Now(), assets: assets}
+func NewServer(backend ServerBackend, stats Stats, playlistPath string, ezPatch *ezpatch.Store, assets fs.FS) *Server {
+	return &Server{backend: backend, stats: stats, playlistPath: playlistPath, ezPatch: ezPatch, started: time.Now(), assets: assets}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -57,6 +59,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/api/v1/leaderboards", s.leaderboards)
 	mux.HandleFunc("GET /admin/api/v1/playlist", s.getPlaylist)
 	mux.HandleFunc("PUT /admin/api/v1/playlist", s.putPlaylist)
+	mux.HandleFunc("GET /admin/api/v1/ezpatch", s.getEZPatch)
+	mux.HandleFunc("PUT /admin/api/v1/ezpatch", s.putEZPatch)
+	mux.HandleFunc("GET /admin/api/v1/ezpatch/download", s.downloadEZPatch)
 	mux.Handle("/admin/", s.spa())
 	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/", http.StatusTemporaryRedirect)
@@ -242,6 +247,60 @@ func (s *Server) putPlaylist(w http.ResponseWriter, r *http.Request) {
 func writePlaylist(w http.ResponseWriter, data []byte) {
 	sum := sha256.Sum256(data)
 	writeJSON(w, http.StatusOK, map[string]any{"filename": "playlists.info", "size": len(data), "sha256": hex.EncodeToString(sum[:]), "content": string(data)})
+}
+
+func (s *Server) getEZPatch(w http.ResponseWriter, _ *http.Request) {
+	info, err := s.ezPatch.Status()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) putEZPatch(w http.ResponseWriter, r *http.Request) {
+	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/octet-stream" {
+		http.Error(w, "Content-Type must be application/octet-stream", http.StatusUnsupportedMediaType)
+		return
+	}
+	payload, err := ezpatch.ReadUpload(w, r)
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "fastfile exceeds maximum size", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var version *uint32
+	if value := r.URL.Query().Get("version"); value != "" {
+		parsed, err := strconv.ParseUint(value, 10, 32)
+		if err != nil || parsed == 0 {
+			http.Error(w, "version must be a positive 32-bit integer", http.StatusBadRequest)
+			return
+		}
+		v := uint32(parsed)
+		version = &v
+	}
+	info, err := s.ezPatch.Update(payload, version)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) downloadEZPatch(w http.ResponseWriter, _ *http.Request) {
+	payload, info, err := s.ezPatch.Payload()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+info.Filename+`"`)
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	_, _ = w.Write(payload)
 }
 
 func (s *Server) spa() http.Handler {

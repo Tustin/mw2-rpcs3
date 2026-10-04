@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper, tableFeatures, type ReactTable, useTable } from '@tanstack/react-table'
-import { useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import playerdataSource from '../../files/game_assets/mp/playerdata.def?raw'
+import { parseDefinition, parseProfile, updateProfile, type ProfileField } from './playerdata'
 
 type Status = { status: string; uptimeSeconds: number; metrics: Record<string, number> }
 type Profile = { ownerId: string; fileId: string; filename: string; size: number }
 type ProfileDetail = Profile & { sha256: string; data: string }
 type Leaderboard = { boardId: number; entityId: number; rating: number; rank: number; name: string; columns: number[] }
 type Playlist = { filename: string; size: number; sha256: string; content: string }
+type EZPatch = { filename: string; version: number; size: number; sha256: string; contentVersion: string; updatedAt: string }
 type TableData = Profile | Leaderboard
 
 const features = tableFeatures({})
@@ -17,11 +20,17 @@ const emptyProfiles: Profile[] = []
 const emptyLeaderboard: Leaderboard[] = []
 const playlistMaxSize = 0x20000
 const profileSize = 8192
+const playerdataDefinition = parseDefinition(playerdataSource)
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/admin/api/v1${path}`, init)
   if (!response.ok) throw new Error((await response.text()).trim())
   return response.json()
+}
+
+async function uploadEZPatch(file: File, version?: string): Promise<EZPatch> {
+  const suffix = version ? `?version=${encodeURIComponent(version)}` : ''
+  return api<EZPatch>(`/ezpatch${suffix}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: file })
 }
 
 function Overview() {
@@ -70,12 +79,14 @@ function ProfileEditor() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['profile', fileId], queryFn: () => api<ProfileDetail>(`/profiles/${fileId}`) })
-  const [draft, setDraft] = useState<string>()
+  const [draft, setDraft] = useState<Uint8Array>()
+  const [filter, setFilter] = useState('')
   const [message, setMessage] = useState('')
-  const sourceHex = query.data ? bytesToHex(base64ToBytes(query.data.data)) : ''
-  const content = draft ?? sourceHex
-  const parsed = parseHex(content)
-  const dirty = query.data !== undefined && content !== sourceHex
+  const source = query.data ? base64ToBytes(query.data.data) : undefined
+  const content = draft ?? source
+  const parsed = content ? parseProfile(content, playerdataDefinition) : undefined
+  const fields = parsed?.fields.filter(field => field.path.toLowerCase().includes(filter.toLowerCase())) ?? []
+  const dirty = draft !== undefined
   const mutation = useMutation({
     mutationFn: (data: Uint8Array) => api<ProfileDetail>(`/profiles/${fileId}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer }),
     onSuccess: data => {
@@ -106,40 +117,41 @@ function ProfileEditor() {
       setMessage(`Profile must be exactly ${profileSize} bytes; selected file is ${data.length} bytes.`)
       return
     }
-    setDraft(bytesToHex(data))
+    setDraft(data)
+    setMessage('')
+  }
+  const changeField = (field: ProfileField, value: number | boolean | string) => {
+    if (!content) return
+    setDraft(updateProfile(content, field, value))
     setMessage('')
   }
   if (query.isLoading) return <section className="panel"><div className="empty">Loading profile</div></section>
-  if (query.isError || !query.data) return <section className="panel"><div className="empty error-text">{query.error?.message ?? 'Profile not found'}</div></section>
+  if (query.isError || !query.data || !content || !parsed) return <section className="panel"><div className="empty error-text">{query.error?.message ?? 'Profile not found'}</div></section>
   return <section className="panel editor-panel">
-    <div className="editor-heading"><div><Link className="back-link" to="/profiles">← Profiles</Link><h2>Profile {fileId}</h2><p>Owner {query.data.ownerId} · exact 8192-byte iw4-mpdata blob</p></div><div className="editor-actions"><a className="button-link secondary" href={`/admin/api/v1/profiles/${fileId}/download`}>Download</a><label className="button-link secondary">Upload<input type="file" hidden onChange={upload} /></label><button type="button" className="danger" onClick={() => { if (window.confirm(`Delete profile ${fileId}?`)) remove.mutate() }} disabled={remove.isPending}>Delete</button><button type="button" className="secondary" onClick={() => { setDraft(undefined); setMessage('') }} disabled={!dirty || mutation.isPending}>Discard</button><button type="button" onClick={() => { if (parsed.data) mutation.mutate(parsed.data) }} disabled={!dirty || parsed.data === undefined || mutation.isPending}>{mutation.isPending ? 'Saving…' : 'Save profile'}</button></div></div>
-    {message && <p className={`notice ${mutation.isError || remove.isError || parsed.error ? 'error' : 'success'}`}>{message}</p>}
-    <textarea className="hex-editor" aria-label="Profile hex data" spellCheck={false} value={content} onChange={event => { setDraft(event.target.value); setMessage('') }} />
-    <div className="editor-meta"><span className={dirty ? 'dirty' : ''}>{dirty ? 'Unsaved changes' : 'Saved'}</span><span className={parsed.error ? 'error-text' : ''}>{parsed.error ?? `${parsed.data?.length ?? 0} / ${profileSize} bytes`}</span><span className="hash">{query.data.sha256}</span></div>
+    <div className="editor-heading"><div><Link className="back-link" to="/profiles">← Profiles</Link><h2>Profile {fileId}</h2><p>Owner {query.data.ownerId} · fields decoded from playerdata.def</p></div><div className="editor-actions"><a className="button-link secondary" href={`/admin/api/v1/profiles/${fileId}/download`}>Download</a><label className="button-link secondary">Upload<input type="file" hidden onChange={upload} /></label><button type="button" className="danger" onClick={() => { if (window.confirm(`Delete profile ${fileId}?`)) remove.mutate() }} disabled={remove.isPending}>Delete</button><button type="button" className="secondary" onClick={() => { setDraft(undefined); setMessage('') }} disabled={!dirty || mutation.isPending}>Discard</button><button type="button" onClick={() => mutation.mutate(content)} disabled={!dirty || mutation.isPending}>{mutation.isPending ? 'Saving…' : 'Save profile'}</button></div></div>
+    {message && <p className={`notice ${mutation.isError || remove.isError ? 'error' : 'success'}`}>{message}</p>}
+    <div className="profile-summary"><span className={parsed.checksumValid ? 'success-text' : 'error-text'}>{parsed.checksumValid ? 'CRC32 valid' : 'CRC32 invalid'}</span><span>Definition: {parsed.definitionSize.toLocaleString()} bytes</span><span>{parsed.fields.length.toLocaleString()} editable values</span></div>
+    <input className="field-filter" type="search" placeholder="Filter fields, e.g. prestige or customClasses" value={filter} onChange={event => setFilter(event.target.value)} />
+    <div className="profile-fields">{fields.map(field => <ProfileFieldEditor key={field.path} field={field} onChange={value => changeField(field, value)} />)}</div>
+    {!fields.length && <div className="empty">No fields match this filter</div>}
+    <div className="editor-meta"><span className={dirty ? 'dirty' : ''}>{dirty ? 'Unsaved changes' : 'Saved'}</span><span>{content.length} / {profileSize} bytes</span><span className="hash">{query.data.sha256}</span></div>
   </section>
+}
+
+function ProfileFieldEditor({ field, onChange }: { field: ProfileField; onChange: (value: number | boolean | string) => void }) {
+  const input = field.kind === 'bool'
+    ? <input type="checkbox" checked={Boolean(field.value)} onChange={event => onChange(event.target.checked)} />
+    : field.kind === 'enum'
+      ? <select value={Number(field.value)} onChange={event => onChange(Number(event.target.value))}>{field.options?.map((option, index) => <option key={`${option}-${index}`} value={index}>{option || `(empty ${index})`}</option>)}</select>
+      : field.kind === 'string'
+        ? <input type="text" maxLength={Math.max(0, (field.length ?? 1) - 1)} value={String(field.value)} onChange={event => onChange(event.target.value)} />
+        : <input type="number" value={Number(field.value)} min={field.kind === 'byte' ? 0 : undefined} max={field.kind === 'byte' ? 255 : field.kind === 'short' ? 65535 : undefined} onChange={event => onChange(Number(event.target.value))} />
+  return <label className="profile-field"><span>{field.path}</span>{input}<small>{field.kind} · {field.offsetBits % 8 ? `bit ${field.offsetBits}` : `byte ${field.offsetBits / 8}`}</small></label>
 }
 
 function base64ToBytes(value: string) {
   const binary = atob(value)
   return Uint8Array.from(binary, character => character.charCodeAt(0))
-}
-
-function bytesToHex(data: Uint8Array) {
-  const lines: string[] = []
-  for (let offset = 0; offset < data.length; offset += 16) {
-    lines.push(Array.from(data.slice(offset, offset + 16), value => value.toString(16).padStart(2, '0')).join(' '))
-  }
-  return lines.join('\n')
-}
-
-function parseHex(value: string): { data?: Uint8Array; error?: string } {
-  const compact = value.replace(/\s/g, '')
-  if (/[^0-9a-f]/i.test(compact)) return { error: 'Hex contains invalid characters' }
-  if (compact.length % 2 !== 0) return { error: 'Hex contains an incomplete byte' }
-  const data = new Uint8Array(compact.length / 2)
-  for (let index = 0; index < compact.length; index += 2) data[index / 2] = Number.parseInt(compact.slice(index, index + 2), 16)
-  if (data.length !== profileSize) return { error: `${data.length} / ${profileSize} bytes` }
-  return { data }
 }
 
 function Leaderboards() {
@@ -149,6 +161,35 @@ function Leaderboards() {
     boardHelper.accessor('entityId', { header: 'Entity ID' }), boardHelper.accessor('rating', { header: 'Rating' }),
   ]) })
   return <DataTable title="Leaderboard · Board 1" table={table} empty="No leaderboard rows" />
+}
+
+function EZPatchEditor() {
+  const queryClient = useQueryClient()
+  const input = useRef<HTMLInputElement>(null)
+  const query = useQuery({ queryKey: ['ezpatch'], queryFn: () => api<EZPatch>('/ezpatch') })
+  const [file, setFile] = useState<File>()
+  const [version, setVersion] = useState('')
+  const [message, setMessage] = useState('')
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!file) throw new Error('Choose an ez_common_mp.ff file')
+      return uploadEZPatch(file, version.trim() || undefined)
+    },
+    onSuccess: data => {
+      queryClient.setQueryData(['ezpatch'], data)
+      setFile(undefined)
+      setVersion('')
+      if (input.current) input.current.value = ''
+      setMessage(`EZ Patch saved as version ${data.version}. New downloads will use it immediately.`)
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Upload failed'),
+  })
+  const info = query.data
+  return <div className="stack"><section className="panel"><div className="editor-heading"><div><h2>EZ Patch</h2><p>Upload a PS3 MW2 format-269 ez_common_mp.ff. The CBO is generated automatically.</p></div><a className="button-link" href="/admin/api/v1/ezpatch/download">Download current FF</a></div><dl>
+    <div><dt>Patch version</dt><dd>{info?.version ?? 'loading'}</dd></div><div><dt>Fastfile</dt><dd>{info?.filename ?? 'loading'}</dd></div>
+    <div><dt>Size</dt><dd>{info?.size.toLocaleString() ?? 0} bytes</dd></div><div><dt>Content version</dt><dd>{info?.contentVersion ?? 'loading'}</dd></div>
+    <div><dt>Updated</dt><dd>{info ? new Date(info.updatedAt).toLocaleString() : 'loading'}</dd></div><div><dt>SHA-256</dt><dd className="hash">{info?.sha256 ?? 'loading'}</dd></div>
+  </dl></section><section className="panel"><h2>Replace fastfile</h2><div className="upload-grid"><label>Fastfile<input ref={input} type="file" accept=".ff,application/octet-stream" onChange={event => { setFile(event.target.files?.[0]); setMessage('') }} /></label><label>Version override<input type="number" min="1" max="4294967295" placeholder={`Auto: ${(info?.version ?? 0) + 1}`} value={version} onChange={event => setVersion(event.target.value)} /></label></div><p className="hint">Leave version blank to increment automatically. The upload becomes active atomically without restarting the server.</p><div className="editor-actions"><button disabled={!file || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Uploading…' : 'Upload and activate'}</button></div>{file && <p className="message">Selected: {file.name} · {file.size.toLocaleString()} bytes</p>}{message && <p className="message">{message}</p>}</section></div>
 }
 
 function PlaylistEditor() {
@@ -188,8 +229,8 @@ function DataTable<T extends TableData>({ title, table, empty }: { title: string
 
 function App() {
   return <div className="shell"><aside><div className="brand"><span>IW4</span><div>MW2<br/><small>operations</small></div></div><nav>
-    <NavLink to="/">Overview</NavLink><NavLink to="/playlist">Playlist</NavLink><NavLink to="/profiles">Profiles</NavLink><NavLink to="/leaderboards">Leaderboards</NavLink>
-  </nav></aside><main><header><div><p>DEMONWARE EMULATOR</p><h1>Operations Console</h1></div><span className="live">LIVE</span></header><Routes><Route path="/" element={<Overview />} /><Route path="/playlist" element={<PlaylistEditor />} /><Route path="/profiles" element={<Profiles />} /><Route path="/profiles/:fileId" element={<ProfileEditor />} /><Route path="/leaderboards" element={<Leaderboards />} /></Routes></main></div>
+    <NavLink to="/">Overview</NavLink><NavLink to="/playlist">Playlist</NavLink><NavLink to="/ezpatch">EZ Patch</NavLink><NavLink to="/profiles">Profiles</NavLink><NavLink to="/leaderboards">Leaderboards</NavLink>
+  </nav></aside><main><header><div><p>DEMONWARE EMULATOR</p><h1>Operations Console</h1></div><span className="live">LIVE</span></header><Routes><Route path="/" element={<Overview />} /><Route path="/playlist" element={<PlaylistEditor />} /><Route path="/ezpatch" element={<EZPatchEditor />} /><Route path="/profiles" element={<Profiles />} /><Route path="/profiles/:fileId" element={<ProfileEditor />} /><Route path="/leaderboards" element={<Leaderboards />} /></Routes></main></div>
 }
 
 export default App

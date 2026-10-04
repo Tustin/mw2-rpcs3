@@ -105,6 +105,11 @@ func main() {
 	stats := func() map[string]uint64 {
 		return map[string]uint64{"auth_connections": authServer.Connections(), "auth_requests": authServer.Requests(), "lsg_connections": authServer.LSGConnections(), "lsg_frames": authServer.LSGFrames(), "lobby_connections": lobbyServer.Connections(), "lobby_requests": lobbyServer.Requests(), "nat_packets": natServer.Packets(), "lsp_packets": lspServer.Packets()}
 	}
+	ezPatchStore, err := ezpatch.OpenStore(cfg.EZPatchDir, cfg.EZPatchSeedFile)
+	if err != nil {
+		logger.Error("open EZ Patch store", "error", err)
+		os.Exit(2)
+	}
 	var adminHandler http.Handler
 	if cfg.AdminEnabled {
 		assets, err := fs.Sub(os.DirFS(cfg.AdminAssetsDir), ".")
@@ -112,10 +117,10 @@ func main() {
 			logger.Error("open admin assets", "error", err)
 			os.Exit(2)
 		}
-		adminHandler = admin.NewServer(authServer, stats, cfg.PlaylistsFile, assets).Handler()
+		adminHandler = admin.NewServer(authServer, stats, cfg.PlaylistsFile, ezPatchStore, assets).Handler()
 	}
 	runners := []runner{{"auth", authServer.Serve}, {"lobby", lobbyServer.Serve}, {"nat", natServer.Serve}, {"lsp", lspServer.Serve}, {"http", func(ctx context.Context) error {
-		return health.ServeWithHandlers(ctx, cfg.HTTPAddr, stats, ezpatch.Handler(), adminHandler)
+		return health.ServeWithHandlers(ctx, cfg.HTTPAddr, stats, ezPatchStore.Handler(), adminHandler)
 	}}}
 	errCh := make(chan error, len(runners))
 	var wg sync.WaitGroup

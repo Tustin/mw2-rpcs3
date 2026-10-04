@@ -38,6 +38,8 @@ type Config struct {
 	AdminEnabled                     bool
 	AdminAssetsDir                   string
 	PlaylistsFile                    string
+	EZPatchDir                       string
+	EZPatchSeedFile                  string
 }
 
 func Load() (Config, error) {
@@ -59,6 +61,8 @@ func Load() (Config, error) {
 		StaticMOTD:              env("MW2_MOTD", "MW2 RPCS3 private-match research server"),
 		AdminAssetsDir:          env("MW2_ADMIN_ASSETS_DIR", "web/dist"),
 		PlaylistsFile:           env("MW2_PLAYLISTS_FILE", "playlists.info"),
+		EZPatchDir:              env("MW2_EZPATCH_DIR", "ezpatch/data"),
+		EZPatchSeedFile:         env("MW2_EZPATCH_SEED_FILE", "ezpatch/test/ez_common_mp.ff"),
 		BandwidthSendDurationMS: 50,
 		MaxFrameBytes:           1 << 20,
 		ReadTimeout:             30 * time.Second,

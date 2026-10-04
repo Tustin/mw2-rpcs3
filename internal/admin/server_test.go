@@ -11,7 +11,10 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"encoding/binary"
+
 	"github.com/josh/mw2-rpcs3/internal/auth"
+	"github.com/josh/mw2-rpcs3/internal/ezpatch"
 	"github.com/josh/mw2-rpcs3/internal/playlist"
 )
 
@@ -59,6 +62,7 @@ func TestServerAPI(t *testing.T) {
 		{"/admin/api/v1/profiles/22", `"ownerId":"11"`},
 		{"/admin/api/v1/leaderboards?boardId=1", `"name":"player"`},
 		{"/admin/api/v1/playlist", `"content":"playlist\n"`},
+		{"/admin/api/v1/ezpatch", `"filename":"ez_common_mp.ff"`},
 		{"/admin/unknown/route", "admin ui"},
 	}
 	for _, test := range tests {
@@ -138,6 +142,44 @@ func TestServerUpdatesPlaylist(t *testing.T) {
 	}
 }
 
+func TestServerUpdatesEZPatch(t *testing.T) {
+	handler, _ := testHandler(t)
+	payload := make([]byte, 0x19)
+	copy(payload, []byte("IWffu100"))
+	binary.BigEndian.PutUint32(payload[0x08:0x0C], ezpatch.FormatVersion)
+	binary.BigEndian.PutUint64(payload[0x0D:0x15], 0x01DD3FF2A0ACB1FD)
+	request := httptest.NewRequest(http.MethodPut, "/admin/api/v1/ezpatch", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/octet-stream")
+	response := serve(handler, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"version":1005`) {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestServerOverridesEZPatchVersion(t *testing.T) {
+	handler, _ := testHandler(t)
+	payload := make([]byte, 0x19)
+	copy(payload, []byte("IWffu100"))
+	binary.BigEndian.PutUint32(payload[0x08:0x0C], ezpatch.FormatVersion)
+	binary.BigEndian.PutUint64(payload[0x0D:0x15], 0x01DD3FF2A0ACB1FD)
+	request := httptest.NewRequest(http.MethodPut, "/admin/api/v1/ezpatch?version=2000", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/octet-stream")
+	response := serve(handler, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"version":2000`) {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestServerRejectsInvalidEZPatch(t *testing.T) {
+	handler, _ := testHandler(t)
+	request := httptest.NewRequest(http.MethodPut, "/admin/api/v1/ezpatch", strings.NewReader("invalid"))
+	request.Header.Set("Content-Type", "application/octet-stream")
+	response := serve(handler, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
 func TestServerRejectsInvalidPlaylist(t *testing.T) {
 	handler, playlistPath := testHandler(t)
 	request := httptest.NewRequest(http.MethodPut, "/admin/api/v1/playlist", bytes.NewReader([]byte{'a', 0}))
@@ -179,8 +221,21 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err := os.WriteFile(playlistPath, []byte("playlist\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	ezPatchRoot := filepath.Join(t.TempDir(), "ezpatch")
+	seedPath := filepath.Join(t.TempDir(), "seed.ff")
+	payload := make([]byte, 0x18)
+	copy(payload, []byte("IWffu100"))
+	binary.BigEndian.PutUint32(payload[0x08:0x0C], ezpatch.FormatVersion)
+	binary.BigEndian.PutUint64(payload[0x0D:0x15], 0x01DD3FF2A0ACB1FC)
+	if err := os.WriteFile(seedPath, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ezPatch, err := ezpatch.OpenStore(ezPatchRoot, seedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assets := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("admin ui")}}
-	return NewServer(testBackend{}, func() map[string]uint64 { return map[string]uint64{"requests": 7} }, playlistPath, assets).Handler(), playlistPath
+	return NewServer(testBackend{}, func() map[string]uint64 { return map[string]uint64{"requests": 7} }, playlistPath, ezPatch, assets).Handler(), playlistPath
 }
 
 func serve(handler http.Handler, request *http.Request) *httptest.ResponseRecorder {

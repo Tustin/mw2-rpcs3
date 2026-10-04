@@ -11,6 +11,7 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web ./
+COPY files/game_assets/mp/playerdata.def /src/files/game_assets/mp/playerdata.def
 RUN npm run build
 
 FROM scratch
@@ -18,10 +19,11 @@ COPY --from=build /out/mw2-server /mw2-server
 COPY --from=build /src/playlists.info /data/playlists.info
 COPY --from=build /src/THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
 COPY --from=web-build /src/web/dist /web/dist
-COPY ezpatch/test/ez_common_mp.ff /ezpatch/ez_common_mp.ff
+COPY ezpatch/test/ez_common_mp.ff /defaults/ez_common_mp.ff
 ENV MW2_PLAYLISTS_FILE=/data/playlists.info
 ENV MW2_ADMIN_ASSETS_DIR=/web/dist
-ENV MW2_EZPATCH_PAYLOAD_FILE=/ezpatch/ez_common_mp.ff
+ENV MW2_EZPATCH_DIR=/data/ezpatch
+ENV MW2_EZPATCH_SEED_FILE=/defaults/ez_common_mp.ff
 ENV MW2_BANDWIDTH_SEND_DURATION_MS=50
 ENV MW2_MATCHMAKING_PREFER_EARLIER_HOSTS=true
 EXPOSE 3074/tcp 3074/udp 3075/tcp 3075/udp 8080/tcp

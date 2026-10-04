@@ -4,6 +4,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 75% 0%, #20282a 0, #0b0e10 35%, #08090b 70%); }
 button, input, textarea { font: inherit; }
+input { color: #e9edf2; background: #101315; border: 1px solid #343a3e; border-radius: 4px; padding: 11px 12px; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: 230px 1fr; }
 aside { position: fixed; inset: 0 auto 0 0; width: 230px; padding: 34px 24px; border-right: 1px solid #252a2d; background: rgba(8, 10, 11, .94); display: flex; flex-direction: column; }
 .brand { display: flex; align-items: center; gap: 13px; font: 600 19px/18px 'Barlow Condensed'; letter-spacing: .08em; }
@@ -65,5 +66,18 @@ td a:hover, .back-link:hover { text-decoration: underline; }
 button.danger { border-color: #7b342c; background: #742c24; }
 .hex-editor { min-height: 58vh; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 16px; color: #737b80; font-size: 12px; }
+.button-link { color: #e9edf2; text-decoration: none; border: 1px solid #3a4145; background: #1a1e20; border-radius: 4px; padding: 10px 14px; }
+.upload-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-top: 20px; }
+.upload-grid label { display: grid; gap: 8px; color: #92999e; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.profile-summary { display: flex; gap: 20px; padding: 13px 0; color: #92999e; font-size: 12px; }
+.success-text { color: #8dd768; }
+.field-filter { width: 100%; margin: 8px 0 18px; }
+.profile-fields { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1px; max-height: 62vh; overflow-y: auto; background: #292e31; border: 1px solid #292e31; }
+.profile-field { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(120px, .7fr); gap: 6px 16px; align-items: center; padding: 12px 14px; background: #15181a; }
+.profile-field > span { overflow-wrap: anywhere; color: #c6cbce; font: 12px monospace; }
+.profile-field input:not([type="checkbox"]), .profile-field select, .field-filter { box-sizing: border-box; min-width: 0; border: 1px solid #343a3e; border-radius: 2px; background: #0d0f10; color: #e3e6e8; padding: 9px 10px; }
+.profile-field input[type="checkbox"] { justify-self: start; width: 18px; height: 18px; accent-color: #d97832; }
+.profile-field small { grid-column: 1 / -1; color: #626a6f; font-size: 10px; }
+.hint { color: #737b80; font-size: 13px; }
 @media (max-width: 900px) { .shell { display: block; } aside { position: static; width: auto; height: auto; padding: 18px; flex-direction: row; align-items: center; } nav { margin: 0 0 0 auto; display: flex; } main { padding: 28px 20px; } .cards { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .brand div { display: none; } nav a { padding: 10px 8px; font-size: 12px; } .cards { grid-template-columns: 1fr; } dl > div { grid-template-columns: 1fr; gap: 7px; } .editor-heading { align-items: stretch; flex-direction: column; } .editor-actions button { flex: 1; } .editor-meta { grid-template-columns: 1fr; gap: 7px; } }
+@media (max-width: 560px) { .brand div { display: none; } nav a { padding: 10px 8px; font-size: 12px; } .cards, .profile-fields { grid-template-columns: 1fr; } dl > div { grid-template-columns: 1fr; gap: 7px; } .editor-heading { align-items: stretch; flex-direction: column; } .editor-actions button { flex: 1; } .editor-meta, .upload-grid { grid-template-columns: 1fr; gap: 7px; } .profile-summary { flex-direction: column; gap: 6px; } }

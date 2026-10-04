@@ -17,6 +17,8 @@ services:
       MW2_ADMIN_ENABLED: ${MW2_ADMIN_ENABLED:-true}
       MW2_PLAYLISTS_FILE: /data/playlists.info
       MW2_PROFILE_DB_PATH: /data/mw2-profiles.db
+      MW2_EZPATCH_DIR: /data/ezpatch
+      MW2_EZPATCH_SEED_FILE: /defaults/ez_common_mp.ff
     ports:
       - "3074:3074/tcp"
       - "3074:3074/udp"

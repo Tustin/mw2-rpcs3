@@ -22,6 +22,11 @@ name russian "������ �� ����"
 name japanese "�t���[�E�t�H�[�E�I�[��"
 script dm
 
+gametype testing
+name english "Testing"
+script test
+
+
 gametype nuke
 name english "Global Thermonuclear War"
 script gtnw
@@ -78,4 +83,4 @@ rule party_gameStartTimerLength 1
 rule party_matchedplayercount 0
 rule scr_dm_scorelimit 9999
 
-mp_rust,ffa,1
+mp_rust,testing,1
